@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+
+# Builds
+dist
+dist-ssr
+.vite
+
+# Local environment / secrets (VITE_API_URL is set in the Vercel dashboard, never committed)
+.env
+.env*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE / OS
+.DS_Store
+.idea
+.vscode
