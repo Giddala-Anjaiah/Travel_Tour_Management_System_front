@@ -24,6 +24,38 @@
   --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* ===== Theme: dark mode ===== */
+[data-theme="dark"] {
+  --card-bg: #1a1c21;
+  --text-primary: #e5e7eb;
+  --text-secondary: #cbd5e1;
+  --text-tertiary: #9ca3af;
+  --border-color: #2a2f3a;
+  --light-bg: #0f1116;
+  --dark-bg: #0a0b0d;
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.35);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .dashboard-container { background: linear-gradient(135deg, var(--light-bg) 0%, var(--dark-bg) 100%); }
+[data-theme="dark"] .dashboard-main { background: linear-gradient(135deg, var(--light-bg) 0%, var(--dark-bg) 100%); }
+[data-theme="dark"] .dashboard-header {
+  background: linear-gradient(135deg, var(--card-bg) 0%, rgba(79, 70, 229, 0.06) 100%);
+  border-bottom-color: var(--border-color);
+}
+[data-theme="dark"] .search-bar,
+[data-theme="dark"] .data-table,
+[data-theme="dark"] input,
+[data-theme="dark"] textarea,
+[data-theme="dark"] select {
+  background: var(--card-bg);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+}
+[data-theme="dark"] .data-table td { border-bottom-color: rgba(226, 232, 240, 0.1); }
+
 /* Dashboard Container */
 .dashboard-container {
   display: flex;

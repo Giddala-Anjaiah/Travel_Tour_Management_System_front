@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
 import App from './App.jsx'
+import { ThemeProvider } from './context/ThemeProvider'
+import ThemeToggle from './components/ThemeToggle'
 import Login from './Login.jsx'
 import Signup from './Signup.jsx'
 import ProtectedRoute from './ProtectedRoute.jsx'
@@ -48,7 +50,9 @@ import WishlistReviewsNotifications from './Dashboard/Customer/WishlistReviewsNo
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
-      <Routes>
+      <ThemeProvider>
+        <ThemeToggle className="theme-toggle-fixed" />
+        <Routes>
         <Route path="/" element={<App />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
@@ -381,6 +385,7 @@ createRoot(document.getElementById('root')).render(
           } 
         />
       </Routes>
+      </ThemeProvider>
     </BrowserRouter>
   </StrictMode>,
 )
