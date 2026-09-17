@@ -1110,6 +1110,10 @@ body {
 }
 
 @media (max-width: 480px) {
+  .navbar-content {
+    padding: 0 1rem;
+  }
+
   .hero {
     padding: 7rem 1rem 5rem;
   }
@@ -1171,6 +1175,10 @@ body {
 
   .stat-number {
     font-size: 2rem;
+  }
+
+  .stat-image {
+    height: 150px;
   }
 
   .pricing-card {
