@@ -47,13 +47,7 @@ const OperatorLayout = ({ active, title, actions, children }) => {
             )
           })}
         </nav>
-        <div className="sidebar-footer">
-          <button onClick={handleLogout} className="sidebar-logout-btn">
-            <LogOut className="h-5 w-5" />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
+    </aside>
 
       <main className="dashboard-main">
         <header className="dashboard-header">
