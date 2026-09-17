@@ -60,6 +60,10 @@ const OperatorLayout = ({ active, title, actions, children }) => {
           <h1>{title}</h1>
           <div className="header-actions">
             {actions}
+            <button onClick={handleLogout} className="btn-logout-header">
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </button>
             <div className="user-info">
               <span>Welcome, {user.fullName || 'Tour Operator'}</span>
             </div>

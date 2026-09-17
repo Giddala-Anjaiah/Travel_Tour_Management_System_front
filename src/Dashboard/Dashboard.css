@@ -1318,6 +1318,12 @@
   .btn-secondary {
     padding: 0.75rem 1rem;
   }
+  
+  .btn-logout-header {
+    padding: 0.6rem 1rem;
+    font-size: 0.85rem;
+    gap: 0.4rem;
+  }
 }
 
 /* Header Actions */

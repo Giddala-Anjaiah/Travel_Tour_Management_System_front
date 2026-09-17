@@ -72,6 +72,10 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
           </div>
           <div className="header-actions">
             {actions}
+            <button onClick={handleLogout} className="btn-logout-header">
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </button>
             <div className="user-info">
               <span className="cp-avatar">{initials}</span>
               <span>{user.fullName || 'Customer'}</span>

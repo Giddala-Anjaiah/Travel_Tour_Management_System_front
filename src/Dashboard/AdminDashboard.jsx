@@ -66,8 +66,14 @@ const AdminDashboard = () => {
       <main className="dashboard-main">
         <header className="dashboard-header">
           <h1>Admin Dashboard</h1>
-          <div className="user-info">
-            <span>Welcome, {user.fullName || 'Admin'}</span>
+          <div className="header-actions">
+            <button onClick={handleLogout} className="btn-logout-header">
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </button>
+            <div className="user-info">
+              <span>Welcome, {user.fullName || 'Admin'}</span>
+            </div>
           </div>
         </header>
 
