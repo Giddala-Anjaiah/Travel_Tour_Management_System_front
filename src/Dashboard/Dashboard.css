@@ -1236,11 +1236,30 @@
     flex-direction: column;
     gap: 1rem;
     text-align: center;
+    padding: 1.25rem;
+  }
+  
+  .dashboard-sections {
+    grid-template-columns: 1fr;
+  }
+  
+  .logout-btn {
+    width: calc(100vw - 2rem);
+  }
+  
+  .data-table,
+  .hr-table {
+    max-width: 100%;
+    table-layout: fixed;
+    word-break: break-word;
   }
 }
 
 @media (max-width: 480px) {
-  .stats-grid {
+  .stats-grid,
+  .dashboard-sections,
+  .booking-stats,
+  .customer-portal .booking-stats {
     grid-template-columns: 1fr;
   }
   
