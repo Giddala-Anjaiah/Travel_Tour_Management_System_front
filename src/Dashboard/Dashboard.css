@@ -171,8 +171,8 @@
   position: fixed;
   bottom: 1.5rem;
   left: 1rem;
-  width: 278px;
-  max-width: calc(100vw - 2rem);
+  width: 100%;
+  max-width: 280px;
   padding: 0.875rem 1rem;
   display: flex;
   align-items: center;
@@ -1244,7 +1244,8 @@
     grid-template-columns: 1fr;
   }
   .logout-btn {
-    width: calc(100vw - 2rem);
+    width: 100%;
+    max-width: 260px;
     left: 1rem;
     bottom: 1rem;
     padding: 0.75rem 1rem;
@@ -6037,8 +6038,8 @@
 
 .customer-portal .logout-btn {
   left: 0.7rem;
-  width: 248px;
-  max-width: calc(100vw - 1.4rem);
+  width: 100%;
+  max-width: 260px;
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.14);
   box-shadow: none;
@@ -6469,7 +6470,8 @@
 
   .customer-portal .logout-btn {
     position: static;
-    width: calc(100% - 1.4rem);
+    width: 100%;
+    max-width: calc(100% - 1.4rem);
     margin: 0 0.7rem 1rem;
   }
 }
