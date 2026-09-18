@@ -63,7 +63,7 @@ const ForgotPassword = () => {
           showToast(data.message || 'Failed to send OTP', 'error')
         }
       }
-    } catch (err) {
+    } catch {
       setError('Server error. Please try again.')
       showToast('Server error. Please try again.', 'error')
     } finally {
