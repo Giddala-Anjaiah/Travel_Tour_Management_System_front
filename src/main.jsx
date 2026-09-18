@@ -5,8 +5,10 @@ import './index.css'
 import App from './App.jsx'
 import { ThemeProvider } from './context/ThemeProvider'
 import ThemeToggle from './components/ThemeToggle'
+import ToastContainer from './components/Toast.jsx'
 import Login from './Login.jsx'
 import Signup from './Signup.jsx'
+import ForgotPassword from './ForgotPassword.jsx'
 import ProtectedRoute from './ProtectedRoute.jsx'
 import CustomerDashboard from './Dashboard/Customer/CustomerDashboard.jsx'
 import OperatorDashboard from './Dashboard/Operator/OperatorDashboard.jsx'
@@ -51,11 +53,13 @@ createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <ThemeProvider>
-        <ThemeToggle className="theme-toggle-fixed" />
-        <Routes>
-        <Route path="/" element={<App />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
+         <ThemeToggle className="theme-toggle-fixed" />
+         <ToastContainer />
+         <Routes>
+         <Route path="/" element={<App />} />
+         <Route path="/login" element={<Login />} />
+         <Route path="/signup" element={<Signup />} />
+         <Route path="/forgot-password" element={<ForgotPassword />} />
         
         {/* Admin Routes */}
         <Route 

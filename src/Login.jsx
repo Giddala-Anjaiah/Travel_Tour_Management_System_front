@@ -2,6 +2,7 @@ import { API_BASE } from './api'
 import { Plane } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState } from 'react'
+import { showToast } from './components/toastEvents'
 import './Auth.css'
 
 const Login = () => {
@@ -44,6 +45,7 @@ const Login = () => {
 
       if (response.ok) {
         setSuccess('Login successful!')
+        showToast('Login successful!')
         localStorage.setItem('token', data.token)
         localStorage.setItem('user', JSON.stringify(data.user))
         
@@ -53,6 +55,7 @@ const Login = () => {
         }, 1000)
       } else {
         setError(data.message || 'Login failed')
+        showToast(data.message || 'Login failed', 'error')
       }
     } catch (err) {
       setError('Server error. Please try again.')
@@ -113,7 +116,7 @@ const Login = () => {
                 <input type="checkbox" />
                 <span>Remember me</span>
               </label>
-              <a href="#" className="forgot-link">Forgot password?</a>
+              <a href="#" className="forgot-link" onClick={(e) => { e.preventDefault(); navigate('/forgot-password'); }}>Forgot password?</a>
             </div>
             <button type="submit" className="auth-btn">Sign In as {roles.find(r => r.value === selectedRole)?.label}</button>
           </form>
