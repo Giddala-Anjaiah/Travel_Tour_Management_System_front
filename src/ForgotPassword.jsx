@@ -41,8 +41,14 @@ const ForgotPassword = () => {
       })
       const data = await res.json()
       if (res.ok) {
+        const otpMatch = data.message && data.message.match(/\d{6}/)
+        if (otpMatch) {
+          setOtp(otpMatch[0])
+          showToast(data.message + ' (OTP auto-filled)', 'error')
+        } else {
+          showToast(data.message)
+        }
         setSuccess(data.message)
-        showToast(data.message)
         setStep('otp')
       } else {
         // Server returns 500 when Brevo isn't configured — OTP is in the message for testing
