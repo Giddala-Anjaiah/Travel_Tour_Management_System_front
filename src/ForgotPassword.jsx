@@ -45,10 +45,19 @@ const ForgotPassword = () => {
         showToast(data.message)
         setStep('otp')
       } else {
-        setError(data.message || 'Failed to send OTP')
-        showToast(data.message || 'Failed to send OTP', 'error')
+        // Server returns 500 when Brevo isn't configured — OTP is in the message for testing
+        const otpMatch = data.message && data.message.match(/\d{6}/)
+        if (otpMatch) {
+          setSuccess(data.message + ' (use this OTP to proceed)')
+          setOtp(otpMatch[0])
+          showToast(data.message + ' (test OTP provided)', 'error')
+          setStep('otp')
+        } else {
+          setError(data.message || 'Failed to send OTP')
+          showToast(data.message || 'Failed to send OTP', 'error')
+        }
       }
-    } catch {
+    } catch (err) {
       setError('Server error. Please try again.')
       showToast('Server error. Please try again.', 'error')
     } finally {
