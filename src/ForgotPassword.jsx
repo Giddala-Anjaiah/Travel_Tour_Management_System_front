@@ -217,9 +217,10 @@ const ForgotPassword = () => {
               <div className="form-group">
                 <label>New Password</label>
                 <div className="input-with-icon">
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder="••••••••"
+                   <input
+                     type={showPassword ? 'text' : 'password'}
+                     className="password-input"
+                     placeholder="••••••••"
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     required
@@ -242,9 +243,10 @@ const ForgotPassword = () => {
               <div className="form-group">
                 <label>Confirm Password</label>
                 <div className="input-with-icon">
-                  <input
-                    type={showConfirm ? 'text' : 'password'}
-                    placeholder="••••••••"
+                   <input
+                     type={showConfirm ? 'text' : 'password'}
+                     className="password-input"
+                     placeholder="••••••••"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     required
