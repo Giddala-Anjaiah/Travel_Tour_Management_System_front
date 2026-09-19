@@ -53,7 +53,7 @@ const OperatorDashboard = () => {
 
       setStats({
         totalPackages: packages.length,
-        activePackages: packages.filter(p => p.status === 'active' && p.publishedStatus === 'published').length,
+        activePackages: packages.filter(p => p.status === 'active').length,
         totalBookings: bookings.length,
         totalCustomers: customers.length,
         revenue: revenue.totalRevenue || 0,
