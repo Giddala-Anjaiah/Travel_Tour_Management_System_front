@@ -1,13 +1,39 @@
 import { API_BASE } from './api'
 import { Plane } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import { showToast } from './components/toastEvents'
 import './Auth.css'
 
 const Login = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const [selectedRole, setSelectedRole] = useState('customer')
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const token = params.get('token')
+    const role = params.get('role')
+    if (token && role) {
+      localStorage.setItem('token', token)
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      localStorage.setItem('user', JSON.stringify({
+        id: payload.userId,
+        email: payload.email,
+        role: payload.role,
+        fullName: payload.email.split('@')[0],
+      }))
+      window.history.replaceState({}, document.title, '/')
+      showToast('Login successful!')
+      const redirectMap = {
+        admin: '/admin/dashboard',
+        customer: '/customer/dashboard',
+        tour_operator: '/tour-operator/dashboard',
+        hotel_partner: '/hotel-partner/dashboard',
+      }
+      navigate(redirectMap[role] || '/')
+    }
+  }, [location, navigate])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
