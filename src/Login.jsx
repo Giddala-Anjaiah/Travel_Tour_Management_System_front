@@ -63,6 +63,10 @@ const Login = () => {
     }
   }
 
+  const handleGoogleLogin = () => {
+    window.location.href = API_BASE + '/auth/google'
+  }
+
   return (
     <div className="auth-page">
       <div className="auth-content">
@@ -120,6 +124,17 @@ const Login = () => {
             </div>
             <button type="submit" className="auth-btn">Sign In as {roles.find(r => r.value === selectedRole)?.label}</button>
           </form>
+          
+          <div className="google-divider">
+            <span>or sign in with</span>
+          </div>
+          <button type="button" className="google-btn" onClick={handleGoogleLogin}>
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ width: '18px', height: '18px', marginRight: '8px' }} fill="currentColor">
+              <path fill="#ffc107" d="M43.611 20.083H42V20H24V28h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
+            </svg>
+            Sign in with Google
+          </button>
+          
           <p className="auth-footer">
             Don't have an account? <Link to="/signup">Sign up</Link>
           </p>
