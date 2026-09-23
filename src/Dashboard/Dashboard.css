@@ -252,8 +252,8 @@
   margin-left: 280px;
   display: flex;
   flex-direction: column;
+  height: 100vh;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-  min-height: 100vh;
 }
 
 .dashboard-header {
@@ -409,6 +409,7 @@
 .dashboard-content {
   padding: 2rem;
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -1211,6 +1212,7 @@
   
   .dashboard-main {
     margin-left: 240px;
+    height: 100vh;
   }
   
   .dashboard-sections {
@@ -1227,6 +1229,13 @@
   
   .dashboard-main {
     margin-left: 0;
+    height: auto;
+    min-height: 100vh;
+  }
+  
+  .dashboard-content {
+    min-height: 0;
+    overflow-y: visible;
   }
   
   .stats-grid {
