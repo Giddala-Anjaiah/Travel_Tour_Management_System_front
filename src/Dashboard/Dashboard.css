@@ -59,6 +59,7 @@
 /* Dashboard Container */
 .dashboard-container {
   display: flex;
+  height: 100vh;
   min-height: 100vh;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -254,6 +255,7 @@
   flex-direction: column;
   height: 100vh;
   background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  box-sizing: border-box;
 }
 
 .dashboard-header {
@@ -411,19 +413,22 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .dashboard-content::-webkit-scrollbar {
-  width: 8px;
+  width: 12px;
 }
 
 .dashboard-content::-webkit-scrollbar-track {
   background: transparent;
+  border-radius: 6px;
 }
 
 .dashboard-content::-webkit-scrollbar-thumb {
-  background: rgba(79, 70, 229, 0.2);
-  border-radius: 4px;
+  background: rgba(79, 70, 229, 0.3);
+  border-radius: 6px;
+  border: 3px solid transparent;
 }
 
 .dashboard-content::-webkit-scrollbar-thumb:hover {
@@ -1421,6 +1426,7 @@
 /* Table Styles */
 .table-container {
   overflow-x: auto;
+  overflow-y: visible;
   border-radius: 1rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
 }
@@ -1429,8 +1435,7 @@
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
+  background: var(--card-bg);
 }
 
 .data-table thead {
