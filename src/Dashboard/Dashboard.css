@@ -413,7 +413,6 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-gutter: stable;
 }
 
 .dashboard-content::-webkit-scrollbar {
@@ -601,6 +600,8 @@
   box-shadow: var(--shadow-sm);
   transition: var(--transition);
   position: relative;
+  overflow: visible;
+  z-index: 1;
 }
 
 .section-card::before {
@@ -1429,6 +1430,23 @@
   overflow-y: visible;
   border-radius: 1rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+  padding-bottom: 2px;
+  scrollbar-color: rgba(79, 70, 229, 0.2) transparent;
+  scrollbar-width: thin;
+}
+
+.table-container::-webkit-scrollbar {
+  height: 10px;
+}
+
+.table-container::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 5px;
+}
+
+.table-container::-webkit-scrollbar-thumb {
+  background: rgba(79, 70, 229, 0.3);
+  border-radius: 5px;
 }
 
 .data-table {
