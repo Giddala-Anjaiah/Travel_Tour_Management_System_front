@@ -117,7 +117,7 @@
 }
 
 .sidebar-nav::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 .sidebar-nav::-webkit-scrollbar-track {
@@ -125,8 +125,8 @@
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
 }
 
 .sidebar-nav::-webkit-scrollbar-thumb:hover {
@@ -1451,8 +1451,7 @@
 
 .data-table {
   width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
+  border-collapse: collapse;
   background: var(--card-bg);
 }
 
