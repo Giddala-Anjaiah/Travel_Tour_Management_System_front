@@ -154,12 +154,12 @@ const Login = () => {
           <div className="google-divider">
             <span>or sign in with</span>
           </div>
-          <button type="button" className="google-btn" onClick={handleGoogleLogin}>
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ width: '18px', height: '18px', marginRight: '8px' }} fill="currentColor">
-              <path fill="#ffc107" d="M43.611 20.083H42V20H24V28h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
-            </svg>
-            Sign in with Google
-          </button>
+           <button type="button" className="google-btn" onClick={handleGoogleLogin}>
+             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style={{ width: '20px', height: '20px' }}>
+               <path fill="#4285f4" d="M24 9.5c3.54 0 6.69 1.4 8.99-2.04L38.71 2 26.3 9.36a14.2 14.2 0 0 0 0 10.56 14.15 14.15 0 0 0 7.87-2.47l6.64-4.87c1.86 3.76 2.93 8.07 2.93 12.63 0 11.12-9.08 20.18-20.25 20.18S3.75 34.62 3.75 23.5 12.83 3.38 24 3.38v6.12Z"/><path fill="#34a853" d="M43.55 22.55c-.03-.9-.1-1.8-.28-2.68H24v5.3h10.77a7.6 7.6 0 0 1-3.28 4.8l-7.15 5.18 3.67 1.44c5.28-3.9 8.55-10.87 8.55-18.69Z"/><path fill="#f9ab00" d="M10.34 13.96a13.52 13.52 0 0 0 0 16.92l1.53 1.53A18.5 18.5 0 0 1 9.2 24c0-2.35.52-4.6 1.46-6.64a14.05 14.05 0 0 0 3.68-5.4z"/><path fill="#ea4335" d="M24 41.5c3.15 0 6.08-.92 8.53-2.5l-3.44-2.82a13.55 13.55 0 0 1-4.02.77h-.14V24.15h.28a.86.86 0 0 1 .38.08L26.77 24.7l-3.88 2.87a18.38 18.38 0 0 1-8.55 1.41 13.85 13.85 0 0 0 10.53 13.37Z"/>
+             </svg>
+             <span style={{ marginLeft: '10px', fontWeight: '500' }}>Sign in with Google</span>
+           </button>
           
           <p className="auth-footer">
             Don't have an account? <Link to="/signup">Sign up</Link>
