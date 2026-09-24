@@ -1,4 +1,4 @@
-import { StrictMode } from 'react'
+import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
@@ -10,56 +10,62 @@ import Login from './Login.jsx'
 import Signup from './Signup.jsx'
 import ForgotPassword from './ForgotPassword.jsx'
 import ProtectedRoute from './ProtectedRoute.jsx'
-import CustomerDashboard from './Dashboard/Customer/CustomerDashboard.jsx'
-import OperatorDashboard from './Dashboard/Operator/OperatorDashboard.jsx'
-import OperatorProfilePage from './Dashboard/Operator/OperatorProfilePage.jsx'
-import OperatorPackagesPage from './Dashboard/Operator/OperatorPackagesPage.jsx'
-import OperatorItinerariesPage from './Dashboard/Operator/OperatorItinerariesPage.jsx'
-import OperatorPricingPage from './Dashboard/Operator/OperatorPricingPage.jsx'
-import OperatorBookingsPage from './Dashboard/Operator/OperatorBookingsPage.jsx'
-import OperatorCustomersPage from './Dashboard/Operator/OperatorCustomersPage.jsx'
-import OperatorReviewsPage from './Dashboard/Operator/OperatorReviewsPage.jsx'
-import OperatorRevenueNotificationsPage from './Dashboard/Operator/OperatorRevenueNotificationsPage.jsx'
-import OperatorSettingsPage from './Dashboard/Operator/OperatorSettingsPage.jsx'
-import HotelDashboard from './Dashboard/Hotel/HotelDashboard.jsx'
-import HotelProfilePage from './Dashboard/Hotel/HotelProfilePage.jsx'
-import HotelRoomsPage from './Dashboard/Hotel/HotelRoomsPage.jsx'
-import HotelPricingPage from './Dashboard/Hotel/HotelPricingPage.jsx'
-import HotelAvailabilityPage from './Dashboard/Hotel/HotelAvailabilityPage.jsx'
-import HotelBookingsPage from './Dashboard/Hotel/HotelBookingsPage.jsx'
-import HotelCheckInOutPage from './Dashboard/Hotel/HotelCheckInOutPage.jsx'
-import HotelGuestsPage from './Dashboard/Hotel/HotelGuestsPage.jsx'
-import HotelReviewsRevenuePage from './Dashboard/Hotel/HotelReviewsRevenuePage.jsx'
-import HotelSettingsPage from './Dashboard/Hotel/HotelSettingsPage.jsx'
-import DashboardAnalytics from './Dashboard/Admin/DashboardAnalytics.jsx'
-import UserManagement from './Dashboard/Admin/UserManagement.jsx'
-import DestinationManagement from './Dashboard/Admin/DestinationManagement.jsx'
-import ItineraryManagement from './Dashboard/Admin/ItineraryManagement.jsx'
-import RoomsManagement from './Dashboard/Admin/RoomsManagement.jsx'
-import BookingManagement from './Dashboard/Admin/BookingManagement.jsx'
-import InvoicesReviews from './Dashboard/Admin/InvoicesReviews.jsx'
-import NotificationsManagement from './Dashboard/Admin/NotificationsManagement.jsx'
-import ReportsCouponsSettings from './Dashboard/Admin/ReportsCouponsSettings.jsx'
-import ProfileManagement from './Dashboard/Customer/ProfileManagement.jsx'
-import DestinationExploration from './Dashboard/Customer/DestinationExploration.jsx'
-import TourPackages from './Dashboard/Customer/TourPackages.jsx'
-import Itineraries from './Dashboard/Customer/Itineraries.jsx'
-import HotelSearchAvailability from './Dashboard/Customer/HotelSearchAvailability.jsx'
-import BookingsPayments from './Dashboard/Customer/BookingsPayments.jsx'
-import InvoicesBookingHistory from './Dashboard/Customer/InvoicesBookingHistory.jsx'
-import WishlistReviewsNotifications from './Dashboard/Customer/WishlistReviewsNotifications.jsx'
+
+// Route-level code splitting: each dashboard chunk loads only when visited
+const CustomerDashboard = lazy(() => import('./Dashboard/Customer/CustomerDashboard.jsx'))
+const OperatorDashboard = lazy(() => import('./Dashboard/Operator/OperatorDashboard.jsx'))
+const OperatorProfilePage = lazy(() => import('./Dashboard/Operator/OperatorProfilePage.jsx'))
+const OperatorPackagesPage = lazy(() => import('./Dashboard/Operator/OperatorPackagesPage.jsx'))
+const OperatorItinerariesPage = lazy(() => import('./Dashboard/Operator/OperatorItinerariesPage.jsx'))
+const OperatorPricingPage = lazy(() => import('./Dashboard/Operator/OperatorPricingPage.jsx'))
+const OperatorBookingsPage = lazy(() => import('./Dashboard/Operator/OperatorBookingsPage.jsx'))
+const OperatorCustomersPage = lazy(() => import('./Dashboard/Operator/OperatorCustomersPage.jsx'))
+const OperatorReviewsPage = lazy(() => import('./Dashboard/Operator/OperatorReviewsPage.jsx'))
+const OperatorRevenueNotificationsPage = lazy(() => import('./Dashboard/Operator/OperatorRevenueNotificationsPage.jsx'))
+const OperatorSettingsPage = lazy(() => import('./Dashboard/Operator/OperatorSettingsPage.jsx'))
+const HotelDashboard = lazy(() => import('./Dashboard/Hotel/HotelDashboard.jsx'))
+const HotelProfilePage = lazy(() => import('./Dashboard/Hotel/HotelProfilePage.jsx'))
+const HotelRoomsPage = lazy(() => import('./Dashboard/Hotel/HotelRoomsPage.jsx'))
+const HotelPricingPage = lazy(() => import('./Dashboard/Hotel/HotelPricingPage.jsx'))
+const HotelAvailabilityPage = lazy(() => import('./Dashboard/Hotel/HotelAvailabilityPage.jsx'))
+const HotelBookingsPage = lazy(() => import('./Dashboard/Hotel/HotelBookingsPage.jsx'))
+const HotelCheckInOutPage = lazy(() => import('./Dashboard/Hotel/HotelCheckInOutPage.jsx'))
+const HotelGuestsPage = lazy(() => import('./Dashboard/Hotel/HotelGuestsPage.jsx'))
+const HotelReviewsRevenuePage = lazy(() => import('./Dashboard/Hotel/HotelReviewsRevenuePage.jsx'))
+const HotelSettingsPage = lazy(() => import('./Dashboard/Hotel/HotelSettingsPage.jsx'))
+const DashboardAnalytics = lazy(() => import('./Dashboard/Admin/DashboardAnalytics.jsx'))
+const UserManagement = lazy(() => import('./Dashboard/Admin/UserManagement.jsx'))
+const DestinationManagement = lazy(() => import('./Dashboard/Admin/DestinationManagement.jsx'))
+const ItineraryManagement = lazy(() => import('./Dashboard/Admin/ItineraryManagement.jsx'))
+const RoomsManagement = lazy(() => import('./Dashboard/Admin/RoomsManagement.jsx'))
+const BookingManagement = lazy(() => import('./Dashboard/Admin/BookingManagement.jsx'))
+const InvoicesReviews = lazy(() => import('./Dashboard/Admin/InvoicesReviews.jsx'))
+const NotificationsManagement = lazy(() => import('./Dashboard/Admin/NotificationsManagement.jsx'))
+const ReportsCouponsSettings = lazy(() => import('./Dashboard/Admin/ReportsCouponsSettings.jsx'))
+const ProfileManagement = lazy(() => import('./Dashboard/Customer/ProfileManagement.jsx'))
+const DestinationExploration = lazy(() => import('./Dashboard/Customer/DestinationExploration.jsx'))
+const TourPackages = lazy(() => import('./Dashboard/Customer/TourPackages.jsx'))
+const Itineraries = lazy(() => import('./Dashboard/Customer/Itineraries.jsx'))
+const HotelSearchAvailability = lazy(() => import('./Dashboard/Customer/HotelSearchAvailability.jsx'))
+const BookingsPayments = lazy(() => import('./Dashboard/Customer/BookingsPayments.jsx'))
+const InvoicesBookingHistory = lazy(() => import('./Dashboard/Customer/InvoicesBookingHistory.jsx'))
+const WishlistReviewsNotifications = lazy(() => import('./Dashboard/Customer/WishlistReviewsNotifications.jsx'))
+
+// Lightweight loading fallback so LCP isn't blocked by a heavy spinner
+const LoadingFallback = () => null
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <BrowserRouter>
       <ThemeProvider>
-         <ThemeToggle className="theme-toggle-fixed" />
-         <ToastContainer />
-         <Routes>
-         <Route path="/" element={<App />} />
-         <Route path="/login" element={<Login />} />
-         <Route path="/signup" element={<Signup />} />
-         <Route path="/forgot-password" element={<ForgotPassword />} />
+        <ThemeToggle className="theme-toggle-fixed" />
+        <ToastContainer />
+        <Suspense fallback={<LoadingFallback />}>
+          <Routes>
+          <Route path="/" element={<App />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/signup" element={<Signup />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
         
         {/* Admin Routes */}
         <Route 
@@ -389,6 +395,7 @@ createRoot(document.getElementById('root')).render(
           } 
         />
       </Routes>
+        </Suspense>
       </ThemeProvider>
     </BrowserRouter>
   </StrictMode>,
