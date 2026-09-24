@@ -1,0 +1,40 @@
+{
+  "$schema": "https://raw.githubusercontent.com/ai-catalog/ard/main/ai-catalog.json",
+  "name": "Travel Tour Management System",
+  "description": "A full-stack travel management platform for tour operators, hotel partners, and customers to manage bookings, itineraries, payments, and reviews.",
+  "version": "1.0.0",
+  "repository": "https://github.com/Giddala-Anjaiah/Travel_Tour_Management_System_front",
+  "homepage": "https://travel-tour-management-system.onrender.com",
+  "license": "MIT",
+  "keywords": [
+    "travel",
+    "tour-management",
+    "booking",
+    "hotel",
+    "itinerary",
+    "payment",
+    "react",
+    "express",
+    "mongodb"
+  ],
+  "endpoints": {
+    "frontend": "https://travel-tour-management-system.onrender.com",
+    "backend": "https://travel-tour-management-system-backend.onrender.com"
+  },
+  "roles": [
+    "admin",
+    "tour_operator",
+    "hotel_partner",
+    "customer"
+  ],
+  "features": [
+    "tour-package-management",
+    "booking-and-payment",
+    "itinerary-planning",
+    "customer-management",
+    "hotel-partner-dashboard",
+    "admin-panel",
+    "email-notifications",
+    "pdf-invoice-generation"
+  ]
+}

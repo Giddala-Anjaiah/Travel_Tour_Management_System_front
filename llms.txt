@@ -1,0 +1,34 @@
+# llms.txt
+
+## About Travel Tour Management System
+
+A full-stack travel management platform that helps tour operators, hotel partners, and customers manage bookings, itineraries, payments, and reviews.
+
+## Features
+
+- Tour package creation and management
+- Booking and payment processing
+- Itinerary planning
+- Customer management
+- Hotel partner dashboard
+- Admin panel with user, room, and report management
+- Email notifications via Brevo SMTP
+- PDF invoice generation with pdfkit
+
+## Tech Stack
+
+- **Frontend**: React 18, Vite, React Router, Lucide React
+- **Backend**: Node.js, Express, MongoDB (Mongoose), JWT auth
+- **Payments**: Stripe-compatible flow with Brevo email integration
+- **PDF**: pdfkit for invoice generation
+
+## Repository Links
+
+- Frontend: https://github.com/Giddala-Anjaiah/Travel_Tour_Management_System_front
+- Backend: https://github.com/Giddala-Anjaiah/Travel_Tour_Management_System_Backend
+
+## Crawl Guidance
+
+- Allow: /, /login, /signup, /forgot-password
+- Disallow: /admin/*, /customer/*, /tour-operator/*, /hotel-partner/* (authenticated routes)
+- Disallow: /api/* (backend API)
