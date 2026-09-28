@@ -34,7 +34,7 @@ function App() {
       <nav className="navbar">
         <div className="navbar-content">
           <div className="logo">
-            <Plane className="h-8 w-8" style={{ color: '#4f46e5' }} />
+            <Plane className="h-8 w-8" style={{ color: '#10b981' }} />
             <span className="logo-text">Travel Around Us</span>
           </div>
           
