@@ -23,7 +23,6 @@ const Login = () => {
         role: payload.role,
         fullName: payload.email.split('@')[0],
       }))
-      window.history.replaceState({}, document.title, '/')
       showToast('Login successful!')
       const redirectMap = {
         admin: '/admin/dashboard',
@@ -31,7 +30,10 @@ const Login = () => {
         tour_operator: '/tour-operator/dashboard',
         hotel_partner: '/hotel-partner/dashboard',
       }
-      navigate(redirectMap[role] || '/')
+      const target = redirectMap[role] || '/'
+      window.history.replaceState({}, document.title, target)
+      // Force full-page navigation so ProtectedRoute re-evaluates fresh
+      window.location.href = target
     }
   }, [location, navigate])
   const [email, setEmail] = useState('')
@@ -93,7 +95,8 @@ const Login = () => {
   }
 
   const handleGoogleLogin = () => {
-    window.location.href = API_BASE + '/auth/google'
+    const frontendOrigin = window.location.origin
+    window.location.href = `${API_BASE}/auth/google?state=${encodeURIComponent(frontendOrigin)}`
   }
 
   return (
