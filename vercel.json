@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd frontend && rm -rf node_modules package-lock.json && npm install --include=dev && npx vite build",
+  "outputDirectory": "dist",
+  "rewrites": [
+    { "source": "/robots.txt", "destination": "/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
+    { "source": "/llms.txt", "destination": "/llms.txt" },
+    { "source": "/ai-catalog.json", "destination": "/ai-catalog.json" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
