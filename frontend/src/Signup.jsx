@@ -76,22 +76,20 @@ const Signup = () => {
           <form className="auth-form" onSubmit={handleSubmit}>
             <div className="form-group">
               <label>Select Your Role</label>
-              <div className="role-cards">
-                {roles.map((role) => {
-                  const Icon = role.icon
-                  return (
-                    <div
-                      key={role.value}
-                      className={`role-card ${selectedRole === role.value ? 'selected' : ''}`}
-                      onClick={() => setSelectedRole(role.value)}
-                    >
-                      <div className={`role-icon ${role.color}`}>
-                        <Icon className="h-5 w-5 text-white" />
-                      </div>
-                      <span className="role-label">{role.label}</span>
-                    </div>
-                  )
-                })}
+              <div className="role-select-wrap">
+                <select
+                  className="role-select"
+                  value={selectedRole}
+                  onChange={(e) => setSelectedRole(e.target.value)}
+                >
+                  <option value="customer">Customer</option>
+                  <option value="tour_operator">Tour Operator</option>
+                  <option value="hotel_partner">Hotel Partner</option>
+                  <option value="admin">Admin</option>
+                </select>
+                <svg className="role-select-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
               </div>
             </div>
             <div className="form-group">

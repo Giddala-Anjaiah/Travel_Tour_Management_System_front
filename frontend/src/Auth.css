@@ -126,76 +126,44 @@
   font-size: 0.85rem;
 }
 
-/* Role Selection Styles */
+/* Role Selection Dropdown */
+.role-select-wrap {
+  position: relative;
+  width: 100%;
+}
+
 .role-select {
-  padding: 0.875rem 1rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.5rem;
-  font-size: 0.95rem;
-  transition: all 0.2s;
-  background: white;
-  cursor: pointer;
+  width: 100%;
+  padding: 0.6rem 2.5rem 0.6rem 1rem;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-family: inherit;
   color: #374151;
+  background: #ffffff;
+  cursor: pointer;
+  appearance: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .role-select:focus {
   outline: none;
-  border-color: #1e3a5f;
-  box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.1);
-}
-
-/* Role Selection Cards */
-.role-cards {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.4rem;
-}
-
-.role-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.2rem;
-  padding: 0.4rem 0.3rem;
-  border: 2px solid #e5e7eb;
-  border-radius: 0.75rem;
-  background: white;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  text-align: center;
-}
-
-.role-card:hover {
-  border-color: #c7d2fe;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.role-card.selected {
   border-color: #4f46e5;
-  background: linear-gradient(135deg, #f0f4ff 0%, #e8f0fe 100%);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.10);
 }
 
-.role-card .role-icon {
-  width: 32px;
-  height: 32px;
-  border-radius: 0.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
+.role-select-arrow {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #9ca3af;
+  pointer-events: none;
 }
 
-.role-card .role-icon.admin { background: linear-gradient(135deg, #ef4444, #dc2626); }
-.role-card .role-icon.customer { background: linear-gradient(135deg, #3b82f6, #2563eb); }
-.role-card .role-icon.tour_operator { background: linear-gradient(135deg, #10b981, #059669); }
-.role-card .role-icon.hotel_partner { background: linear-gradient(135deg, #f59e0b, #d97706); }
-
-.role-card .role-label {
-  font-size: 0.7rem;
-  font-weight: 600;
-  color: #374151;
+/* Role Selection Cards (kept for reference) */
+.role-cards {
+  display: none;
 }
 
 /* Error and Success Messages */
