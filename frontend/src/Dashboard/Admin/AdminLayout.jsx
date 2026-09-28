@@ -49,16 +49,15 @@ const AdminLayout = ({ active, title, actions, children }) => {
         </nav>
       </aside>
 
-      <button onClick={handleLogout} className="logout-btn">
-        <LogOut className="h-5 w-5" />
-        <span>Logout</span>
-      </button>
-
       <main className="dashboard-main">
         <header className="dashboard-header">
           <h1>{title}</h1>
           <div className="header-actions">
             {actions}
+            <button onClick={handleLogout} className="btn-logout-header">
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </button>
             <div className="user-info">
               <span>Welcome, {user.fullName || 'Admin'}</span>
             </div>

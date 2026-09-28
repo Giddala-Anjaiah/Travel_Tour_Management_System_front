@@ -53,10 +53,6 @@ const CustomerDashboard = () => {
             <span>Profile Management</span>
           </Link>
         </nav>
-        <button onClick={handleLogout} className="logout-btn">
-          <LogOut className="h-5 w-5" />
-          <span>Logout</span>
-        </button>
       </aside>
 
       <main className="dashboard-main">

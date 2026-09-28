@@ -35,9 +35,71 @@ const WishlistReviewsNotifications = () => {
   const loadWishlist = async () => {
     try {
       const data = await api('/customer/wishlist')
-      setWishlist(data.wishlist || [])
+      const backendWishlist = data.wishlist || []
+      let merged = [...backendWishlist]
+      try {
+        const localWishlist = JSON.parse(localStorage.getItem('customerWishlist') || '[]')
+        const backendPackageIds = (backendWishlist.map(item => item.packageId) || []).filter(Boolean)
+        for (const localItem of localWishlist) {
+          if (!backendPackageIds.includes(localItem._id)) {
+            try {
+              await api('/customer/wishlist', {
+                method: 'POST',
+                body: JSON.stringify({ packageId: localItem._id })
+              })
+              const pkg = packages.find(p => p._id === localItem._id)
+              merged.push({
+                _id: localItem._id,
+                packageId: localItem._id,
+                packageName: pkg?.name || localItem.name || '',
+                destination: pkg?.destination || '',
+                image: pkg?.image || '',
+                price: pkg?.price || localItem.price || 0,
+                rating: pkg?.rating || 0,
+                category: pkg?.category || 'tour',
+                addedAt: new Date().toISOString()
+              })
+            } catch (syncErr) {
+              console.error('Failed to sync local wishlist item', syncErr)
+            }
+          }
+        }
+      } catch (parseErr) {
+        console.error('Failed to parse local wishlist', parseErr)
+      }
+      setWishlist(merged)
+      localStorage.setItem('customerWishlist', JSON.stringify(merged.map(item => ({
+        _id: item.packageId || item._id,
+        name: item.packageName,
+        price: item.price
+      }))))
     } catch (err) {
       console.error('Failed to load wishlist', err)
+    }
+  }
+
+  const addToWishlist = async (packageId) => {
+    try {
+      await api('/customer/wishlist', {
+        method: 'POST',
+        body: JSON.stringify({ packageId })
+      })
+      const pkg = packages.find(p => p._id === packageId)
+      const newItem = {
+        _id: packageId,
+        packageId,
+        packageName: pkg?.name || '',
+        destination: pkg?.destination || '',
+        image: pkg?.image || '',
+        price: pkg?.price || 0,
+        rating: pkg?.rating || 0,
+        category: pkg?.category || 'tour',
+        addedAt: new Date().toISOString()
+      }
+      setWishlist(prev => [newItem, ...prev])
+      alert('Added to wishlist!')
+    } catch (err) {
+      alert(err.message || 'Failed to add to wishlist')
     }
   }
 
@@ -252,6 +314,37 @@ const WishlistReviewsNotifications = () => {
       </div>
 
       {activeTab === 'wishlist' && (
+        <>
+          <div className="wishlist-section enhanced">
+          <div className="wishlist-add-section enhanced">
+            <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>Add to Wishlist</h3>
+            <div className="wishlist-add-grid enhanced">
+              {packages.filter(pkg => !wishlist.some(w => w.packageId === pkg._id)).map(pkg => (
+                <div key={pkg._id} className="wishlist-add-card enhanced">
+                  <div className="wishlist-image enhanced" style={{ height: '120px' }}>
+                    {pkg.image ? <img className="cp-cover" src={pkg.image} alt={pkg.name} /> : <Star className="h-8 w-8" style={{ color: '#cbd5e1' }} />}
+                  </div>
+                  <div className="wishlist-content enhanced">
+                    <h4>{pkg.name}</h4>
+                    <div className="wishlist-location enhanced">
+                      <MapIcon className="h-4 w-4" />
+                      <span>{pkg.destination || 'Unknown'}</span>
+                    </div>
+                    <div className="wishlist-price enhanced">
+                      <strong>₹{Number(pkg.price || 0).toLocaleString()}</strong>
+                    </div>
+                    <button onClick={() => addToWishlist(pkg._id)} className="btn-secondary enhanced" style={{ marginTop: '0.5rem' }}>
+                      <Heart className="h-4 w-4" /> Add
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {packages.filter(pkg => !wishlist.some(w => w.packageId === pkg._id)).length === 0 && (
+                <p style={{ color: '#64748b' }}>All packages are in your wishlist or no packages available.</p>
+              )}
+            </div>
+          </div>
+        </div>
         <div className="wishlist-grid enhanced">
           {filteredWishlist.length === 0 ? (
             <div className="cd-empty">No wishlist items yet.</div>
@@ -290,7 +383,7 @@ const WishlistReviewsNotifications = () => {
                         <strong>{item.price ? '₹' + item.price.toLocaleString() : 'Price on request'}</strong>
                       </div>
                       <div className="wishlist-actions">
-                        <Link to="/customer/bookings" state={{ package: { name: item.packageName, price: item.price, _id: item._id } }} className="btn-primary enhanced">
+                        <Link to="/customer/bookings" state={{ package: { name: item.packageName, price: item.price, _id: item.packageId || item._id } }} className="btn-primary enhanced">
                           Book Now
                         </Link>
                         <button
@@ -304,9 +397,10 @@ const WishlistReviewsNotifications = () => {
                   </div>
                 </div>
               )
-            })
+             })
           )}
         </div>
+        </>
       )}
 
       {activeTab === 'reviews' && (

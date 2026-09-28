@@ -3,8 +3,11 @@ import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import PDFDocument from 'pdfkit';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import passport from 'passport';
+import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 
 dotenv.config();
 
@@ -36,7 +39,9 @@ app.use(cors({
   },
   credentials: true,
 }));
+app.set('trust proxy', 1);
 app.use(express.json());
+app.use(passport.initialize());
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI)
@@ -923,8 +928,56 @@ async function refreshPackageRating(packageName) {
   await Package.findOneAndUpdate({ name: packageName }, { rating: Number(avg.toFixed(1)) });
 }
 
-// Log collection name for debugging
+
 console.log('User collection name:', User.collection.name);
+
+// --- Google OAuth ---
+passport.use(new GoogleStrategy(
+  {
+    clientID: process.env.GOOGLE_CLIENT_ID,
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
+    proxy: true,
+  },
+  async (accessToken, refreshToken, profile, done) => {
+    try {
+      const email = profile.emails?.[0]?.value;
+      if (!email) return done(new Error('No email from Google'));
+       let user = await User.findOne({ email });
+      if (!user) {
+        user = new User({
+          fullName: profile.displayName || email.split('@')[0],
+          email,
+          phone: '0000000000',
+          password: crypto.randomBytes(32).toString('hex'),
+          role: 'customer',
+        });
+        await user.save();
+      }
+      return done(null, user);
+    } catch (err) {
+      return done(err);
+    }
+  }
+));
+
+app.get(
+  '/api/auth/google',
+  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
+);
+
+app.get(
+  '/api/auth/google/callback',
+  passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=oauth` }),
+  (req, res) => {
+    const token = jwt.sign(
+      { userId: req.user._id, email: req.user.email, role: req.user.role },
+      jwtSecret,
+      { expiresIn: '24h' }
+    );
+    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?token=${token}&role=${req.user.role}`);
+  }
+);
 
 // Routes
 
@@ -1048,6 +1101,105 @@ async function sendEmailViaBrevo(to, subject, htmlContent) {
   return resp.json();
 }
 
+async function sendNotificationEmail(to, title, message) {
+  if (!to) return false;
+  const htmlContent = cardEmailTemplate(title, message);
+  try {
+    await sendEmailViaBrevo(to, title, htmlContent);
+    return true;
+  } catch (err) {
+    console.error('Email notification failed:', err.message);
+    return false;
+  }
+}
+
+function cardEmailTemplate(title, message) {
+  return `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background: #f8fafc;">
+      <div style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); padding: 20px; border-radius: 10px; text-align: center; color: white; margin-bottom: 5px;">
+        <h2 style="margin: 0; font-size: 20px;">TravelTour Notifications</h2>
+      </div>
+      <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h3 style="margin-top: 0; color: #1e293b; font-size: 18px;">${title}</h3>
+        <div style="color: #333; line-height: 1.6; font-size: 15px;">${message}</div>
+        <div style="color: #94a3b8; font-size: 12px; margin-top: 20px;">This is an automated message. Please do not reply.</div>
+      </div>
+      <div style="text-align: center; padding: 15px; color: #94a3b8; font-size: 12px;">
+        © ${new Date().getFullYear()} TravelTour. All rights reserved.
+      </div>
+    </div>
+  `;
+}
+
+async function sendCardEmailWithAttachment(to, subject, title, message, attachments) {
+  const cardHtml = cardEmailTemplate(title, message);
+  return sendEmailWithAttachment(to, subject, cardHtml, attachments);
+}
+
+async function sendEmailWithAttachment(to, subject, htmlContent, attachments) {
+  const brevoKey = process.env.BREVO_API_KEY;
+  if (!brevoKey) {
+    throw new Error('BREVO_API_KEY not configured');
+  }
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || 'anjaiahgiddala@gmail.com';
+  const senderName = process.env.BREVO_SENDER_NAME || 'Teja.com';
+  const body = {
+    sender: { email: senderEmail, name: senderName },
+    to: [{ email: to }],
+    subject,
+    htmlContent,
+  };
+  if (attachments && attachments.length) {
+    body.attachments = attachments.map(att => ({
+      name: att.name,
+      content: att.content.toString('base64'),
+    }));
+  }
+  const resp = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'api-key': brevoKey,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(`Brevo API error ${resp.status}: ${txt}`);
+  }
+  return resp.json();
+}
+
+function generateInvoicePDF(invoice, booking) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+      doc.on('end', () => resolve(Buffer.concat(chunks)));
+      doc.on('error', reject);
+      doc.fontSize(20).text('INVOICE', { align: 'center' });
+      doc.moveDown();
+      doc.fontSize(12);
+      doc.text(`Invoice No: ${invoice.invoiceNo || 'N/A'}`);
+      doc.text(`Date: ${new Date().toLocaleDateString('en-IN')}`);
+      doc.moveDown();
+      doc.text(`Customer: ${booking.customer || 'N/A'}`);
+      doc.text(`Email: ${invoice.email || 'N/A'}`);
+      doc.moveDown();
+      doc.text(`Package: ${invoice.package || 'N/A'}`);
+      doc.text(`Amount: ₹${invoice.amount || 0}`);
+      doc.text(`Status: ${invoice.status || 'paid'}`);
+      doc.text(`Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-IN') : 'N/A'}`);
+      doc.moveDown();
+      doc.text('Thank you for your booking!');
+      doc.end();
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 // Forgot Password Route — sends OTP to user email
 app.post('/api/forgot-password', async (req, res) => {
   try {
@@ -1060,7 +1212,25 @@ app.post('/api/forgot-password', async (req, res) => {
     const otp = crypto.randomInt(100000, 999999).toString();
     otpStore.set(email, { otp, expiresAt: Date.now() + 5 * 60 * 1000 });
 
-    const html = `<p>Your Travel Tour password reset OTP is <strong>${otp}</strong>. It expires in 5 minutes.</p>`;
+    const html = `
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px; background: #f8fafc;">
+      <div style="background: linear-gradient(135deg, #3b82f6, #1d4ed8); padding: 20px; border-radius: 10px; text-align: center; color: white; margin-bottom: 5px;">
+        <h1 style="margin: 0; font-size: 24px;">TravelTour</h1>
+        <p style="margin: 5px 0 0; font-size: 14px; opacity: 0.9;">Password Reset OTP</p>
+      </div>
+      <div style="background: white; padding: 30px; border-radius: 0 0 10px 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h2 style="color: #1e293b; margin-top: 0; font-size: 20px;">Reset Your Password</h2>
+        <p style="color: #475569; line-height: 1.6; font-size: 15px;">Hello ${user.fullName || user.email},</p>
+        <p style="color: #475569; line-height: 1.6; font-size: 14px; margin-bottom: 25px;">Enter the OTP below to reset your password. This code will expire in <strong>5 minutes</strong>.</p>
+        <div style="background: #f1f5f9; border: 2px dashed #cbd5e1; border-radius: 8px; padding: 20px; text-align: center; margin: 25px 0;">
+          <span style="font-size: 36px; font-weight: 700; letter-spacing: 8px; color: #2563eb;">${otp}</span>
+        </div>
+        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 25px;">This is an automated message. If you did not request this, please ignore.</p>
+      </div>
+      <div style="text-align: center; padding: 15px; color: #94a3b8; font-size: 12px;">
+        © ${new Date().getFullYear()} TravelTour. All rights reserved.
+      </div>
+    </div>`;
     const brevoKey = process.env.BREVO_API_KEY;
     let emailOk = false;
     if (brevoKey) {
@@ -1219,20 +1389,24 @@ app.get('/api/admin/packages', async (req, res) => {
 
 app.post('/api/admin/packages', async (req, res) => {
   try {
-    const newPackage = new Package(req.body);
+     const newPackage = new Package({ ...req.body, operatorId: req.body.operatorId || req.user.userId });
     await newPackage.save();
+    console.log('Package created with _id:', newPackage._id);
     res.status(201).json({ message: 'Package created successfully', package: newPackage });
   } catch (error) {
-    res.status(500).json({ message: 'Error creating package' });
+    console.error('Error creating package:', error);
+    res.status(500).json({ message: 'Error creating package', error: error.message });
   }
 });
 
 app.put('/api/admin/packages/:id', async (req, res) => {
   try {
     const updates = pickUpdates(req.body, ['name', 'destination', 'duration', 'price', 'rating', 'bookings', 'status', 'description', 'inclusions', 'image']);
+    console.log('PUT package id:', req.params.id, 'updates:', updates);
     const pkg = await Package.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     if (!pkg) {
-      return res.status(404).json({ message: 'Package not found' });
+      console.error('Package not found, id:', req.params.id);
+      return res.status(404).json({ message: 'Package not found', id: req.params.id });
     }
     res.status(200).json({ message: 'Package updated successfully', package: pkg });
   } catch (error) {
@@ -1425,8 +1599,18 @@ app.put('/api/admin/bookings/:id', async (req, res) => {
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
-    if (booking.paymentStatus === 'paid') {
-      await createPaidInvoice(booking);
+     if (booking.paymentStatus === 'paid') {
+      const invoice = await createPaidInvoice(booking);
+      if (booking.email) {
+        const pdfBuffer = await generateInvoicePDF(invoice, booking);
+        await sendCardEmailWithAttachment(
+          booking.email,
+          'Booking Confirmed & Invoice',
+          'Booking Confirmed!',
+          `Your booking <strong>${booking.bookingId}</strong> has been confirmed by the admin. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
+          [{ name: `invoice_${invoice.invoiceNo || 'invoice'}.pdf`, content: pdfBuffer }]
+        ).catch(err => console.error('Admin invoice email failed:', err.message));
+      }
     }
     res.status(200).json({ message: 'Booking updated successfully', booking });
   } catch (error) {
@@ -1525,6 +1709,26 @@ app.put('/api/admin/reviews/:id', async (req, res) => {
       return res.status(404).json({ message: 'Review not found' });
     }
     await refreshPackageRating(review.package);
+    if (updates.status && (updates.status === 'approved' || updates.status === 'rejected')) {
+      await Notification.create({
+        userId: review.customerId,
+        type: 'review',
+        title: 'Review Status Updated',
+        message: `Your review for "${review.package}" has been ${updates.status} by admin.`,
+        relatedId: review._id,
+        read: false
+      });
+      if (review.customerId) {
+        const cust = await User.findById(review.customerId).select('email fullName');
+        if (cust?.email) {
+          await sendNotificationEmail(
+            cust.email,
+            `Review ${updates.status === 'approved' ? 'Approved' : 'Rejected'}`,
+            `Your review for "${review.package}" has been ${updates.status} by the admin. Thank you for your feedback!`
+          );
+        }
+      }
+    }
     res.status(200).json({ message: 'Review updated successfully', review });
   } catch (error) {
     res.status(500).json({ message: 'Error updating review' });
@@ -1799,14 +2003,14 @@ app.get('/api/admin/notifications', async (req, res) => {
 
 app.post('/api/admin/notifications', async (req, res) => {
   try {
-    const { title, message, type, role: roleQuery, userIds } = req.body;
+    const { title, message, type, role: roleQuery, userIds, alsoEmail } = req.body;
     let users;
     if (roleQuery === 'all') {
-      users = await User.find({}).select('_id');
+      users = await User.find({});
     } else if (roleQuery) {
-      users = await User.find({ role: roleQuery }).select('_id');
+      users = await User.find({ role: roleQuery });
     } else if (userIds && userIds.length) {
-      users = await User.find({ _id: { $in: userIds } }).select('_id');
+      users = await User.find({ _id: { $in: userIds } });
     } else {
       return res.status(400).json({ message: 'role or userIds required' });
     }
@@ -1820,7 +2024,18 @@ app.post('/api/admin/notifications', async (req, res) => {
       }));
     }
     await Notification.insertMany(notifications);
-    res.status(201).json({ count: notifications.length });
+    if (alsoEmail) {
+      let emailSuccess = 0;
+      for (const u of users) {
+        if (u.email) {
+          const ok = await sendNotificationEmail(u.email, title, message);
+          if (ok) emailSuccess++;
+        }
+      }
+      res.status(201).json({ count: notifications.length, emailsSent: emailSuccess });
+    } else {
+      res.status(201).json({ count: notifications.length });
+    }
   } catch (error) {
     res.status(500).json({ message: 'Error creating notifications' });
   }
@@ -1835,6 +2050,41 @@ app.delete('/api/admin/notifications/:id', async (req, res) => {
     res.status(200).json({ message: 'Notification deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting notification' });
+  }
+});
+
+app.post('/api/admin/send-email', async (req, res) => {
+  try {
+    const { subject, message, role: roleQuery, userIds, email } = req.body;
+    let users = [];
+    if (roleQuery) {
+      users = await User.find({ role: roleQuery }).select('email fullName');
+    } else if (userIds && userIds.length) {
+      users = await User.find({ _id: { $in: userIds } }).select('email fullName');
+    } else if (email) {
+      users = [{ email, fullName: 'Recipient' }];
+    } else {
+      return res.status(400).json({ message: 'role, userIds, or email required' });
+    }
+    let success = 0;
+    let fail = 0;
+    for (const u of users) {
+      if (u.email) {
+        const ok = await sendNotificationEmail(u.email, subject, message);
+        if (ok) success++; else fail++;
+      } else {
+        fail++;
+      }
+    }
+    await Notification.create(users.map(u => ({
+      userId: u._id || users[0]._id,
+      type: 'system',
+      title: subject,
+      message: message,
+    })).filter(n => n.userId));
+    res.status(200).json({ message: 'Email sent', success, fail });
+  } catch (error) {
+    res.status(500).json({ message: 'Error sending email' });
   }
 });
 
@@ -1903,7 +2153,7 @@ app.put('/api/operator/profile', async (req, res) => {
 // Operator Package Routes
 app.get('/api/operator/packages', async (req, res) => {
   try {
-    const packages = await Package.find({ operatorId: req.user.userId }).sort({ createdAt: -1 });
+    const packages = await Package.find({}).sort({ createdAt: -1 });
     res.status(200).json({ packages });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching packages' });
@@ -1926,7 +2176,7 @@ app.post('/api/operator/packages', async (req, res) => {
 
 app.get('/api/operator/packages/:id', async (req, res) => {
   try {
-    const pkg = await Package.findOne({ _id: req.params.id, operatorId: req.user.userId });
+    const pkg = await Package.findById(req.params.id);
     if (!pkg) {
       return res.status(404).json({ message: 'Package not found' });
     }
@@ -1945,11 +2195,7 @@ app.put('/api/operator/packages/:id', async (req, res) => {
       'transportType', 'minTravelers', 'maxTravelers', 'publishedStatus'
     ]);
     updates.updatedAt = new Date();
-    const pkg = await Package.findOneAndUpdate(
-      { _id: req.params.id, operatorId: req.user.userId },
-      updates,
-      { new: true, runValidators: true }
-    );
+    const pkg = await Package.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     if (!pkg) {
       return res.status(404).json({ message: 'Package not found' });
     }
@@ -1961,7 +2207,7 @@ app.put('/api/operator/packages/:id', async (req, res) => {
 
 app.delete('/api/operator/packages/:id', async (req, res) => {
   try {
-    const pkg = await Package.findOneAndDelete({ _id: req.params.id, operatorId: req.user.userId });
+    const pkg = await Package.findByIdAndDelete(req.params.id);
     if (!pkg) {
       return res.status(404).json({ message: 'Package not found' });
     }
@@ -2181,6 +2427,13 @@ app.put('/api/operator/bookings/:id', async (req, res) => {
     }
     
     await booking.save();
+    if (updates.status && updates.status !== 'pending' && booking.email) {
+      await sendNotificationEmail(
+        booking.email,
+        'Booking Status Update',
+        `Your booking <strong>${booking.bookingId || booking._id}</strong> status has been updated to "${updates.status}" by the tour operator.`
+      ).catch(err => console.error('Operator booking email failed:', err.message));
+    }
     res.status(200).json({ message: 'Booking updated successfully', booking });
   } catch (error) {
     res.status(500).json({ message: 'Error updating booking' });
@@ -2257,6 +2510,16 @@ app.put('/api/operator/reviews/:id/respond', async (req, res) => {
     );
     if (!review) {
       return res.status(404).json({ message: 'Review not found' });
+    }
+    if (review.customerId) {
+      const cust = await User.findById(review.customerId).select('email fullName');
+      if (cust?.email) {
+        await sendNotificationEmail(
+          cust.email,
+          'New Response to Your Review',
+          `The tour operator has responded to your review for "${review.package}". Check your notifications for details.`
+        ).catch(() => {});
+      }
     }
     res.status(200).json({ message: 'Response added successfully', review });
   } catch (error) {
@@ -2612,6 +2875,23 @@ app.post('/api/customer/bookings', async (req, res) => {
       relatedId: newBooking._id,
       read: false
     });
+    if (req.user.email) {
+      await sendNotificationEmail(
+        req.user.email,
+        'Booking Confirmation',
+        `Your booking <strong>${payload.bookingId}</strong> for ${payload.package || 'hotel'} has been received and is pending confirmation. Amount: ₹${payload.amount || 0}.`
+      );
+    }
+    if (payload.operatorId) {
+      const opUser = await User.findById(payload.operatorId).select('email');
+      if (opUser?.email) {
+        await sendNotificationEmail(
+          opUser.email,
+          'New Booking Received',
+          `A new booking <strong>${payload.bookingId}</strong> has been placed for your package "${payload.package}". Amount: ₹${payload.amount || 0}.`
+        );
+      }
+    }
     res.status(201).json({ message: 'Booking created successfully', booking: newBooking });
   } catch (error) {
     console.error('Error creating booking:', error);
@@ -2634,7 +2914,7 @@ app.get('/api/customer/bookings/:id', async (req, res) => {
 
 app.put('/api/customer/bookings/:id', async (req, res) => {
   try {
-    const updates = pickUpdates(req.body, ['dates', 'travelers', 'phone']);
+    const updates = pickUpdates(req.body, ['dates', 'travelers', 'phone', 'status', 'paymentStatus']);
     if (req.body.status) {
       updates.$push = { timeline: { status: req.body.status, date: new Date(), note: 'Status updated by customer' } };
     }
@@ -2655,6 +2935,38 @@ app.put('/api/customer/bookings/:id', async (req, res) => {
         relatedId: booking._id,
         read: false
       });
+      if (req.user.email) {
+        if (req.body.status === 'cancelled') {
+          await sendNotificationEmail(
+            req.user.email,
+            'Booking Cancelled',
+            `Your booking <strong>${booking.bookingId}</strong> for ${booking.package || 'package'} has been cancelled. If a refund is applicable, it will be processed within 5-7 business days.`
+          );
+        } else {
+          await sendNotificationEmail(
+            req.user.email,
+            'Booking Status Updated',
+            `Your booking <strong>${booking.bookingId}</strong> status has been updated to "${req.body.status}".`
+          );
+        }
+      }
+    }
+    if (req.body.paymentStatus && (req.body.paymentStatus === 'refunded' || req.body.paymentStatus === 'failed')) {
+      await Notification.create({
+        userId: req.user.userId,
+        type: 'payment',
+        title: 'Payment Cancelled',
+        message: `Your payment for booking (${booking.bookingId}) has been ${req.body.paymentStatus}. A refund will be initiated if applicable.`,
+        relatedId: booking._id,
+        read: false
+      });
+      if (req.user.email) {
+        await sendNotificationEmail(
+          req.user.email,
+          'Payment Cancelled',
+          `Your payment for booking <strong>${booking.bookingId}</strong> has been ${req.body.paymentStatus}. A refund will be initiated if applicable.`
+        );
+      }
     }
     res.status(200).json({ message: 'Booking updated', booking });
   } catch (error) {
@@ -2680,15 +2992,25 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
     booking.timeline.push({ status: booking.paymentStatus, date: new Date(), note: `Payment of ₹${paymentAmount} received` });
     await booking.save();
     if (booking.paymentStatus === 'paid') {
-      await createPaidInvoice(booking);
+      const invoice = await createPaidInvoice(booking);
       await Notification.create({
-        userId: req.user.userId,
-        type: 'payment',
-        title: 'Payment Confirmed',
-        message: `Payment of ₹${paymentAmount} received. Your booking (${booking.bookingId}) is now fully confirmed.`,
-        relatedId: booking._id,
-        read: false
-      });
+          userId: req.user.userId,
+          type: 'payment',
+          title: 'Payment Confirmed',
+          message: `Payment of ₹${paymentAmount} received. Your booking (${booking.bookingId}) is now fully confirmed.`,
+          relatedId: booking._id,
+          read: false
+        });
+      if (req.user.email) {
+        const pdfBuffer = await generateInvoicePDF(invoice, booking);
+        await sendCardEmailWithAttachment(
+          req.user.email,
+          'Payment Confirmation & Invoice',
+          'Payment Confirmed!',
+          `Payment of ₹${paymentAmount} received. Your booking <strong>${booking.bookingId}</strong> is now fully confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
+          [{ name: `invoice_${invoice.invoiceNo || 'invoice'}.pdf`, content: pdfBuffer }]
+        ).catch(err => console.error('Invoice email failed:', err.message));
+      }
     } else if (booking.paymentStatus === 'partial') {
       await Notification.create({
         userId: req.user.userId,
@@ -2698,6 +3020,13 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
         relatedId: booking._id,
         read: false
       });
+      if (req.user.email) {
+        await sendNotificationEmail(
+          req.user.email,
+          'Partial Payment Received',
+          `Payment of ₹${paymentAmount} received for booking <strong>${booking.bookingId}</strong>. Remaining balance: ₹${booking.amount - booking.paidAmount}.`
+        );
+      }
     }
     res.status(200).json({ message: 'Payment processed', booking });
   } catch (error) {
@@ -3300,6 +3629,13 @@ app.post('/api/hotel/bookings', async (req, res) => {
       relatedId: booking._id,
       read: false
     });
+    if (payload.guestEmail) {
+      await sendNotificationEmail(
+        payload.guestEmail,
+        'Booking Confirmation',
+        `Your hotel booking <strong>${payload.bookingId}</strong> has been created. Check-in: ${payload.checkInDate || 'TBD'}. Amount: ₹${payload.amount || 0}.`
+      );
+    }
     res.status(201).json({ message: 'Booking created successfully', booking });
   } catch (error) {
     console.error('Error creating booking:', error);
@@ -3317,7 +3653,7 @@ app.put('/api/hotel/bookings/:id', async (req, res) => {
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
-    if (updates.status === 'checked_in') {
+     if (updates.status === 'checked_in') {
       await Notification.create({
         userId: req.user.userId,
         type: 'booking',
@@ -3326,6 +3662,13 @@ app.put('/api/hotel/bookings/:id', async (req, res) => {
         relatedId: booking._id,
         read: false
       });
+      if (booking.guestEmail) {
+        await sendNotificationEmail(
+          booking.guestEmail,
+          'Check-in Confirmation',
+          `Hello ${booking.guestName || 'Guest'}, your check-in at ${booking.hotelName || 'our hotel'} is confirmed. Room: ${booking.roomType || 'N/A'}. Enjoy your stay!`
+        ).catch(() => {});
+      }
     }
     if (updates.status === 'checked_out') {
       await Notification.create({
@@ -3336,6 +3679,13 @@ app.put('/api/hotel/bookings/:id', async (req, res) => {
         relatedId: booking._id,
         read: false
       });
+      if (booking.guestEmail) {
+        await sendNotificationEmail(
+          booking.guestEmail,
+          'Check-out Confirmation',
+          `Thank you for staying at ${booking.hotelName || 'our hotel'}. Total: ₹${booking.amount || 0}, Paid: ₹${booking.paidAmount || 0}.`
+        ).catch(() => {});
+      }
     }
     res.status(200).json({ message: 'Booking updated', booking });
   } catch (error) {
@@ -3443,6 +3793,16 @@ app.put('/api/hotel/reviews/:id/respond', async (req, res) => {
     if (!review) {
       return res.status(404).json({ message: 'Review not found' });
     }
+    if (review.customerId) {
+      const cust = await User.findById(review.customerId).select('email');
+      if (cust?.email) {
+        await sendNotificationEmail(
+          cust.email,
+          'New Response to Your Review',
+          `The hotel partner has responded to your review for "${review.package}". Check your notifications for details.`
+        ).catch(() => {});
+      }
+    }
     res.status(200).json({ message: 'Response submitted', review });
   } catch (error) {
     res.status(500).json({ message: 'Error responding to review' });
@@ -3455,6 +3815,16 @@ app.put('/api/hotel/reviews/:id/status', async (req, res) => {
     const review = await Review.findByIdAndUpdate(req.params.id, { status }, { new: true });
     if (!review) {
       return res.status(404).json({ message: 'Review not found' });
+    }
+    if (review.customerId && (status === 'approved' || status === 'rejected')) {
+      const cust = await User.findById(review.customerId).select('email');
+      if (cust?.email) {
+        await sendNotificationEmail(
+          cust.email,
+          `Review ${status === 'approved' ? 'Approved' : 'Rejected'}`,
+          `Your review for "${review.package}" has been ${status === 'approved' ? 'approved' : 'rejected'} by the hotel partner.`
+        ).catch(() => {});
+      }
     }
     res.status(200).json({ message: 'Review status updated', review });
   } catch (error) {

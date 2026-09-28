@@ -1,0 +1,149 @@
+S.No,Type of Dashboard,HTTP Method,API Path,Description,Sample Request Body (JSON),Sample Response (JSON),Success Status Code,Error Status Codes
+1,Auth/Public,POST,/api/signup,"Register a new user","{ ""fullName"": ""John Doe"", ""email"": ""john@test.com"", ""phone"": ""8000000001"", ""password"": ""Pass123"", ""role"": ""customer"" }","{ ""message"": ""User registered successfully"", ""userId"": ""6abc123..."" }",201,400/409
+2,Auth/Public,POST,/api/login,"Login and get JWT token","{ ""email"": ""john@test.com"", ""password"": ""Pass123"", ""role"": ""customer"" }","{ ""message"": ""Login successful"", ""token"": ""eyJhbG..."" }",200,401/403
+3,Auth/Public,POST,/api/forgot-password,"Request password reset OTP","{ ""email"": ""john@test.com"" }","{ ""message"": ""OTP sent to your email"" }",200,404
+4,Auth/Public,POST,/api/verify-otp,"Verify OTP for password reset","{ ""email"": ""john@test.com"", ""otp"": ""123456"" }","{ ""message"": ""OTP verified successfully"" }",200,400
+5,Auth/Public,POST,/api/reset-password,"Reset password using valid OTP","{ ""email"": ""john@test.com"", ""otp"": ""123456"", ""newPassword"": ""NewPass123"" }","{ ""message"": ""Password reset successfully"" }",200,400/404/500
+6,Auth/Public,GET,/api/users,"Get all users (debug)","","{ ""users"": [...] }",200,500
+7,Public,GET,/api/packages,"List all published packages","?publishedOnly=true","{ ""packages"": [{ ""_id"": ""..."" }, ...] }",200,500
+8,Public,GET,/api/packages/:id,"Get a single package","/{packageId}","{ ""package"": { ""_id"": ""..."" } }",200,404/500
+9,Public,GET,/api/public/hotels,"List all hotels (public)","","{ ""hotels"": [...] }",200,500
+10,Public,GET,/api/public/hotels/:id,"Get hotel details (public)","/{hotelId}","{ ""hotel"": { ""name"": ""Grand Hotel"" } }",200,404/500
+11,Public,GET,/api/public/destinations,"List all destinations (public)","","{ ""destinations"": [...] }",200,500
+,,,,,,,,,
+,,,,,"--- ADMIN DASHBOARD ---",,,,
+,,,,,,,,,
+12,Admin,GET,/api/admin/users,"List all users","Header: Authorization: Bearer <admin-token>","{ ""users"": [{ ""id"": ""..."" }, ...] }",200,401/403/500
+13,Admin,POST,/api/admin/users,"Create new user","{ ""fullName"": ""Jane Admin"", ""email"": ""jane@test.com"", ""phone"": ""8000000002"", ""password"": ""Pass123"", ""role"": ""tour_operator"" }","{ ""message"": ""User created successfully"", ""user"": {...} }",201,400/401/403/500
+14,Admin,PUT,/api/admin/users/:id,"Update user","/{userId}","{ ""fullName"": ""Jane Updated"", ""phone"": ""8000000099"", ""role"": ""admin"", ""status"": ""active"" }","{ ""message"": ""User updated successfully"", ""user"": {...} }",200,404/401/403/500
+15,Admin,DELETE,/api/admin/users/:id,"Delete user","/{userId}","","{ ""message"": ""User deleted successfully"" }",200,404/401/403/500
+16,Admin,GET,/api/admin/packages,"List all packages","Header: Authorization: Bearer <admin-token>","{ ""packages"": [{ ""_id"": ""..."" } ...] }",200,401/403/500
+17,Admin,POST,/api/admin/packages,"Create new package","{ ""name"": ""Manali Trip"", ""destination"": ""Manali"", ""duration"": ""4 Days"", ""price"": 12000, ""rating"": 4, ""status"": ""active"", ""publishedStatus"": ""published"", ""description"": ""Adventure trip"", ""inclusions"": [""Stay""], ""image"": ""https://via.placeholder.com/400x300"", ""category"": ""Adventure"", ""shortDescription"": ""Short desc"" }","{ ""message"": ""Package created successfully"", ""package"": {...} }",201,400/401/403/500
+18,Admin,PUT,/api/admin/packages/:id,"Update package","/{packageId}","{ ""name"": ""Updated Name"", ""price"": 15000, ""status"": ""inactive"" }","{ ""message"": ""Package updated successfully"", ""package"": {...} }",200,404/401/403/500
+19,Admin,DELETE,/api/admin/packages/:id,"Delete package","/{packageId}","","{ ""message"": ""Package deleted successfully"" }",200,404/401/403/500
+20,Admin,GET,/api/admin/itineraries,"List all itineraries","Header: Authorization: Bearer <admin-token>","{ ""itineraries"": [...] }",200,401/403/500
+21,Admin,POST,/api/admin/itineraries,"Create itinerary","{ ""name"": ""Day 1"", ""packageId"": ""<pkgId>"", ""packageName"": ""Manali Trip"", ""days"": 4, ""hotels"": [""Hotel A""], ""status"": ""active"", ""dayDetails"": [{ ""day"": 1, ""activities"": ["Breakfast""] }] }","{ ""message"": ""Itinerary created successfully"" }",201,400/401/403/500
+22,Admin,PUT,/api/admin/itineraries/:id,"Update itinerary","/{itineraryId}","{ ""name"": ""Updated Day 1"", ""status"": ""active"" }","{ ""message"": ""Itinerary updated successfully"" }",200,404/401/403/500
+23,Admin,DELETE,/api/admin/itineraries/:id,"Delete itinerary","/{itineraryId}","","{ ""message"": ""Itinerary deleted successfully"" }",200,404/401/403/500
+24,Admin,GET,/api/admin/hotels,"List all hotels","Header: Authorization: Bearer <admin-token>","{ ""hotels"": [...] }",200,401/403/500
+25,Admin,POST,/api/admin/hotels,"Create hotel","{ ""name"": ""Grand Palace"", ""location"": ""Jaipur"", ""rooms"": 10, ""rating"": 4, ""partner"": ""partner@test.com"" }","{ ""message"": ""Hotel created successfully"" }",201,400/401/403/500
+26,Admin,PUT,/api/admin/hotels/:id,"Update hotel","/{hotelId}","{ ""name"": ""Grand Palace Updated"", ""location"": ""Jaipur"", ""rooms"": 15, ""rating"": 5 }","{ ""message"": ""Hotel updated successfully"" }",200,404/401/403/500
+27,Admin,DELETE,/api/admin/hotels/:id,"Delete hotel","/{hotelId}","","{ ""message"": ""Hotel deleted successfully"" }",200,404/401/403/500
+28,Admin,GET,/api/admin/rooms,"List all rooms","Header: Authorization: Bearer <admin-token>","{ ""rooms"": [...] }",200,401/403/500
+29,Admin,POST,/api/admin/rooms,"Create room","{ ""hotel"": ""<hotelId>"", ""type"": ""Deluxe"", ""total"": 10, ""available"": 5, ""price"": 3500, ""status"": ""active"" }","{ ""message"": ""Room created successfully"" }",201,400/401/403/500
+30,Admin,PUT,/api/admin/rooms/:id,"Update room","/{roomId}","{ ""type"": ""Suite"", ""price"": 5000 }","{ ""message"": ""Room updated successfully"" }",200,404/401/403/500
+31,Admin,DELETE,/api/admin/rooms/:id,"Delete room","/{roomId}","","{ ""message"": ""Room deleted successfully"" }",200,404/401/403/500
+32,Admin,GET,/api/admin/bookings,"List all bookings","Header: Authorization: Bearer <admin-token>","{ ""bookings"": [...] }",200,401/403/500
+33,Admin,POST,/api/admin/bookings,"Create booking","{ ""customer"": ""<custId>"", ""email"": ""cust@test.com"", ""package"": ""<pkgId>"", ""dates"": ""2026-12-25"", ""amount"": 12000, ""status"": ""pending"", ""paymentStatus"": ""pending"" }","{ ""message"": ""Booking created successfully"" }",201,400/401/403/500
+34,Admin,PUT,/api/admin/bookings/:id,"Update booking","/{bookingId}","{ ""status"": ""confirmed"", ""paymentStatus"": ""paid"" }","{ ""message"": ""Booking updated successfully"" }",200,404/401/403/500
+35,Admin,DELETE,/api/admin/bookings/:id,"Delete booking","/{bookingId}","","{ ""message"": ""Booking deleted successfully"" }",200,404/401/403/500
+36,Admin,GET,/api/admin/invoices,"List all invoices","Header: Authorization: Bearer <admin-token>","{ ""invoices"": [...] }",200,401/403/500
+37,Admin,POST,/api/admin/invoices,"Create invoice","{ ""invoiceNo"": ""INV001"", ""customer"": ""<custId>"", ""email"": ""cust@test.com"", ""package"": ""Trip"", ""amount"": 12000, ""status"": ""paid"", ""date"": ""2026-01-15"", ""dueDate"": ""2026-01-20"" }","{ ""message"": ""Invoice created successfully"" }",201,400/401/403/500
+38,Admin,PUT,/api/admin/invoices/:id,"Update invoice","/{invoiceId}","{ ""status"": ""paid"" }","{ ""message"": ""Invoice updated successfully"" }",200,404/401/403/500
+39,Admin,DELETE,/api/admin/invoices/:id,"Delete invoice","/{invoiceId}","","{ ""message"": ""Invoice deleted successfully"" }",200,404/401/403/500
+40,Admin,GET,/api/admin/reviews,"List all reviews","Header: Authorization: Bearer <admin-token>","{ ""reviews"": [...] }",200,401/403/500
+41,Admin,POST,/api/admin/reviews,"Create review","{ ""customer"": ""<custId>"", ""package"": ""<pkgId>"", ""rating"": 5, ""comment"": ""Great trip!"", ""status"": ""approved"" }","{ ""message"": ""Review created successfully"" }",201,400/401/403/500
+42,Admin,PUT,/api/admin/reviews/:id,"Update review","/{reviewId}","{ ""status"": ""approved"", ""comment"": ""Updated"" }","{ ""message"": ""Review updated successfully"" }",200,404/401/403/500
+43,Admin,DELETE,/api/admin/reviews/:id,"Delete review","/{reviewId}","","{ ""message"": ""Review deleted successfully"" }",200,404/401/403/500
+44,Admin,GET,/api/admin/coupons,"List all coupons","Header: Authorization: Bearer <admin-token>","{ ""coupons"": [...] }",200,401/403/500
+45,Admin,POST,/api/admin/coupons,"Create coupon","{ ""code"": ""SAVE10"", ""discount"": 10, ""type"": ""percentage"", ""minPurchase"": 5000, ""maxDiscount"": 1000, ""status"": ""active"", ""expiry"": ""2026-12-31"", ""usage"": 0, ""maxUsage"": 100 }","{ ""message"": ""Coupon created successfully"" }",201,400/401/403/500
+46,Admin,PUT,/api/admin/coupons/:id,"Update coupon","/{couponId}","{ ""discount"": 15 }","{ ""message"": ""Coupon updated successfully"" }",200,404/401/403/500
+47,Admin,DELETE,/api/admin/coupons/:id,"Delete coupon","/{couponId}","","{ ""message"": ""Coupon deleted successfully"" }",200,404/401/403/500
+48,Admin,GET,/api/admin/settings,"Get admin settings","Header: Authorization: Bearer <admin-token>","{ ""settings"": {...} }",200,401/403/500
+49,Admin,PUT,/api/admin/settings,"Update admin settings","Header: Authorization: Bearer <admin-token>","{ ""currency"": ""INR"", ""language"": ""en"", ""timezone"": ""Asia/Kolkata"" }","{ ""message"": ""Settings updated successfully"" }",200,401/403/500
+50,Admin,GET,/api/admin/analytics,"Get admin analytics","Header: Authorization: Bearer <admin-token>","{ ""totalUsers"": 100, ""totalBookings"": 50, ""totalRevenue"": 500000 }",200,401/403/500
+51,Admin,GET,/api/admin/reports/summary,"Get report summary","Header: Authorization: Bearer <admin-token>","{ ""summary"": {...} }",200,401/403/500
+52,Admin,GET,/api/admin/notifications,"List admin notifications","Header: Authorization: Bearer <admin-token>","{ ""notifications"": [...] }",200,401/403/500
+53,Admin,POST,/api/admin/notifications,"Send notification","{ ""title"": ""Update"", ""message"": ""System maintenance"", ""userIds"": [""<userId1>""] }","{ ""message"": ""Notification sent"" }",201,400/401/403/500
+54,Admin,DELETE,/api/admin/notifications/:id,"Delete notification","/{notifId}","","{ ""message"": ""Notification deleted"" }",200,404/401/403/500
+55,Admin,PUT,/api/admin/notifications/:id/read,"Mark notification as read","/{notifId}","","{ ""message"": ""Notification marked as read"" }",200,404/401/403/500
+,,,,,,,,,
+,,,,,"--- TOUR OPERATOR DASHBOARD ---",,,,
+,,,,,,,,,
+56,Operator,GET,/api/operator/profile,"Get operator profile","Header: Authorization: Bearer <operator-token>","{ ""user"": {...}, ""profile"": {...} }",200,401/403/500
+57,Operator,PUT,/api/operator/profile,"Update operator profile","Header: Authorization: Bearer <operator-token>","{ ""fullName"": ""Updated Name"", ""email"": ""op@test.com"", ""phone"": ""9000000001"" }","{ ""message"": ""Profile updated successfully"" }",200,401/403/500
+58,Operator,GET,/api/operator/packages,"List operator packages","Header: Authorization: Bearer <operator-token>","{ ""packages"": [{ ""_id"": ""..."" }] }",200,401/403/500
+59,Operator,POST,/api/operator/packages,"Create operator package","Header: Authorization: Bearer <operator-token>","{ ""name"": ""Goa Trip"", ""destination"": ""Goa"", ""duration"": ""3 Days"", ""price"": 8000, ""status"": ""active"", ""publishedStatus"": ""published"", ""category"": ""Beach"" }","{ ""message"": ""Package created successfully"" }",201,400/401/403/500
+60,Operator,GET,/api/operator/packages/:id,"Get single package","/{packageId}","","{ ""package"": {...} }",200,404/401/403/500
+61,Operator,PUT,/api/operator/packages/:id,"Update package","/{packageId}","{ ""price"": 9500 }","{ ""message"": ""Package updated successfully"" }",200,404/401/403/500
+62,Operator,DELETE,/api/operator/packages/:id,"Delete package","/{packageId}","","{ ""message"": ""Package deleted successfully"" }",200,404/401/403/500
+63,Operator,GET,/api/operator/itineraries,"List itineraries","Header: Authorization: Bearer <operator-token>","{ ""itineraries"": [...] }",200,401/403/500
+64,Operator,GET,/api/operator/itineraries/package/:packageId,"Get itineraries by package","/{packageId}","{ ""itineraries"": [...] }",200,401/403/500
+65,Operator,POST,/api/operator/itineraries,"Create itinerary","{ ""name"": ""Day 1"", ""packageId"": ""<pkgId>"", ""packageName"": ""Trip"", ""days"": 4, ""hotels"": ["Resort"], ""dayDetails"": [{ "day": 1 }] }","{ ""message"": ""Itinerary created successfully"" }",201,400/401/403/500
+66,Operator,PUT,/api/operator/itineraries/:id,"Update itinerary","/{itineraryId}","{ ""name"": ""Updated"" }","{ ""message"": ""Itinerary updated successfully"" }",200,404/401/403/500
+67,Operator,DELETE,/api/operator/itineraries/:id,"Delete itinerary","/{itineraryId}","","{ ""message"": ""Itinerary deleted successfully"" }",200,404/401/403/500
+68,Operator,GET,/api/operator/pricing/package/:packageId,"Get pricing for package","/{packageId}","{ ""pricing"": {...} }",200,401/403/500
+69,Operator,POST,/api/operator/pricing,"Create pricing","{ ""packageId"": ""<pkgId>"", ""roomType"": ""Deluxe"", ""price"": 5000, ""currency"": ""INR"", ""validFrom"": ""2026-01-01"", ""validTo"": ""2026-12-31"" }","{ ""message"": ""Pricing created successfully"" }",201,400/401/403/500
+70,Operator,PUT,/api/operator/pricing/:id,"Update pricing","/{pricingId}","{ ""price"": 5500 }","{ ""message"": ""Pricing updated successfully"" }",200,404/401/403/500
+71,Operator,GET,/api/operator/availability/package/:packageId,"Get availability for package","/{packageId}","{ ""availability"": [...] }",200,401/403/500
+72,Operator,POST,/api/operator/availability,"Create availability","{ ""packageId"": ""<pkgId>"", ""date"": ""2026-12-25"", ""total": 20, ""available"": 20 }","{ ""message"": ""Availability created successfully"" }",201,400/401/403/500
+73,Operator,PUT,/api/operator/availability/:id,"Update availability","/{availId}","{ ""available"": 15 }","{ ""message"": ""Availability updated successfully"" }",200,404/401/403/500
+74,Operator,DELETE,/api/operator/availability/:id,"Delete availability","/{availId}","","{ ""message"": ""Availability deleted successfully"" }",200,404/401/403/500
+75,Operator,GET,/api/operator/bookings,"List operator bookings","Header: Authorization: Bearer <operator-token>","{ ""bookings"": [...] }",200,401/403/500
+76,Operator,GET,/api/operator/bookings/:id,"Get single booking","/{bookingId}","{ ""booking"": {...} }",200,404/401/403/500
+77,Operator,PUT,/api/operator/bookings/:id,"Update booking","/{bookingId}","{ ""status"": ""confirmed"" }","{ ""message"": ""Booking updated successfully"" }",200,404/401/403/500
+78,Operator,GET,/api/operator/customers,"List operator customers","Header: Authorization: Bearer <operator-token>","{ ""customers"": [...] }",200,401/403/500
+79,Operator,GET,/api/operator/customers/:id,"Get customer details","/{customerId}","{ ""bookings"": [...], ""reviews"": [...] }",200,401/403/500
+80,Operator,GET,/api/operator/reviews,"List operator reviews","Header: Authorization: Bearer <operator-token>","{ ""reviews"": [...] }",200,401/403/500
+81,Operator,PUT,/api/operator/reviews/:id/respond,"Respond to review","/{reviewId}","{ ""response"": ""Thank you for your feedback!"" }","{ ""message"": ""Review responded successfully"" }",200,404/401/403/500
+82,Operator,GET,/api/operator/revenue,"Get revenue report","Header: Authorization: Bearer <operator-token>","{ ""totalRevenue"": 500000, ""revenueByPackage"": [], ""monthlyRevenue"": [...] }",200,401/403/500
+83,Operator,GET,/api/operator/notifications,"List notifications","Header: Authorization: Bearer <operator-token>","{ ""notifications"": [...] }",200,401/403/500
+84,Operator,PUT,/api/operator/notifications/:id/read,"Mark notification read","/{notifId}","","{ ""message"": ""Notification marked as read"" }",200,404/401/403/500
+85,Operator,PUT,/api/operator/notifications/read-all,"Mark all notifications read","","{ ""message"": ""All notifications marked as read"" }",200,401/403/500
+86,Operator,DELETE,/api/operator/notifications/:id,"Delete notification","/{notifId}","","{ ""message"": ""Notification deleted"" }",200,404/401/403/500
+,,,,,,,,,
+,,,,,"--- CUSTOMER DASHBOARD ---",,,,
+,,,,,,,,,
+87,Customer,GET,/api/customer/profile,"Get customer profile","Header: Authorization: Bearer <customer-token>","{ ""user"": {...} }",200,401/403/500
+88,Customer,PUT,/api/customer/profile,"Update customer profile","Header: Authorization: Bearer <customer-token>","{ ""fullName"": ""Jane Doe"", ""phone"": ""9000000001"" }","{ ""message"": ""Profile updated successfully"" }",200,401/403/500
+89,Customer,GET,/api/customer/packages,"List packages for customer","Header: Authorization: Bearer <customer-token>","{ ""packages"": [...] }",200,401/403/500
+90,Customer,GET,/api/customer/bookings,"List customer bookings","Header: Authorization: Bearer <customer-token>","{ ""bookings"": [...] }",200,401/403/500
+91,Customer,POST,/api/customer/bookings,"Create booking","Header: Authorization: Bearer <customer-token>","{ ""packageId"": ""<pkgId>"", ""travelers"": 2, ""travelDate"": ""2026-12-25"", ""phone"": ""9000000001"" }","{ ""message"": ""Booking created successfully"" }",201,400/401/403/500
+92,Customer,GET,/api/customer/bookings/:id,"Get booking details","/{bookingId}","{ ""booking"": {...} }",200,401/403/404/500
+93,Customer,PUT,/api/customer/bookings/:id,"Update booking","/{bookingId}","{ ""phone"": ""9000000099"" }","{ ""message"": ""Booking updated successfully"" }",200,401/403/404/500
+94,Customer,PUT,/api/customer/bookings/:id/pay,"Pay for booking","/{bookingId}","{ ""paymentMethod"": ""card"", ""paidAmount"": 12000 }","{ ""message"": ""Payment successful"" }",200,401/403/404/500
+95,Customer,GET,/api/customer/itineraries,"Get itineraries for customer","Header: Authorization: Bearer <customer-token>","{ ""itineraries"": [...] }",200,401/403/500
+96,Customer,GET,/api/customer/invoices,"List customer invoices","Header: Authorization: Bearer <customer-token>","{ ""invoices"": [...] }",200,401/403/500
+97,Customer,GET,/api/customer/invoices/:id,"Get invoice details","/{invoiceId}","{ ""invoice"": {...} }",200,401/403/404/500
+98,Customer,GET,/api/customer/reviews,"List customer reviews","Header: Authorization: Bearer <customer-token>","{ ""reviews"": [...] }",200,401/403/500
+99,Customer,POST,/api/customer/reviews,"Create review","Header: Authorization: Bearer <customer-token>","{ ""packageId"": ""<pkgId>"", ""rating"": 5, ""title"": ""Amazing!"", ""comment"": ""Great experience"" }","{ ""message"": ""Review created successfully"" }",201,400/401/403/500
+100,Customer,DELETE,/api/customer/reviews/:id,"Delete review","/{reviewId}","","{ ""message"": ""Review deleted successfully"" }",200,401/403/404/500
+101,Customer,GET,/api/customer/wishlist,"List wishlist","Header: Authorization: Bearer <customer-token>","{ ""wishlist"": [...] }",200,401/403/500
+102,Customer,POST,/api/customer/wishlist,"Add to wishlist","{ ""packageId"": ""<pkgId>"" }","{ ""message"": ""Added to wishlist"" }",201,401/403/400/500
+103,Customer,DELETE,/api/customer/wishlist/:id,"Remove from wishlist","/{wishlistId}","","{ ""message"": ""Removed from wishlist"" }",200,401/403/404/500
+104,Customer,GET,/api/customer/notifications,"List notifications","Header: Authorization: Bearer <customer-token>","{ ""notifications"": [...] }",200,401/403/500
+105,Customer,PUT,/api/customer/notifications/:id/read,"Mark notification read","/{notifId}","","{ ""message"": ""Notification marked as read"" }",200,401/403/404/500
+106,Customer,PUT,/api/customer/notifications/read-all,"Mark all read","","{ ""message"": ""All notifications marked as read"" }",200,401/403/500
+107,Customer,DELETE,/api/customer/notifications/:id,"Delete notification","/{notifId}","","{ ""message"": ""Notification deleted"" }",200,401/403/404/500
+108,Customer,GET,/api/customer/analytics,"Get analytics","Header: Authorization: Bearer <customer-token>","{ ""stats"": {...} }",200,401/403/500
+,,,,,,,,,
+,,,,,"--- HOTEL PARTNER DASHBOARD ---",,,,
+,,,,,,,,,
+109,Hotel Partner,GET,/api/hotel/profile,"Get hotel profile","Header: Authorization: Bearer <hotel-token>","{ ""user"": {...}, ""profile"": {...} }",200,401/403/500
+110,Hotel Partner,PUT,/api/hotel/profile,"Update hotel profile","Header: Authorization: Bearer <hotel-token>","{ ""hotelName"": ""Grand Palace"", ""email"": ""hotel@test.com"", ""phone"": ""7000000001", ""address"": ""123 Main St"", ""city"": ""Jaipur"", ""state"": ""Rajasthan"", ""country"": ""India"", ""postalCode"": ""302001"", ""website"": ""www.hotel.com"", ""description"": ""Luxury hotel"", ""starRating"": 4, ""checkinTime"": ""14:00"", ""checkoutTime"": ""11:00"", ""amenities"": [""WiFi""], ""registrationNumber"": ""REG123"", ""taxId"": ""TAX123"", ""logo"": ""https://..."" }","{ ""message"": ""Profile updated successfully"" }",200,401/403/500
+111,Hotel Partner,GET,/api/hotel/settings,"Get hotel settings","Header: Authorization: Bearer <hotel-token>","{ ""settings"": {...} }",200,401/403/500
+112,Hotel Partner,PUT,/api/hotel/settings,"Update hotel settings","Header: Authorization: Bearer <hotel-token>","{ ""emailNotifications"": true, ""smsNotifications"": true }","{ ""message"": ""Settings updated successfully"" }",200,401/403/500
+113,Hotel Partner,GET,/api/hotel/rooms,"List hotel rooms","Header: Authorization: Bearer <hotel-token>","{ ""rooms"": [...] }",200,401/403/500
+114,Hotel Partner,POST,/api/hotel/rooms,"Create hotel room","{ ""type"": ""Deluxe"", ""total"": 10, ""available"": 5, ""price"": 3500, ""status"": ""active"", ""hotel"": ""<hotelId>"" }","{ ""message"": ""Room created successfully"" }",201,401/403/400/500
+115,Hotel Partner,PUT,/api/hotel/rooms/:id,"Update room","/{roomId}","{ ""available"": 3 }","{ ""message"": ""Room updated successfully"" }",200,404/401/403/500
+116,Hotel Partner,DELETE,/api/hotel/rooms/:id,"Delete room","/{roomId}","","{ ""message"": ""Room deleted successfully"" }",200,404/401/403/500
+117,Hotel Partner,GET,/api/hotel/pricing,"Get pricing","Header: Authorization: Bearer <hotel-token>","{ ""pricing"": [...] }",200,401/403/500
+118,Hotel Partner,PUT,/api/hotel/pricing/:id,"Update pricing","/{pricingId}","{ ""price"": 4000 }","{ ""message"": ""Pricing updated successfully"" }",200,404/401/403/500
+119,Hotel Partner,GET,/api/hotel/availability,"Get availability","Header: Authorization: Bearer <hotel-token>","{ ""availability"": [...] }",200,401/403/500
+120,Hotel Partner,PUT,/api/hotel/availability/bulk,"Update availability (bulk)","{ ""date"": ""2026-12-25"", ""availability"": [{ ""roomType"": ""Deluxe"", ""available"": 5 }] }","{ ""message"": ""Availability updated"" }",200,401/403/400/500
+121,Hotel Partner,GET,/api/hotel/bookings,"List hotel bookings","Header: Authorization: Bearer <hotel-token>","{ ""bookings"": [...] }",200,401/403/500
+122,Hotel Partner,POST,/api/hotel/bookings,"Create booking","{ ""guestName"": ""John"", ""checkInDate"": ""2026-12-25"", ""checkOutDate"": ""2026-12-28"", ""roomType"": ""Deluxe"", ""rooms"": 1, ""guests"": 2, ""amount"": 12000 }","{ ""message"": ""Booking created successfully"" }",201,401/403/400/500
+123,Hotel Partner,PUT,/api/hotel/bookings/:id,"Update booking","/{bookingId}","{ ""status"": ""confirmed"" }","{ ""message"": ""Booking updated successfully"" }",200,404/401/403/500
+124,Hotel Partner,DELETE,/api/hotel/bookings/:id,"Delete booking","/{bookingId}","","{ ""message"": ""Booking deleted successfully"" }",200,404/401/403/500
+125,Hotel Partner,PUT,/api/hotel/bookings/:id/pay,"Process payment","/{bookingId}","{ ""paidAmount"": 12000, ""paymentMethod"": ""cash"" }","{ ""message"": ""Payment recorded"" }",200,404/401/403/500
+126,Hotel Partner,GET,/api/hotel/guests,"List guests","Header: Authorization: Bearer <hotel-token>","{ ""bookings"": [...] }",200,401/403/500
+127,Hotel Partner,GET,/api/hotel/reviews,"List reviews","Header: Authorization: Bearer <hotel-token>","{ ""reviews"": [...] }",200,401/403/500
+128,Hotel Partner,PUT,/api/hotel/reviews/:id/respond,"Respond to review","/{reviewId}","{ ""response"": ""Thank you!"" }","{ ""message"": ""Review responded successfully"" }",200,404/401/403/500
+129,Hotel Partner,PUT,/api/hotel/reviews/:id/status,"Update review status","/{reviewId}","{ ""status"": ""approved"" }","{ ""message"": ""Review status updated"" }",200,404/401/403/500
+130,Hotel Partner,DELETE,/api/hotel/reviews/:id,"Delete review","/{reviewId}","","{ ""message"": ""Review deleted successfully"" }",200,404/401/403/500
+131,Hotel Partner,GET,/api/hotel/revenue,"Get revenue","Header: Authorization: Bearer <hotel-token>","{ ""totalRevenue"": 500000 }",200,401/403/500
+132,Hotel Partner,GET,/api/hotel/notifications,"List notifications","Header: Authorization: Bearer <hotel-token>","{ ""notifications"": [...] }",200,401/403/500
+133,Hotel Partner,PUT,/api/hotel/notifications/read-all,"Mark all read","","{ ""message"": ""All notifications marked as read"" }",200,401/403/500
+134,Hotel Partner,PUT,/api/hotel/notifications/:id/read,"Mark notification read","/{notifId}","","{ ""message"": ""Notification marked as read"" }",200,404/401/403/500
+135,Hotel Partner,DELETE,/api/hotel/notifications/:id,"Delete notification","/{notifId}","","{ ""message"": ""Notification deleted"" }",200,404/401/403/500
+136,Hotel Partner,GET,/api/hotel/analytics,"Get hotel analytics","Header: Authorization: Bearer <hotel-token>","{ ""stats"": {...} }",200,401/403/500

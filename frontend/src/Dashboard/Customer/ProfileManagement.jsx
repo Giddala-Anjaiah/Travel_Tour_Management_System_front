@@ -84,16 +84,18 @@ const ProfileManagement = () => {
             <h2>Customer Portal</h2>
           </div>
         </aside>
-        <button onClick={handleLogout} className="logout-btn">
-          <LogOut className="h-5 w-5" />
-          <span>Logout</span>
-        </button>
-        <main className="dashboard-main">
-          <header className="dashboard-header">
-            <div>
-              <h1>Profile Management</h1>
-              <p className="header-subtitle">Manage your personal information and preferences</p>
-            </div>
+      <main className="dashboard-main">
+        <header className="dashboard-header">
+          <div>
+            <h1>Profile Management</h1>
+            <p className="header-subtitle">Manage your personal information and preferences</p>
+          </div>
+          <div className="header-actions">
+            <button onClick={handleLogout} className="btn-logout-header">
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </button>
+          </div>
           </header>
           <div className="dashboard-content">
             <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}>
@@ -152,16 +154,17 @@ const ProfileManagement = () => {
         </nav>
       </aside>
 
-      <button onClick={handleLogout} className="logout-btn">
-        <LogOut className="h-5 w-5" />
-        <span>Logout</span>
-      </button>
-
       <main className="dashboard-main">
         <header className="dashboard-header">
           <div>
             <h1>Profile Management</h1>
             <p className="header-subtitle">Manage your personal information and preferences</p>
+          </div>
+          <div className="header-actions">
+            <button onClick={handleLogout} className="btn-logout-header">
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </button>
           </div>
           <div className="header-stats">
             <div className="stat-badge">

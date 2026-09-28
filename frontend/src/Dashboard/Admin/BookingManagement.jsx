@@ -25,7 +25,7 @@ const BookingManagement = () => {
         email: booking.email,
         package: booking.package,
         dates: booking.dates,
-        amount: booking.amount,
+        amount: Number(booking.amount) || 0,
         status: booking.status,
         paymentStatus: booking.paymentStatus,
         bookingDate: formatDate(booking.bookingDate)
@@ -167,7 +167,7 @@ const BookingManagement = () => {
                     <td>{booking.email}</td>
                     <td>{booking.package}</td>
                     <td><Calendar className="h-4 w-4 inline-icon" />{booking.dates}</td>
-                    <td>₹{booking.amount.toLocaleString()}</td>
+                    <td>₹{(booking.amount || 0).toLocaleString()}</td>
                     <td><span className={`status-badge ${booking.status}`}>{booking.status}</span></td>
                     <td><span className={`payment-badge ${booking.paymentStatus}`}>{booking.paymentStatus}</span></td>
                     <td>{booking.bookingDate}</td>

@@ -59,11 +59,6 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
         </nav>
       </aside>
 
-      <button onClick={handleLogout} className="logout-btn">
-        <LogOut className="h-5 w-5" />
-        <span>Logout</span>
-      </button>
-
       <main className="dashboard-main">
         <header className="dashboard-header">
           <div>
@@ -72,6 +67,10 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
           </div>
           <div className="header-actions">
             {actions}
+            <button onClick={handleLogout} className="btn-logout-header">
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </button>
             <div className="user-info">
               <span className="cp-avatar">{initials}</span>
               <span>{user.fullName || 'Customer'}</span>

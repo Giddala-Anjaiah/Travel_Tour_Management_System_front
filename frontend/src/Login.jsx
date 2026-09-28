@@ -1,22 +1,50 @@
 import { API_BASE } from './api'
-import { Plane } from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { Plane, User, Mail, Lock, Shield } from 'lucide-react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { showToast } from './components/toastEvents'
 import './Auth.css'
 
 const Login = () => {
   const navigate = useNavigate()
+  const location = useLocation()
   const [selectedRole, setSelectedRole] = useState('customer')
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search)
+    const token = params.get('token')
+    const role = params.get('role')
+    if (token && role) {
+      localStorage.setItem('token', token)
+      const payload = JSON.parse(atob(token.split('.')[1]))
+      localStorage.setItem('user', JSON.stringify({
+        id: payload.userId,
+        email: payload.email,
+        role: payload.role,
+        fullName: payload.email.split('@')[0],
+      }))
+      window.history.replaceState({}, document.title, '/')
+      showToast('Login successful!')
+      const redirectMap = {
+        admin: '/admin/dashboard',
+        customer: '/customer/dashboard',
+        tour_operator: '/tour-operator/dashboard',
+        hotel_partner: '/hotel-partner/dashboard',
+      }
+      navigate(redirectMap[role] || '/')
+    }
+  }, [location, navigate])
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
+  const [loading, setLoading] = useState(false)
 
   const roles = [
-    { value: 'admin', label: 'Admin' },
-    { value: 'customer', label: 'Customer' },
-    { value: 'tour_operator', label: 'Tour Operator' },
-    { value: 'hotel_partner', label: 'Hotel Partner' }
+    { value: 'customer', label: 'Customer', icon: User, color: 'customer' },
+    { value: 'tour_operator', label: 'Tour Operator', icon: Shield, color: 'tour_operator' },
+    { value: 'hotel_partner', label: 'Hotel Partner', icon: Shield, color: 'hotel_partner' },
+    { value: 'admin', label: 'Admin', icon: Shield, color: 'admin' }
   ]
 
   const roleRedirects = {
@@ -30,6 +58,7 @@ const Login = () => {
     e.preventDefault()
     setError('')
     setSuccess('')
+    setLoading(true)
 
     try {
       const response = await fetch(API_BASE + '/login', {
@@ -44,20 +73,27 @@ const Login = () => {
 
       if (response.ok) {
         setSuccess('Login successful!')
+        showToast('Login successful!')
         localStorage.setItem('token', data.token)
         localStorage.setItem('user', JSON.stringify(data.user))
-        
-        // Redirect to role-based dashboard
+
         setTimeout(() => {
           navigate(roleRedirects[selectedRole])
         }, 1000)
       } else {
         setError(data.message || 'Login failed')
+        showToast(data.message || 'Login failed', 'error')
       }
     } catch (err) {
       setError('Server error. Please try again.')
       console.error('Login error:', err)
+    } finally {
+      setLoading(false)
     }
+  }
+
+  const handleGoogleLogin = () => {
+    window.location.href = API_BASE + '/auth/google'
   }
 
   return (
@@ -65,58 +101,83 @@ const Login = () => {
       <div className="auth-content">
         <div className="auth-card">
           <div className="auth-header">
-            <Plane className="h-10 w-10" style={{ color: '#4f46e5' }} />
+            <div className="logo-icon">
+              <Plane className="h-8 w-8 text-white" />
+            </div>
             <h2>Welcome Back</h2>
             <p>Sign in to your account</p>
           </div>
-          
+
           {error && <div className="error-message">{error}</div>}
           {success && <div className="success-message">{success}</div>}
-          
+
           <form className="auth-form" onSubmit={handleSubmit}>
             <div className="form-group">
               <label>Select Your Role</label>
-              <select 
-                className="role-select"
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-              >
-                {roles.map((role) => (
-                  <option key={role.value} value={role.value}>
-                    {role.label}
-                  </option>
-                ))}
-              </select>
+              <div className="role-cards">
+                {roles.map((role) => {
+                  const Icon = role.icon
+                  return (
+                    <div
+                      key={role.value}
+                      className={`role-card ${selectedRole === role.value ? 'selected' : ''}`}
+                      onClick={() => setSelectedRole(role.value)}
+                    >
+                      <div className={`role-icon ${role.color}`}>
+                        <Icon className="h-5 w-5 text-white" />
+                      </div>
+                      <span className="role-label">{role.label}</span>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
             <div className="form-group">
               <label>Email</label>
-              <input 
-                type="email" 
-                placeholder="your@email.com" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-              />
+              <div className="input-with-icon">
+                <Mail className="h-5 w-5" />
+                <input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                />
+              </div>
             </div>
             <div className="form-group">
               <label>Password</label>
-              <input 
-                type="password" 
-                placeholder="••••••••" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="input-with-icon">
+                <Lock className="h-5 w-5" />
+                <input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+              </div>
             </div>
             <div className="form-options">
               <label className="checkbox-label">
                 <input type="checkbox" />
                 <span>Remember me</span>
               </label>
-              <a href="#" className="forgot-link">Forgot password?</a>
+              <a href="#" className="forgot-link" onClick={(e) => { e.preventDefault(); navigate('/forgot-password'); }}>Forgot password?</a>
             </div>
-            <button type="submit" className="auth-btn">Sign In as {roles.find(r => r.value === selectedRole)?.label}</button>
+            <button type="submit" className="auth-btn" disabled={loading}>
+              {loading ? 'Signing In...' : 'Sign In as ' + roles.find(r => r.value === selectedRole)?.label}
+            </button>
           </form>
+
+          <div className="google-divider">
+            <span>or sign in with</span>
+          </div>
+          <button type="button" className="google-btn" onClick={handleGoogleLogin}>
+            <img src="/static/Google.jpg" alt="Google" style={{ width: '20px', height: '20px', marginRight: '10px' }} />
+            <span style={{ fontWeight: '500' }}>Sign in with Google</span>
+          </button>
+
           <p className="auth-footer">
             Don't have an account? <Link to="/signup">Sign up</Link>
           </p>
