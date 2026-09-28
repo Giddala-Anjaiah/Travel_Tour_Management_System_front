@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd frontend && npm install --include=dev && npx vite build",
+  "outputDirectory": "frontend/dist",
+  "rewrites": [
+    { "source": "/robots.txt", "destination": "/frontend/dist/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "/frontend/dist/sitemap.xml" },
+    { "source": "/llms.txt", "destination": "/frontend/dist/llms.txt" },
+    { "source": "/ai-catalog.json", "destination": "/frontend/dist/ai-catalog.json" },
+    { "source": "/(.*)", "destination": "/frontend/dist/index.html" }
+  ]
+}
