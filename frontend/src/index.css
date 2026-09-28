@@ -14,20 +14,20 @@ img, video {
 }
 
 :root {
-  --primary: #6366f1;
-  --primary-dark: #4f46e5;
-  --primary-light: #818cf8;
-  --secondary: #8b5cf6;
-  --accent: #a78bfa;
+  --primary: #ff6b6b;
+  --primary-dark: #ee5a24;
+  --primary-light: #ff9f43;
+  --secondary: #feca57;
+  --accent: #ff9ff3;
   --text-dark: #0f172a;
   --text-medium: #334155;
   --text-light: #64748b;
-  --bg-light: #f8fafc;
+  --bg-light: #fef9f7;
   --bg-white: #ffffff;
-  --border: #e2e8f0;
-  --gradient-1: linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%);
-  --gradient-2: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  --gradient-3: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%);
+  --border: #ffe8e0;
+  --gradient-1: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 50%, #feca57 100%);
+  --gradient-2: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+  --gradient-3: linear-gradient(135deg, #ee5a24 0%, #ff9f43 100%);
   --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
   --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);

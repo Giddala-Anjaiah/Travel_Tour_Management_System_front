@@ -1,7 +1,7 @@
 /* Auth Page Styles */
 .auth-page {
   min-height: 100vh;
-  background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #a855f7 100%);
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 50%, #feca57 100%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -31,7 +31,7 @@
   right: -100px;
   width: 400px;
   height: 400px;
-  background: radial-gradient(circle, rgba(168, 85, 247, 0.30) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(254, 202, 87, 0.30) 0%, transparent 70%);
   border-radius: 50%;
   animation: float 8s ease-in-out infinite;
 }
@@ -99,13 +99,13 @@
 .auth-header .logo-icon {
   width: 64px;
   height: 64px;
-  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  background: linear-gradient(135deg, #ff6b6b, #ee5a24);
   border-radius: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   margin: 0 auto 1rem;
-  box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 10px 25px -5px rgba(255, 107, 107, 0.4);
 }
 
 .auth-header h2 {
@@ -135,8 +135,8 @@
 
 .role-select:focus {
   outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  border-color: #ff6b6b;
+  box-shadow: 0 0 0 3px rgba(255, 107, 107, 0.1);
 }
 
 /* Role Selection Cards */
