@@ -1,11 +1,11 @@
 {
   "buildCommand": "cd frontend && rm -rf node_modules package-lock.json && npm install --include=dev && npx vite build",
-  "outputDirectory": "dist",
+  "outputDirectory": "frontend/frontend/dist",
   "rewrites": [
-    { "source": "/robots.txt", "destination": "/robots.txt" },
-    { "source": "/sitemap.xml", "destination": "/sitemap.xml" },
-    { "source": "/llms.txt", "destination": "/llms.txt" },
-    { "source": "/ai-catalog.json", "destination": "/ai-catalog.json" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/robots.txt", "destination": "/frontend/frontend/dist/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "/frontend/frontend/dist/sitemap.xml" },
+    { "source": "/llms.txt", "destination": "/frontend/frontend/dist/llms.txt" },
+    { "source": "/ai-catalog.json", "destination": "/frontend/frontend/dist/ai-catalog.json" },
+    { "source": "/(.*)", "destination": "/frontend/frontend/dist/index.html" }
   ]
 }
