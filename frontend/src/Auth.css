@@ -5,7 +5,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2rem 1rem;
+  padding: 1rem 1rem;
   position: relative;
   overflow: hidden;
 }
@@ -27,10 +27,10 @@
 .auth-page::after {
   content: '';
   position: absolute;
-  top: -100px;
-  right: -100px;
-  width: 400px;
-  height: 400px;
+  top: -80px;
+  right: -80px;
+  width: 300px;
+  height: 300px;
   background: radial-gradient(circle, rgba(212, 160, 23, 0.20) 0%, transparent 70%);
   border-radius: 50%;
   animation: float 8s ease-in-out infinite;
@@ -40,8 +40,8 @@
   position: absolute;
   top: 10%;
   left: 8%;
-  width: 120px;
-  height: 120px;
+  width: 90px;
+  height: 90px;
   background: rgba(255, 255, 255, 0.05);
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.08);
@@ -52,8 +52,8 @@
   position: absolute;
   bottom: 15%;
   right: 12%;
-  width: 80px;
-  height: 80px;
+  width: 60px;
+  height: 60px;
   background: rgba(255, 255, 255, 0.04);
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -64,8 +64,8 @@
   position: absolute;
   top: 50%;
   left: 5%;
-  width: 60px;
-  height: 60px;
+  width: 45px;
+  height: 45px;
   background: rgba(255, 255, 255, 0.03);
   border-radius: 50%;
   animation: float 5s ease-in-out infinite;
@@ -78,7 +78,7 @@
 
 .auth-content {
   width: 100%;
-  max-width: 560px;
+  max-width: 480px;
   position: relative;
   z-index: 1;
 }
@@ -86,39 +86,39 @@
 .auth-card {
   background: white;
   border-radius: 1.25rem;
-  padding: 3rem;
+  padding: 2rem 2.5rem;
   box-shadow: 0 30px 60px -15px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(10px);
 }
 
 .auth-header {
   text-align: center;
-  margin-bottom: 2rem;
+  margin-bottom: 1.25rem;
 }
 
 .auth-header .logo-icon {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   background: linear-gradient(135deg, #1e3a5f, #2d5a87);
   border-radius: 1rem;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 0 auto 1rem;
+  margin: 0 auto 0.75rem;
   box-shadow: 0 10px 25px -5px rgba(30, 58, 95, 0.4);
 }
 
 .auth-header h2 {
-  font-size: 1.75rem;
+  font-size: 1.5rem;
   font-weight: bold;
   color: #111827;
-  margin: 1rem 0 0.5rem;
+  margin: 0.75rem 0 0.25rem;
   letter-spacing: -0.02em;
 }
 
 .auth-header p {
   color: #6b7280;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 /* Role Selection Styles */
@@ -143,15 +143,15 @@
 .role-cards {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+  gap: 0.5rem;
 }
 
 .role-card {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  padding: 1rem 0.75rem;
+  gap: 0.25rem;
+  padding: 0.5rem 0.5rem;
   border: 2px solid #e5e7eb;
   border-radius: 0.75rem;
   background: white;
@@ -173,8 +173,8 @@
 }
 
 .role-card .role-icon {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 0.5rem;
   display: flex;
   align-items: center;
@@ -188,7 +188,7 @@
 .role-card .role-icon.hotel_partner { background: linear-gradient(135deg, #f59e0b, #d97706); }
 
 .role-card .role-label {
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: #374151;
 }
@@ -198,10 +198,10 @@
   background: #fee2e2;
   border: 1px solid #fecaca;
   color: #991b1b;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   border-radius: 0.5rem;
-  font-size: 0.9rem;
-  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
   text-align: center;
 }
 
@@ -209,29 +209,29 @@
   background: #dcfce7;
   border: 1px solid #bbf7d0;
   color: #166534;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   border-radius: 0.5rem;
-  font-size: 0.9rem;
-  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
   text-align: center;
 }
 
 .auth-form {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1rem;
 }
 
 .form-group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.35rem;
 }
 
 .form-group label {
   font-weight: 500;
   color: #374151;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 /* Icon Input */
@@ -245,14 +245,14 @@
 .input-with-icon > input {
   box-sizing: border-box;
   width: 100%;
-  height: 56px;
+  height: 48px;
   padding: 0 16px 0 64px;
   border: 1.5px solid #e5e7eb;
   border-radius: 12px;
   background: #ffffff;
   color: #374151;
   font-family: inherit;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 400;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -364,13 +364,13 @@
 }
 
 .auth-btn {
-  padding: 0.875rem 1.5rem;
+  padding: 0.7rem 1.5rem;
   background: linear-gradient(135deg, #4f46e5, #7c3aed);
   color: white;
   border: none;
   border-radius: 0.5rem;
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 0.95rem;
   cursor: pointer;
   transition: all 0.2s;
   box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.3);
@@ -416,9 +416,9 @@
 
 .auth-footer {
   text-align: center;
-  margin-top: 1.5rem;
+  margin-top: 1rem;
   color: #6b7280;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
 }
 
 .auth-footer a {
@@ -454,7 +454,7 @@
   display: flex;
   align-items: center;
   text-align: center;
-  margin: 24px 0;
+  margin: 1.25rem 0;
   color: #9ca3af;
   font-size: 13px;
   font-weight: 500;
@@ -552,11 +552,11 @@
   }
 
   .auth-card {
-    padding: 2rem 1.5rem;
+    padding: 1.5rem 1.25rem;
   }
 
   .auth-header h2 {
-    font-size: 1.5rem;
+    font-size: 1.35rem;
   }
 
   .role-cards {
