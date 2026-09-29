@@ -7,6 +7,29 @@ import Footer from './Footer'
 
 function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [contactForm, setContactForm] = useState({ name: '', email: '', subject: '', message: '' })
+  const [contactStatus, setContactStatus] = useState({ loading: false, error: '', success: '' })
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault()
+    setContactStatus({ loading: true, error: '', success: '' })
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(contactForm)
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setContactStatus({ loading: false, error: '', success: data.message || 'Message sent successfully! Thank you for reaching out.' })
+        setContactForm({ name: '', email: '', subject: '', message: '' })
+      } else {
+        setContactStatus({ loading: false, error: data.message || 'Failed to send message', success: '' })
+      }
+    } catch (err) {
+      setContactStatus({ loading: false, error: 'Server error. Please try again.', success: '' })
+    }
+  }
 
   const features = [
     { icon: MapPin, title: 'Tour Package Management', description: 'Create and manage comprehensive tour packages with ease' },
@@ -337,24 +360,28 @@ function App() {
               </div>
             </div>
             
-            <form className="contact-form">
+            <form className="contact-form" onSubmit={handleContactSubmit}>
+              {contactStatus.error && <div className="contact-error">{contactStatus.error}</div>}
+              {contactStatus.success && <div className="contact-success">{contactStatus.success}</div>}
               <div className="form-group">
                 <label>Name</label>
-                <input type="text" placeholder="Your name" />
+                <input type="text" placeholder="Your name" value={contactForm.name} onChange={(e) => setContactForm({ ...contactForm, name: e.target.value })} required />
               </div>
               <div className="form-group">
                 <label>Email</label>
-                <input type="email" placeholder="your@email.com" />
+                <input type="email" placeholder="your@email.com" value={contactForm.email} onChange={(e) => setContactForm({ ...contactForm, email: e.target.value })} required />
               </div>
               <div className="form-group">
                 <label>Subject</label>
-                <input type="text" placeholder="How can we help?" />
+                <input type="text" placeholder="How can we help?" value={contactForm.subject} onChange={(e) => setContactForm({ ...contactForm, subject: e.target.value })} required />
               </div>
               <div className="form-group">
                 <label>Message</label>
-                <textarea rows="5" placeholder="Tell us more about your needs..."></textarea>
+                <textarea rows="5" placeholder="Tell us more about your needs..." value={contactForm.message} onChange={(e) => setContactForm({ ...contactForm, message: e.target.value })} required></textarea>
               </div>
-              <button type="submit" className="submit-btn">Send Message</button>
+              <button type="submit" className="submit-btn" disabled={contactStatus.loading}>
+                {contactStatus.loading ? 'Sending...' : 'Send Message'}
+              </button>
             </form>
           </div>
         </div>
