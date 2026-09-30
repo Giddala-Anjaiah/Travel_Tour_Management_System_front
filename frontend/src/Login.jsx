@@ -1,14 +1,43 @@
-import { API_BASE } from './api'
-import { Plane, User, Mail, Lock, Shield } from 'lucide-react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { Mail, Lock, Compass, Luggage, BedDouble, CalendarCheck, Route } from 'lucide-react'
+import { API_BASE } from './api'
+import AuthLayout from './components/auth/AuthLayout'
+import AuthField from './components/auth/AuthField'
+import AuthRoleSelect from './components/auth/AuthRoleSelect'
 import { showToast } from './components/toastEvents'
 import './Auth.css'
+
+const SIGN_IN_FEATURES = [
+  { icon: Compass, title: 'Explore Destinations', text: 'Discover beautiful destinations and travel experiences.' },
+  { icon: Luggage, title: 'Tour Packages', text: 'Browse and book curated tour packages.' },
+  { icon: BedDouble, title: 'Hotels & Availability', text: 'Find suitable hotels and check room availability.' },
+  { icon: CalendarCheck, title: 'Easy Booking Management', text: 'Manage your travel bookings from one place.' },
+  { icon: Route, title: 'Trip Management', text: 'Track your upcoming and completed trips.' },
+]
+
+const PROD_API_BASE = 'https://travel-tour-management-system-backend.onrender.com/api'
+
+// In local development the Vite dev server proxies to the local backend, but a
+// deployed build without VITE_API_URL must not send Google traffic to localhost.
+function getGoogleAuthBase() {
+  const hostname = window.location.hostname
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1'
+  if (!import.meta.env.VITE_API_URL && !isLocal) {
+    return PROD_API_BASE
+  }
+  return API_BASE
+}
 
 const Login = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const [selectedRole, setSelectedRole] = useState('customer')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(location.search)
@@ -32,28 +61,15 @@ const Login = () => {
       }
       const target = redirectMap[role] || '/'
       window.history.replaceState({}, document.title, target)
-      // Force full-page navigation so ProtectedRoute re-evaluates fresh
       window.location.href = target
     }
   }, [location, navigate])
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
-  const [loading, setLoading] = useState(false)
-
-  const roles = [
-    { value: 'customer', label: 'Customer', icon: User, color: 'customer' },
-    { value: 'tour_operator', label: 'Tour Operator', icon: Shield, color: 'tour_operator' },
-    { value: 'hotel_partner', label: 'Hotel Partner', icon: Shield, color: 'hotel_partner' },
-    { value: 'admin', label: 'Admin', icon: Shield, color: 'admin' }
-  ]
 
   const roleRedirects = {
     admin: '/admin/dashboard',
     customer: '/customer/dashboard',
     tour_operator: '/tour-operator/dashboard',
-    hotel_partner: '/hotel-partner/dashboard'
+    hotel_partner: '/hotel-partner/dashboard',
   }
 
   const handleSubmit = async (e) => {
@@ -65,10 +81,8 @@ const Login = () => {
     try {
       const response = await fetch(API_BASE + '/login', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ email, password, role: selectedRole })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, role: selectedRole }),
       })
 
       const data = await response.json()
@@ -78,10 +92,7 @@ const Login = () => {
         showToast('Login successful!')
         localStorage.setItem('token', data.token)
         localStorage.setItem('user', JSON.stringify(data.user))
-
-        setTimeout(() => {
-          navigate(roleRedirects[selectedRole])
-        }, 1000)
+        setTimeout(() => { navigate(roleRedirects[selectedRole]) }, 1000)
       } else {
         setError(data.message || 'Login failed')
         showToast(data.message || 'Login failed', 'error')
@@ -96,98 +107,71 @@ const Login = () => {
 
   const handleGoogleLogin = () => {
     const frontendOrigin = window.location.origin
-    window.location.href = `${API_BASE}/auth/google?state=${encodeURIComponent(frontendOrigin)}`
+    window.location.href = `${getGoogleAuthBase()}/auth/google?state=${encodeURIComponent(frontendOrigin)}`
   }
 
   return (
-    <div className="auth-page">
-      <div className="auth-content">
-        <div className="auth-card">
-          <div className="auth-header">
-            <div className="logo-icon">
-              <Plane className="h-8 w-8 text-white" />
-            </div>
-            <h2>Welcome Back</h2>
-            <p>Sign in to your account</p>
-          </div>
+    <AuthLayout
+      badge="Welcome Back"
+      heading="Welcome to Travel & Tour"
+      description="Your complete platform for discovering destinations, managing tours, booking hotels, and planning unforgettable journeys."
+      features={SIGN_IN_FEATURES}
+    >
+      <h2 className="auth-card-title">Sign in to your account</h2>
+      <p className="auth-card-sub">Enter your credentials to access your account.</p>
 
-          {error && <div className="error-message">{error}</div>}
-          {success && <div className="success-message">{success}</div>}
+      {error && <div className="auth-alert auth-alert-error">{error}</div>}
+      {success && <div className="auth-alert auth-alert-success">{success}</div>}
 
-          <form className="auth-form" onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label>Select Your Role</label>
-              <div className="role-select-wrap">
-                <select
-                  className="role-select"
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
-                >
-                  <option value="customer">Customer</option>
-                  <option value="tour_operator">Tour Operator</option>
-                  <option value="hotel_partner">Hotel Partner</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <svg className="role-select-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Email</label>
-              <div className="input-with-icon">
-                <Mail className="h-5 w-5" />
-                <input
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Password</label>
-              <div className="input-with-icon">
-                <Lock className="h-5 w-5" />
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="form-options">
-              <label className="checkbox-label">
-                <input type="checkbox" />
-                <span>Remember me</span>
-              </label>
-              <a href="#" className="forgot-link" onClick={(e) => { e.preventDefault(); navigate('/forgot-password'); }}>Forgot password?</a>
-            </div>
-            <button type="submit" className="auth-btn" disabled={loading}>
-              {loading ? 'Signing In...' : 'Sign In as ' + roles.find(r => r.value === selectedRole)?.label}
-            </button>
-          </form>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <AuthRoleSelect value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} />
 
-          <div className="google-divider">
-            <span>or sign in with</span>
-          </div>
-          <button type="button" className="google-btn" onClick={handleGoogleLogin}>
-            <img src="/static/Google.jpg" alt="Google" style={{ width: '20px', height: '20px', marginRight: '10px' }} />
-            <span style={{ fontWeight: '500' }}>Sign in with Google</span>
-          </button>
+        <AuthField
+          id="login-email"
+          label="Email Address"
+          icon={Mail}
+          type="email"
+          placeholder="Enter your email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
+        />
 
-          <p className="auth-footer">
-            Don't have an account? <Link to="/signup">Sign up</Link>
-          </p>
-          <div className="auth-back">
-            <Link to="/">← Back to Home</Link>
-          </div>
+        <AuthField
+          id="login-password"
+          label="Password"
+          icon={Lock}
+          type="password"
+          placeholder="Enter your password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete="current-password"
+        />
+
+        <div className="auth-options">
+          <label className="auth-check">
+            <input type="checkbox" />
+            <span>Remember me</span>
+          </label>
+          <Link to="/forgot-password" className="auth-link">Forgot password?</Link>
         </div>
-      </div>
-    </div>
+
+        <button type="submit" className="auth-submit" disabled={loading}>
+          {loading ? 'Signing In...' : 'Sign In'}
+        </button>
+      </form>
+
+      <div className="auth-divider"><span>or sign in with</span></div>
+
+      <button type="button" className="auth-google" onClick={handleGoogleLogin}>
+        <img src="/static/Google.jpg" alt="Google" />
+        <span>Sign in with Google</span>
+      </button>
+
+      <p className="auth-card-foot">
+        Don't have an account? <Link to="/signup" className="auth-link">Create an account</Link>
+      </p>
+    </AuthLayout>
   )
 }
 

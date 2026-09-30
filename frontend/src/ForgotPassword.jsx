@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Plane, Mail, Shield, Eye, EyeOff, CheckCircle } from 'lucide-react'
+import { Plane, Mail, Shield, Eye, EyeOff } from 'lucide-react'
 import { API_BASE } from './api'
 import { showToast } from './components/toastEvents'
-import './Auth.css'
+import './AuthLegacy.css'
 import './ForgotPassword.css'
 
 const ForgotPassword = () => {

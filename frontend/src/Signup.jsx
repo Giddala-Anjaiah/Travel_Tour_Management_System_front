@@ -1,8 +1,20 @@
 import { API_BASE } from './api'
-import { Plane, User, Mail, Phone, Lock, Shield } from 'lucide-react'
+import { User, Mail, Phone, Lock, Shield, Compass, Luggage, BedDouble, CalendarCheck, Route } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useState } from 'react'
+import AuthLayout from './components/auth/AuthLayout'
+import AuthField from './components/auth/AuthField'
+import AuthRoleSelect from './components/auth/AuthRoleSelect'
+import { AUTH_ROLES } from './components/auth/authRoles'
 import './Auth.css'
+
+const SIGN_UP_FEATURES = [
+  { icon: Compass, title: 'Explore Destinations', text: 'Discover beautiful destinations and travel experiences.' },
+  { icon: Luggage, title: 'Tour Packages', text: 'Browse and book curated tour packages.' },
+  { icon: BedDouble, title: 'Hotels & Availability', text: 'Find suitable hotels and check room availability.' },
+  { icon: CalendarCheck, title: 'Easy Booking Management', text: 'Manage your travel bookings from one place.' },
+  { icon: Route, title: 'Trip Management', text: 'Track your upcoming and completed trips.' },
+]
 
 const Signup = () => {
   const [selectedRole, setSelectedRole] = useState('customer')
@@ -13,13 +25,6 @@ const Signup = () => {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
-
-  const roles = [
-    { value: 'customer', label: 'Customer', icon: User, color: 'customer' },
-    { value: 'tour_operator', label: 'Tour Operator', icon: Shield, color: 'tour_operator' },
-    { value: 'hotel_partner', label: 'Hotel Partner', icon: Shield, color: 'hotel_partner' },
-    { value: 'admin', label: 'Admin', icon: Shield, color: 'admin' }
-  ]
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -58,122 +63,101 @@ const Signup = () => {
     }
   }
 
+  const roleLabel = AUTH_ROLES.find((role) => role.value === selectedRole)?.label
+
   return (
-    <div className="auth-page">
-      <div className="auth-content">
-        <div className="auth-card">
-          <div className="auth-header">
-            <div className="logo-icon">
-              <Plane className="h-8 w-8 text-white" />
-            </div>
-            <h2>Create Account</h2>
-            <p>Start your journey with us</p>
-          </div>
+    <AuthLayout
+      badge="Get Started"
+      heading="Start Your Journey with Us"
+      description="Create your account to access destinations, tour packages, hotel bookings, and complete trip management."
+      features={SIGN_UP_FEATURES}
+    >
+      <h2 className="auth-card-title">Create Account</h2>
+      <p className="auth-card-sub">Start your journey with us.</p>
 
-          {error && <div className="error-message">{error}</div>}
-          {success && <div className="success-message">{success}</div>}
+      {error && <div className="auth-alert auth-alert-error">{error}</div>}
+      {success && <div className="auth-alert auth-alert-success">{success}</div>}
 
-          <form className="auth-form" onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label>Select Your Role</label>
-              <div className="role-select-wrap">
-                <select
-                  className="role-select"
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
-                >
-                  <option value="customer">Customer</option>
-                  <option value="tour_operator">Tour Operator</option>
-                  <option value="hotel_partner">Hotel Partner</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <svg className="role-select-arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M2 4L6 8L10 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Full Name</label>
-              <div className="input-with-icon">
-                <User className="h-5 w-5" />
-                <input
-                  type="text"
-                  placeholder="John Doe"
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Email</label>
-              <div className="input-with-icon">
-                <Mail className="h-5 w-5" />
-                <input
-                  type="email"
-                  placeholder="your@email.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Phone Number</label>
-              <div className="input-with-icon">
-                <Phone className="h-5 w-5" />
-                <input
-                  type="tel"
-                  placeholder="+91 9876543210"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Password</label>
-              <div className="input-with-icon">
-                <Lock className="h-5 w-5" />
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-              </div>
-            </div>
-            <div className="form-group">
-              <label>Confirm Password</label>
-              <div className="input-with-icon">
-                <Lock className="h-5 w-5" />
-                <input
-                  type="password"
-                  placeholder="••••••••"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  minLength={6}
-                />
-              </div>
-            </div>
-            <label className="checkbox-label">
-              <input type="checkbox" required />
-              <span>I agree to the Terms of Service and Privacy Policy</span>
-            </label>
-            <button type="submit" className="auth-btn">Create Account as {roles.find(r => r.value === selectedRole)?.label}</button>
-          </form>
-          <p className="auth-footer">
-            Already have an account? <Link to="/login">Sign in</Link>
-          </p>
-          <div className="auth-back">
-            <Link to="/">← Back to Home</Link>
-          </div>
-        </div>
-      </div>
-    </div>
+      <form className="auth-form" onSubmit={handleSubmit}>
+        <AuthRoleSelect
+          id="signup-role"
+          label="Select Your Role"
+          value={selectedRole}
+          onChange={(e) => setSelectedRole(e.target.value)}
+        />
+
+        <AuthField
+          id="signup-name"
+          label="Full Name"
+          icon={User}
+          type="text"
+          placeholder="John Doe"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          autoComplete="name"
+        />
+
+        <AuthField
+          id="signup-email"
+          label="Email"
+          icon={Mail}
+          type="email"
+          placeholder="your@email.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          autoComplete="email"
+        />
+
+        <AuthField
+          id="signup-phone"
+          label="Phone Number"
+          icon={Phone}
+          type="tel"
+          placeholder="+91 9876543210"
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          autoComplete="tel"
+        />
+
+        <AuthField
+          id="signup-password"
+          label="Password"
+          icon={Lock}
+          type="password"
+          placeholder="••••••••"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          minLength={6}
+          autoComplete="new-password"
+        />
+
+        <AuthField
+          id="signup-confirm-password"
+          label="Confirm Password"
+          icon={Lock}
+          type="password"
+          placeholder="••••••••"
+          value={confirmPassword}
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          minLength={6}
+          autoComplete="new-password"
+        />
+
+        <label className="auth-check">
+          <input type="checkbox" required />
+          <span>I agree to the Terms of Service and Privacy Policy</span>
+        </label>
+
+        <button type="submit" className="auth-submit">
+          <Shield className="h-4 w-4" aria-hidden="true" />
+          Create Account as {roleLabel}
+        </button>
+      </form>
+
+      <p className="auth-card-foot">
+        Already have an account? <Link to="/login" className="auth-link">Sign in</Link>
+      </p>
+    </AuthLayout>
   )
 }
 

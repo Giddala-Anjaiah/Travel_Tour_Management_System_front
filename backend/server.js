@@ -975,7 +975,12 @@ app.get(
       jwtSecret,
       { expiresIn: '24h' }
     );
-    res.redirect(`${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?token=${token}&role=${req.user.role}`);
+    // Use state param (frontend origin) passed during auth start, fall back to FRONTEND_URL
+    let frontend = req.query.state ? decodeURIComponent(req.query.state) : (process.env.FRONTEND_URL || 'http://localhost:5173')
+    if (!frontend || frontend.includes('onrender.com') || frontend.includes('localhost:5000')) {
+      frontend = process.env.FRONTEND_URL || 'http://localhost:5173'
+    }
+    res.redirect(`${frontend}/login?token=${token}&role=${req.user.role}`);
   }
 );
 
@@ -2085,6 +2090,55 @@ app.post('/api/admin/send-email', async (req, res) => {
     res.status(200).json({ message: 'Email sent', success, fail });
   } catch (error) {
     res.status(500).json({ message: 'Error sending email' });
+  }
+});
+
+// --- Public Contact Form ---
+app.post('/api/contact', async (req, res) => {
+  try {
+    const { name, email, subject, message } = req.body;
+    if (!name || !email || !subject || !message) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+    const adminEmail = process.env.ADMIN_EMAIL || 'anjaiahgiddala@gmail.com';
+    const html = `
+      <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:8px;">
+        <h2 style="color:#1e3a5f;margin-bottom:8px;">New Contact Form Submission</h2>
+        <p><strong>From:</strong> ${name} &lt;${email}&gt;</p>
+        <p><strong>Subject:</strong> ${subject}</p>
+        <hr style="border-color:#e5e7eb;" />
+        <p style="white-space:pre-line;">${message}</p>
+        <hr style="border-color:#e5e7eb;" />
+        <p style="color:#6b7280;font-size:12px;">Sent via Travel Tour Management System website</p>
+      </div>
+    `;
+    let emailSent = false;
+    try {
+      await sendEmailViaBrevo(adminEmail, `Contact Form: ${subject}`, html);
+      emailSent = true;
+    } catch (e) {
+      console.error('Contact email send failed:', e.message);
+    }
+    // Also send an auto-reply to the user
+    try {
+      const replyHtml = `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px;border:1px solid #e5e7eb;border-radius:8px;">
+          <h2 style="color:#4f46e5;">Thank you for reaching out!</h2>
+          <p>Hi ${name},</p>
+          <p>We've received your message and our team will get back to you within 24 hours.</p>
+          <p><strong>Your subject:</strong> ${subject}</p>
+          <hr style="border-color:#e5e7eb;" />
+          <p style="color:#6b7280;font-size:12px;">Travel Tour Management System</p>
+        </div>
+      `;
+      await sendEmailViaBrevo(email, 'Re: Your message to Travel Tour Management System', replyHtml);
+    } catch (e) {
+      console.error('Auto-reply failed:', e.message);
+    }
+    res.status(200).json({ message: emailSent ? 'Message sent successfully! Check your email for confirmation.' : 'Message received. We will get back to you soon.' });
+  } catch (error) {
+    console.error('Contact form error:', error);
+    res.status(500).json({ message: 'Error sending message' });
   }
 });
 
