@@ -3,7 +3,16 @@ import { Link } from 'react-router-dom'
 import { Plane, ArrowLeft } from 'lucide-react'
 import ThemeToggle from '../ThemeToggle'
 
-export default function AuthLayout({ badge, heading, description, features, children }) {
+export default function AuthLayout({
+  badge,
+  heading,
+  description,
+  features,
+  children,
+  headingBefore,
+  backLabel = 'Back to Home',
+  backTo = '/',
+}) {
   // Hide the app-level floating theme toggle while an auth layout is mounted,
   // so the header toggle is the only one visible on these pages.
   useEffect(() => {
@@ -27,9 +36,9 @@ export default function AuthLayout({ badge, heading, description, features, chil
 
           <div className="auth-topbar-actions">
             <ThemeToggle className="auth-theme-toggle" />
-            <Link to="/" className="auth-home-btn">
+            <Link to={backTo} className="auth-home-btn">
               <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-              Back to Home
+              {backLabel}
             </Link>
           </div>
         </div>
@@ -38,8 +47,9 @@ export default function AuthLayout({ badge, heading, description, features, chil
       <main className="auth-main">
         <section className="auth-intro">
           <span className="auth-badge">{badge}</span>
+          {headingBefore && <h1 className="auth-intro-title auth-intro-title--sm">{headingBefore}</h1>}
           <h1 className="auth-intro-title">{heading}</h1>
-          <p className="auth-intro-text">{description}</p>
+          {description && <p className="auth-intro-text">{description}</p>}
 
           <ul className="auth-features">
             {features.map((feature) => (

@@ -1,10 +1,25 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Plane, Mail, Shield, Eye, EyeOff } from 'lucide-react'
+import { Compass, Luggage, BedDouble, CalendarCheck, ShieldCheck, Mail, Lock, CheckCircle2 } from 'lucide-react'
 import { API_BASE } from './api'
 import { showToast } from './components/toastEvents'
-import './AuthLegacy.css'
-import './ForgotPassword.css'
+import AuthLayout from './components/auth/AuthLayout'
+import AuthField from './components/auth/AuthField'
+import './Auth.css'
+
+const RECOVERY_FEATURES = [
+  { icon: Compass, title: 'Explore Destinations', text: 'Discover destinations and travel experiences.' },
+  { icon: Luggage, title: 'Tour Packages', text: 'Browse curated tour packages for your next journey.' },
+  { icon: BedDouble, title: 'Hotels & Availability', text: 'Find hotels and check room availability.' },
+  { icon: CalendarCheck, title: 'Easy Booking Management', text: 'Manage your travel bookings in one place.' },
+  { icon: ShieldCheck, title: 'Secure Account Recovery', text: 'Safely recover your account and continue your journey.' },
+]
+
+const STEPS = [
+  { value: 'email', label: 'Email' },
+  { value: 'otp', label: 'Verify OTP' },
+  { value: 'reset', label: 'Reset Password' },
+]
 
 const ForgotPassword = () => {
   const navigate = useNavigate()
@@ -14,8 +29,6 @@ const ForgotPassword = () => {
   const [otp, setOtp] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [showConfirm, setShowConfirm] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
   const [loading, setLoading] = useState(false)
@@ -125,6 +138,8 @@ const ForgotPassword = () => {
       const data = await res.json()
       if (res.ok) {
         showToast('Password reset successfully!')
+        setSuccess(data.message || 'Your password has been updated successfully.')
+        setStep('done')
         setTimeout(() => {
           navigate('/login')
         }, 1000)
@@ -152,47 +167,80 @@ const ForgotPassword = () => {
     setError('')
   }
 
-  return (
-    <div className="auth-page">
-      <div className="auth-content">
-        <div className="auth-card">
-          <div className="auth-header">
-            <div className="logo-icon">
-              <Plane className="h-8 w-8 text-white" />
+  const activeIndex = STEPS.findIndex((item) => item.value === step)
+
+  const stepIndicator = (
+    <div className="auth-steps">
+      {STEPS.map((item, index) => {
+        const state = index === activeIndex ? 'active' : index < activeIndex ? 'done' : ''
+        return (
+          <Fragment key={item.value}>
+            <div className={`auth-step ${state ? `auth-step--${state}` : ''}`.trim()}>
+              <span className="auth-step-num">{index + 1}</span>
+              <span className="auth-step-label">{item.label}</span>
             </div>
-            <h2>Forgot Password</h2>
-            <p>{step === 'email' ? 'Enter your email to receive an OTP' : step === 'otp' ? 'Enter the 6-digit OTP sent to your email' : 'Create a new password'}</p>
-          </div>
+            {index < STEPS.length - 1 ? (
+              <span
+                className={`auth-step-line ${index < activeIndex ? 'auth-step-line--done' : ''}`.trim()}
+              />
+            ) : null}
+          </Fragment>
+        )
+      })}
+    </div>
+  )
 
-          {/* Step Indicator */}
-          <div className="step-indicator">
-            <div className={`step-dot ${step === 'email' ? 'active' : ''}`}>1</div>
-            <div className="step-line"></div>
-            <div className={`step-dot ${step === 'otp' ? 'active' : ''}`}>2</div>
-            <div className="step-line"></div>
-            <div className={`step-dot ${step === 'reset' ? 'active' : ''}`}>3</div>
-          </div>
+  const cardCopy = {
+    email: { title: 'Forgot Password', sub: 'Enter your email address to receive an OTP code.' },
+    otp: { title: 'Verify OTP', sub: "We've sent a verification code to your registered email." },
+    reset: { title: 'Create New Password', sub: 'Enter your new password below.' },
+    done: { title: 'Password Reset Successfully', sub: 'Your password has been updated successfully.' },
+  }[step]
 
-          {error && <div className="error-message">{error}</div>}
-          {success && <div className="success-message">{success}</div>}
+  return (
+    <AuthLayout
+      badge="Password Recovery"
+      headingBefore="Forgot your"
+      heading="Password?"
+      description="Don't worry! Enter your registered email address and we'll send you a One-Time Password (OTP) to reset it."
+      features={RECOVERY_FEATURES}
+      backLabel="Back to Login"
+      backTo="/login"
+    >
+      {error && <div className="auth-alert auth-alert-error">{error}</div>}
+      {success && step !== 'done' && <div className="auth-alert auth-alert-success">{success}</div>}
+
+      {step === 'done' ? (
+        <div className="auth-success">
+          <span className="auth-success-icon">
+            <CheckCircle2 className="h-8 w-8" aria-hidden="true" />
+          </span>
+          <h2 className="auth-success-title">{cardCopy.title}</h2>
+          <p className="auth-success-text">{success || cardCopy.sub}</p>
+          <button type="button" className="auth-submit" onClick={() => navigate('/login')}>
+            Back to Login
+          </button>
+        </div>
+      ) : (
+        <>
+          <h2 className="auth-card-title">{cardCopy.title}</h2>
+          <p className="auth-card-sub">{cardCopy.sub}</p>
+
+          {stepIndicator}
 
           {step === 'email' && (
             <form className="auth-form" onSubmit={handleSendOtp}>
-              <div className="form-group">
-                <label>Email Address</label>
-                <div className="input-with-icon">
-                  <Mail className="h-5 w-5" />
-                  <input
-                    type="email"
-                    placeholder="your@email.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoComplete="email"
-                  />
-                </div>
-              </div>
-              <button type="submit" className="auth-btn" disabled={loading}>
+              <AuthField
+                id="forgot-email"
+                label="Email Address"
+                icon={Mail}
+                type="email"
+                placeholder="Enter your registered email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+              />
+              <button type="submit" className="auth-submit" disabled={loading}>
                 {loading ? 'Sending...' : 'Send OTP'}
               </button>
             </form>
@@ -200,24 +248,22 @@ const ForgotPassword = () => {
 
           {step === 'otp' && (
             <form className="auth-form" onSubmit={handleVerifyOtp}>
-              <div className="form-group">
-                <label>Enter 6-digit OTP</label>
-                <div className="input-with-icon">
-                  <Shield className="h-5 w-5" />
-                  <input
-                    type="text"
-                    placeholder="123456"
-                    value={otp}
-                    onChange={handleOtpChange}
-                    maxLength={6}
-                    required
-                  />
-                </div>
-              </div>
-              <button type="submit" className="auth-btn" disabled={loading || !isOtpValid}>
+              <AuthField
+                id="forgot-otp"
+                label="OTP"
+                icon={ShieldCheck}
+                type="text"
+                className="auth-otp"
+                placeholder="000000"
+                value={otp}
+                onChange={handleOtpChange}
+                hint={email ? `Code sent to ${email}` : ''}
+                autoComplete="one-time-code"
+              />
+              <button type="submit" className="auth-submit" disabled={loading || !isOtpValid}>
                 {loading ? 'Verifying...' : 'Verify OTP'}
               </button>
-              <button type="button" className="auth-btn-secondary" onClick={handleResend}>
+              <button type="button" className="auth-submit-secondary" onClick={handleResend}>
                 Resend OTP
               </button>
             </form>
@@ -225,72 +271,54 @@ const ForgotPassword = () => {
 
           {step === 'reset' && (
             <form className="auth-form" onSubmit={handleResetPassword}>
-              <div className="form-group">
-                <label>New Password</label>
-                <div className="input-with-icon">
-                   <input
-                     type={showPassword ? 'text' : 'password'}
-                     className="password-input"
-                     placeholder="••••••••"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                    minLength={6}
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {!isPasswordValid && newPassword && (
-                  <span className="input-help">Password must be at least 6 characters</span>
-                )}
-              </div>
+              <AuthField
+                id="forgot-new-password"
+                label="New Password"
+                icon={Lock}
+                type="password"
+                placeholder="Enter new password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+                minLength={6}
+                hint={!isPasswordValid && newPassword ? 'Password must be at least 6 characters' : ''}
+                hintTone="error"
+              />
 
-              <div className="form-group">
-                <label>Confirm Password</label>
-                <div className="input-with-icon">
-                   <input
-                     type={showConfirm ? 'text' : 'password'}
-                     className="password-input"
-                     placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    required
-                    autoComplete="new-password"
-                  />
-                  <button
-                    type="button"
-                    className="password-toggle"
-                    onClick={() => setShowConfirm(!showConfirm)}
-                  >
-                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                {!isPasswordValid && confirmPassword && (
-                  <span className="input-help">Passwords do not match</span>
-                )}
-              </div>
+              <AuthField
+                id="forgot-confirm-password"
+                label="Confirm Password"
+                icon={Lock}
+                type="password"
+                placeholder="Confirm new password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+                hint={confirmPassword && !isConfirmValid ? 'Passwords do not match' : ''}
+                hintTone="error"
+              />
 
-              <button type="submit" className="auth-btn" disabled={loading || !isConfirmValid}>
+              <button type="submit" className="auth-submit" disabled={loading || !isConfirmValid}>
                 {loading ? 'Resetting...' : 'Reset Password'}
               </button>
             </form>
           )}
+        </>
+      )}
 
-          <p className="auth-footer">
-            Remember your password? <Link to="/login">Back to Login</Link>
-          </p>
-          <div className="auth-back">
-            <Link to="/">← Back to Home</Link>
-          </div>
-        </div>
-      </div>
-    </div>
+      <p className="auth-card-foot">
+        {step === 'otp' ? "Didn't receive the code? " : 'Remember your password? '}
+        {step === 'otp' ? (
+          <button type="button" className="auth-link" onClick={handleResend}>
+            Resend OTP
+          </button>
+        ) : (
+          <Link to="/login" className="auth-link">
+            Return to Sign In
+          </Link>
+        )}
+      </p>
+    </AuthLayout>
   )
 }
 

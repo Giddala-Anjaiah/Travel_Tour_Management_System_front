@@ -13,6 +13,9 @@ export default function AuthField({
   minLength,
   autoComplete,
   toggleable = false,
+  className = '',
+  hint = '',
+  hintTone = 'muted',
   children,
 }) {
   const [revealed, setRevealed] = useState(false)
@@ -34,7 +37,7 @@ export default function AuthField({
 
         <input
           id={id}
-          className="auth-input-el"
+          className={`auth-input-el ${className}`.trim()}
           type={resolvedType}
           placeholder={placeholder}
           value={value}
@@ -58,6 +61,12 @@ export default function AuthField({
 
         {children}
       </div>
+
+      {hint ? (
+        <span className={`auth-hint ${hintTone === 'error' ? 'auth-hint--error' : ''}`.trim()}>
+          {hint}
+        </span>
+      ) : null}
     </div>
   )
 }
