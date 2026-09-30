@@ -289,10 +289,19 @@ body.auth-route .theme-toggle-fixed { display: none; }
   font-family: inherit;
   font-size: 15px;
   font-weight: 400;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
 }
 
 .auth-input-el::placeholder { color: var(--text-light); opacity: 1; }
+
+.auth-input-el:hover:not(:focus),
+.auth-select:hover:not(:focus) {
+  border-color: var(--text-light);
+}
+
+.auth-input:hover .auth-input-icon { color: var(--primary); }
+
+.auth-input-icon { transition: color 0.2s ease; }
 
 .auth-input-el:focus,
 .auth-select:focus {
@@ -300,6 +309,10 @@ body.auth-route .theme-toggle-fixed { display: none; }
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.12);
 }
+
+.auth-select-wrap:hover .auth-select-chevron { color: var(--primary); }
+
+.auth-select-chevron { transition: color 0.2s ease; }
 
 .auth-input-icon {
   position: absolute;
@@ -369,13 +382,35 @@ body.auth-route .theme-toggle-fixed { display: none; }
 
 .auth-check input { margin: 2px 0 0; cursor: pointer; flex-shrink: 0; }
 
+.auth-check:hover { color: var(--text-dark); }
+
+.auth-check input:hover { accent-color: var(--primary); }
+
 .auth-check a, .auth-link {
   color: var(--primary);
   font-weight: 600;
   text-decoration: none;
+  transition: color 0.18s ease, opacity 0.18s ease;
 }
 
-.auth-check a:hover, .auth-link:hover { text-decoration: underline; }
+.auth-check a:hover,
+.auth-link:hover {
+  text-decoration: underline;
+  color: var(--text-dark);
+}
+
+.auth-link:active { opacity: 0.7; }
+
+button.auth-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+}
+
+.auth-card-foot .auth-link { display: inline-block; }
 
 /* ---------- Button ---------- */
 
@@ -623,6 +658,59 @@ body.auth-route .theme-toggle-fixed { display: none; }
 }
 
 .auth-card-foot--terms input { margin: 2px 0 0; flex-shrink: 0; cursor: pointer; }
+
+/* ============================================================
+   HOVER INTERACTIONS
+   ============================================================ */
+
+.auth-brand:hover .auth-brand-mark { transform: scale(1.06) rotate(-4deg); }
+.auth-brand:hover .auth-brand-name { color: var(--primary); }
+
+.auth-brand-mark,
+.auth-brand-name { transition: transform 0.2s ease, color 0.2s ease, background-color 0.2s ease; }
+
+.auth-feature:hover .auth-feature-icon { transform: scale(1.08); }
+.auth-feature:hover .auth-feature-title { color: var(--primary); }
+
+.auth-feature-icon,
+.auth-feature-title { transition: transform 0.2s ease, color 0.2s ease; }
+
+.auth-step-num { transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease; }
+
+.auth-step:hover .auth-step-num { transform: translateY(-2px); }
+
+.auth-step-line { transition: background-color 0.25s ease; }
+
+.auth-submit-secondary:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--bg-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-submit-secondary { transition: all 0.2s ease; }
+
+.auth-google:hover {
+  border-color: var(--primary);
+  background: var(--bg-light);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.auth-google { transition: all 0.2s ease; }
+
+/* Keyboard focus parity with hover */
+.auth-submit:focus-visible,
+.auth-submit-secondary:focus-visible,
+.auth-google:focus-visible,
+.auth-home-btn:focus-visible,
+.auth-eye:focus-visible,
+.auth-brand:focus-visible,
+.auth-link:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 
 /* ============================================================
    RESPONSIVE
