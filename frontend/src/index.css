@@ -151,13 +151,29 @@ body {
 
 .btn-signup {
   background: var(--gradient-2);
-  color: white;
+  color: #fff;
   border: 1.5px solid transparent;
+}
+
+/* .nav-links a and .mobile-menu a set a muted color with higher
+   specificity, so the Sign Up label needs to win explicitly to stay
+   readable on the dark gradient. */
+.nav-links a.btn-signup,
+.nav-menu a.btn-signup,
+.mobile-menu a.btn-signup,
+.btn-signup {
+  color: #fff;
+}
+
+.nav-links a.btn-signup:hover,
+.nav-menu a.btn-signup:hover,
+.mobile-menu a.btn-signup:hover,
+.btn-signup:hover {
+  color: #fff !important;
 }
 
 .btn-signup:hover {
   background: var(--gradient-3);
-  color: white !important;
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
