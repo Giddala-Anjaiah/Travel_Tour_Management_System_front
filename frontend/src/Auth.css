@@ -106,11 +106,13 @@ body.auth-route .theme-toggle-fixed { display: none; }
   transition: all 0.2s ease;
 }
 
-.auth-home-btn:hover {
-  background: var(--gradient-2);
-  border-color: var(--primary);
-  color: #fff;
-  transform: translateY(-1px);
+@media (hover: hover) and (pointer: fine) {
+  .auth-home-btn:hover {
+    background: var(--gradient-2);
+    border-color: var(--primary);
+    color: #fff;
+    transform: translateY(-1px);
+  }
 }
 
 /* ---------- Two column layout ---------- */
@@ -191,8 +193,15 @@ body.auth-route .theme-toggle-fixed { display: none; }
   transition: all 0.2s ease;
 }
 
-.auth-feature:hover {
-  transform: translateY(-2px);
+@media (hover: hover) and (pointer: fine) {
+  .auth-feature:hover {
+    transform: translateY(-2px);
+    border-color: var(--primary);
+    box-shadow: var(--shadow-md);
+  }
+}
+
+.auth-feature:focus-within {
   border-color: var(--primary);
   box-shadow: var(--shadow-md);
 }
@@ -241,6 +250,19 @@ body.auth-route .theme-toggle-fixed { display: none; }
   border-radius: 20px;
   box-shadow: var(--shadow-lg);
   padding: 36px 40px 32px;
+  transition: border-color 0.25s ease, box-shadow 0.25s ease, transform 0.25s ease;
+}
+
+.auth-card:focus-within {
+  border-color: rgba(30, 58, 95, 0.28);
+  box-shadow: 0 26px 52px -18px rgba(15, 34, 57, 0.28);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .auth-card:hover {
+    border-color: rgba(30, 58, 95, 0.28);
+    box-shadow: 0 26px 52px -18px rgba(15, 34, 57, 0.28);
+  }
 }
 
 .auth-card-title {
@@ -294,14 +316,25 @@ body.auth-route .theme-toggle-fixed { display: none; }
 
 .auth-input-el::placeholder { color: var(--text-light); opacity: 1; }
 
-.auth-input-el:hover:not(:focus),
-.auth-select:hover:not(:focus) {
-  border-color: var(--text-light);
+.auth-input-icon { transition: color 0.2s ease; }
+
+/* Hover feedback only for real pointers, so a tap never leaves a stuck border */
+@media (hover: hover) and (pointer: fine) {
+  .auth-input-el:hover:not(:focus),
+  .auth-select:hover:not(:focus) {
+    border-color: var(--text-light);
+  }
+
+  .auth-input:hover .auth-input-icon { color: var(--primary); }
+
+  .auth-select-wrap:hover .auth-select-chevron { color: var(--primary); }
+
+  .auth-eye:hover { color: var(--primary); background: var(--bg-light); }
 }
 
-.auth-input:hover .auth-input-icon { color: var(--primary); }
-
-.auth-input-icon { transition: color 0.2s ease; }
+/* Clicking into a field gives the same feedback as hovering it */
+.auth-input:focus-within .auth-input-icon { color: var(--primary); }
+.auth-input:focus-within .auth-eye { color: var(--primary); }
 
 .auth-input-el:focus,
 .auth-select:focus {
@@ -309,8 +342,6 @@ body.auth-route .theme-toggle-fixed { display: none; }
   border-color: var(--primary);
   box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.12);
 }
-
-.auth-select-wrap:hover .auth-select-chevron { color: var(--primary); }
 
 .auth-select-chevron { transition: color 0.2s ease; }
 
@@ -338,8 +369,6 @@ body.auth-route .theme-toggle-fixed { display: none; }
   cursor: pointer;
   transition: color 0.2s ease, background-color 0.2s ease;
 }
-
-.auth-eye:hover { color: var(--primary); background: var(--bg-light); }
 
 .auth-input:has(.auth-eye) .auth-input-el { padding-right: 50px; }
 
@@ -382,9 +411,17 @@ body.auth-route .theme-toggle-fixed { display: none; }
 
 .auth-check input { margin: 2px 0 0; cursor: pointer; flex-shrink: 0; }
 
-.auth-check:hover { color: var(--text-dark); }
+@media (hover: hover) and (pointer: fine) {
+  .auth-check:hover { color: var(--text-dark); }
 
-.auth-check input:hover { accent-color: var(--primary); }
+  .auth-check input:hover { accent-color: var(--primary); }
+
+  .auth-check a:hover,
+  .auth-link:hover {
+    text-decoration: underline;
+    color: var(--text-dark);
+  }
+}
 
 .auth-check a, .auth-link {
   color: var(--primary);
@@ -393,8 +430,16 @@ body.auth-route .theme-toggle-fixed { display: none; }
   transition: color 0.18s ease, opacity 0.18s ease;
 }
 
-.auth-check a:hover,
-.auth-link:hover {
+@media (hover: hover) and (pointer: fine) {
+  .auth-check a:hover,
+  .auth-link:hover {
+    text-decoration: underline;
+    color: var(--text-dark);
+  }
+}
+
+.auth-link:focus-visible,
+.auth-link:active {
   text-decoration: underline;
   color: var(--text-dark);
 }
@@ -433,10 +478,12 @@ button.auth-link {
   transition: all 0.2s ease;
 }
 
-.auth-submit:hover:not(:disabled) {
-  background: var(--gradient-2);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 22px -8px rgba(30, 58, 95, 0.6);
+@media (hover: hover) and (pointer: fine) {
+  .auth-submit:hover:not(:disabled) {
+    background: var(--gradient-2);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 22px -8px rgba(30, 58, 95, 0.6);
+  }
 }
 
 .auth-submit:disabled { opacity: 0.65; cursor: not-allowed; }
@@ -558,9 +605,11 @@ button.auth-link {
   transition: all 0.2s ease;
 }
 
-.auth-submit-secondary:hover {
-  border-color: var(--primary);
-  color: var(--primary);
+@media (hover: hover) and (pointer: fine) {
+  .auth-submit-secondary:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+  }
 }
 
 /* ---------- Success state ---------- */
@@ -635,7 +684,9 @@ button.auth-link {
   transition: all 0.2s ease;
 }
 
-.auth-google:hover { border-color: var(--primary); background: var(--bg-light); }
+@media (hover: hover) and (pointer: fine) {
+  .auth-google:hover { border-color: var(--primary); background: var(--bg-light); }
+}
 
 .auth-google img { width: 19px; height: 19px; }
 
@@ -660,47 +711,94 @@ button.auth-link {
 .auth-card-foot--terms input { margin: 2px 0 0; flex-shrink: 0; cursor: pointer; }
 
 /* ============================================================
-   HOVER INTERACTIONS
+   INTERACTIONS
+   Hover is gated behind (hover: hover) so a tap/click on touch
+   screens never leaves a stuck hover border, and :focus-within /
+   :active mirror the hover state for keyboard and tapped elements.
    ============================================================ */
 
-.auth-brand:hover .auth-brand-mark { transform: scale(1.06) rotate(-4deg); }
-.auth-brand:hover .auth-brand-name { color: var(--primary); }
+@media (hover: hover) and (pointer: fine) {
+  .auth-brand:hover .auth-brand-mark { transform: scale(1.06) rotate(-4deg); }
+  .auth-brand:hover .auth-brand-name { color: var(--primary); }
 
-.auth-brand-mark,
-.auth-brand-name { transition: transform 0.2s ease, color 0.2s ease, background-color 0.2s ease; }
+  .auth-feature:hover .auth-feature-icon { transform: scale(1.08); }
+  .auth-feature:hover .auth-feature-title { color: var(--primary); }
 
-.auth-feature:hover .auth-feature-icon { transform: scale(1.08); }
-.auth-feature:hover .auth-feature-title { color: var(--primary); }
+  .auth-step:hover .auth-step-num { transform: translateY(-2px); }
 
-.auth-feature-icon,
-.auth-feature-title { transition: transform 0.2s ease, color 0.2s ease; }
+  .auth-submit:hover:not(:disabled) { transform: translateY(-2px); }
 
-.auth-step-num { transition: transform 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease; }
+  .auth-submit-secondary:hover {
+    border-color: var(--primary);
+    color: var(--primary);
+    background: var(--bg-light);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
 
-.auth-step:hover .auth-step-num { transform: translateY(-2px); }
+  .auth-google:hover {
+    border-color: var(--primary);
+    background: var(--bg-light);
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-sm);
+  }
 
-.auth-step-line { transition: background-color 0.25s ease; }
+  .auth-home-btn:hover { transform: translateY(-1px); }
+  .auth-link:hover { text-decoration: underline; color: var(--text-dark); }
+  .auth-check:hover { color: var(--text-dark); }
+}
 
-.auth-submit-secondary:hover {
+/* Tapped / focused elements get the same treatment as hovered ones */
+.auth-brand:focus-visible .auth-brand-mark,
+.auth-brand:active .auth-brand-mark { transform: scale(1.06) rotate(-4deg); }
+
+.auth-feature:focus-within .auth-feature-icon { transform: scale(1.08); }
+.auth-step:focus-within .auth-step-num { transform: translateY(-2px); }
+
+.auth-submit:focus-visible,
+.auth-submit:active:not(:disabled) { transform: translateY(-2px); }
+
+.auth-submit-secondary:focus-visible,
+.auth-submit-secondary:active {
   border-color: var(--primary);
   color: var(--primary);
   background: var(--bg-light);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
 }
 
-.auth-submit-secondary { transition: all 0.2s ease; }
-
-.auth-google:hover {
+.auth-google:focus-visible,
+.auth-google:active {
   border-color: var(--primary);
   background: var(--bg-light);
   transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
 }
 
-.auth-google { transition: all 0.2s ease; }
+.auth-home-btn:focus-visible,
+.auth-home-btn:active { transform: translateY(-1px); }
 
-/* Keyboard focus parity with hover */
+.auth-link:focus-visible,
+.auth-link:active { text-decoration: underline; color: var(--text-dark); }
+
+.auth-check:focus-within { color: var(--text-dark); }
+
+.auth-brand-mark,
+.auth-brand-name,
+.auth-feature-icon,
+.auth-feature-title,
+.auth-submit,
+.auth-submit-secondary,
+.auth-google,
+.auth-home-btn,
+.auth-step-num,
+.auth-step-line { transition: transform 0.2s ease, color 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease; }
+
+/* Press feedback */
+.auth-submit:active:not(:disabled),
+.auth-submit-secondary:active,
+.auth-google:active,
+.auth-home-btn:active { transform: translateY(0) scale(0.99); }
+
+/* Keyboard focus rings */
 .auth-submit:focus-visible,
 .auth-submit-secondary:focus-visible,
 .auth-google:focus-visible,
