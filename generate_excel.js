@@ -1,6 +1,12 @@
 const XLSX = require('xlsx');
+const fs = require('fs');
+const path = require('path');
 
 const wb = XLSX.utils.book_new();
+
+// Read once so the documented Auth and pagination notes cannot drift away from
+// the implementation.
+const serverSource = fs.readFileSync(path.join(__dirname, 'backend/server.js'), 'utf8');
 
 const authData = [
   ['S.No', 'Type of Dashboard', 'HTTP Method', 'API Path', 'Description', 'Sample Request Body (JSON)', 'Sample Response (JSON)', 'Success Status Code', 'Error Status Codes'],
@@ -157,18 +163,203 @@ const hotelData = [
   [136, 'Hotel Partner', 'GET', '/api/hotel/analytics', 'Get hotel analytics', '', '{ "stats": {...} }', 200, '401/403/500']
 ];
 
-const wsAuth = XLSX.utils.aoa_to_sheet(authData);
-const wsAdmin = XLSX.utils.aoa_to_sheet(adminData);
-const wsOperator = XLSX.utils.aoa_to_sheet(operatorData);
-const wsCustomer = XLSX.utils.aoa_to_sheet(customerData);
-const wsHotel = XLSX.utils.aoa_to_sheet(hotelData);
+// Endpoints added after the first pass of this document.
+const addedData = [
+  ['S.No', 'Type of Dashboard', 'HTTP Method', 'API Path', 'Description', 'Sample Request Body (JSON)', 'Sample Response (JSON)', 'Success Status Code', 'Error Status Codes'],
+  [137, 'Auth/Public', 'GET', '/api/auth/google', 'Start Google OAuth sign-in', '', 'Redirects to accounts.google.com with an OAuth state parameter', 302, '500'],
+  [138, 'Auth/Public', 'GET', '/api/auth/google/callback', 'Google OAuth callback, issues a session token', '', '{ "token": "eyJhbG...", "user": { "role": "customer" } }', 200, '401/500'],
+  [139, 'Public', 'POST', '/api/contact', 'Submit a public contact form message', '{ "fullName": "John Doe", "email": "john@test.com", "phone": "8000000001", "subject": " enquiry", "message": "Enquiry about Manali packages" }', '{ "message": "Message sent successfully" }', 201, '400/500'],
+  [140, 'Admin', 'GET', '/api/users', 'List users (admin scoped)', '', '{ "users": [{ "_id": "..." }] }', 200, '401/403/500'],
+  [141, 'Admin', 'POST', '/api/admin/send-email', 'Send an email to a user', '{ "to": "user@test.com", "subject": "Update", "message": "Body copy" }', '{ "message": "Email sent" }', 200, '400/401/403/500']
+];
 
-XLSX.utils.book_append_sheet(wb, wsAuth, 'Auth & Public');
-XLSX.utils.book_append_sheet(wb, wsAdmin, 'Admin Dashboard');
-XLSX.utils.book_append_sheet(wb, wsOperator, 'Tour Operator');
-XLSX.utils.book_append_sheet(wb, wsCustomer, 'Customer');
-XLSX.utils.book_append_sheet(wb, wsHotel, 'Hotel Partner');
+// ---------------------------------------------------------------------------
+// Documentation schema
+// ---------------------------------------------------------------------------
 
-const outputPath = 'D:/Tour/Travel_Tour_Management_System/Project_API_Documentation.xlsx';
+const HEADERS = [
+  'S.No',
+  'Dashboard Type',
+  'API Endpoint',
+  'Method',
+  'Auth',
+  'Request Body',
+  'Sample Response',
+  'Status Codes',
+  'Notes'
+];
+
+const ROLE_BY_PREFIX = [
+  ['/api/admin/', 'admin'],
+  ['/api/operator/', 'tour_operator'],
+  ['/api/customer/', 'customer'],
+  ['/api/hotel/', 'hotel_partner']
+];
+
+const PUBLIC_PATHS = new Set([
+  '/api/signup',
+  '/api/login',
+  '/api/forgot-password',
+  '/api/verify-otp',
+  '/api/reset-password',
+  '/api/packages',
+  '/api/packages/:id',
+  '/api/contact'
+]);
+
+// Guards are attached to a router mount rather than to each route, so the
+// documented Auth column is derived from the real mount points.
+const GUARD_BY_MOUNT = {
+  '/api/admin': 'admin',
+  '/api/operator': 'tour_operator',
+  '/api/customer': 'customer',
+  '/api/hotel': 'hotel_partner'
+};
+
+const mountRe = /app\.use\('(\/api\/[^']*)'\s*,\s*authenticate\s*,\s*require(\w+)\)/g;
+let mountMatch;
+while ((mountMatch = mountRe.exec(serverSource))) {
+  GUARD_BY_MOUNT[mountMatch[1]] = mountMatch[2].toLowerCase();
+}
+
+const ROLE_NAME = {
+  admin: 'admin',
+  touroperator: 'tour_operator',
+  customer: 'customer',
+  hotelpartner: 'hotel_partner'
+};
+
+const guardFor = (path) => {
+  const hit = Object.keys(GUARD_BY_MOUNT)
+    .filter((mount) => path.startsWith(`${mount}/`))
+    .sort((a, b) => b.length - a.length)[0];
+  if (!hit) return null;
+  return ROLE_NAME[GUARD_BY_MOUNT[hit]] || GUARD_BY_MOUNT[hit];
+};
+
+const isPublic = (path) =>
+  PUBLIC_PATHS.has(path) || path.startsWith('/api/public/') || path.startsWith('/api/auth/');
+
+const authFor = (path) => {
+  if (isPublic(path)) return 'None (public)';
+  // /api/users is guarded inline on the route rather than through a mount.
+  const role = path === '/api/users' ? 'admin' : guardFor(path);
+  return role ? `Bearer JWT (${role})` : 'Bearer JWT';
+};
+
+const routeIndex = [];
+{
+  const routeRe = /app\.(get|post|put|patch|delete)\(\s*'([^']+)'/g;
+  let match;
+  while ((match = routeRe.exec(serverSource))) {
+    routeIndex.push({ method: match[1].toUpperCase(), path: match[2], at: match.index });
+  }
+}
+
+const paginatedRoutes = new Set();
+routeIndex.forEach((route, i) => {
+  const end = i + 1 < routeIndex.length ? routeIndex[i + 1].at : serverSource.length;
+  const handler = serverSource.slice(route.at, end);
+  if (/pagedResponse\(|findPage\(/.test(handler)) {
+    paginatedRoutes.add(`${route.method} ${route.path}`);
+  }
+});
+
+const allRoutes = new Set(routeIndex.map((r) => `${r.method} ${r.path}`));
+
+// Legacy rows are either 9 values, or 10 when a path-parameter column such as
+// '/{id}' was written in. Both shapes are folded into the documented schema so
+// PUT and DELETE rows no longer sit one column to the right of the header.
+const toDocumentedRow = (row) => {
+  const [sno, type, method, apiPath, description, ...rest] = row;
+  let requestBody = '';
+  let sampleResponse = '';
+  let success = '';
+  let errors = '';
+  let pathParams = '';
+
+  // 9-value rows leave 4 values after the description; 10-value rows leave 5
+  // because of the leading path-parameter value.
+  if (rest.length >= 5) {
+    [pathParams, requestBody, sampleResponse, success, errors] = rest;
+  } else {
+    [requestBody, sampleResponse, success, errors] = rest;
+  }
+
+  const notes = [];
+  if (description) notes.push(description);
+  if (pathParams && pathParams !== '/') notes.push(`Path params: ${pathParams.replace(/^\//, '')}`);
+  if (paginatedRoutes.has(`${method} ${apiPath}`)) {
+    notes.push('Supports ?page & ?limit (?limit=all returns every row); response adds a "pagination" object');
+  }
+
+  const statusCodes = [
+    success ? `${success} on success` : null,
+    errors ? `${errors} on error` : null
+  ].filter(Boolean).join('; ');
+
+  return [
+    sno,
+    type,
+    apiPath,
+    method,
+    authFor(apiPath),
+    requestBody || '',
+    sampleResponse || '',
+    statusCodes,
+    notes.join('. ')
+  ];
+};
+
+const buildSheet = (rows) => {
+  const documented = rows.slice(1).map(toDocumentedRow);
+  const widths = [6, 15, 34, 9, 24, 46, 46, 22, 52];
+  const sheet = XLSX.utils.aoa_to_sheet([HEADERS, ...documented]);
+  sheet['!cols'] = widths.map((wch) => ({ wch }));
+  sheet['!freeze'] = { xSplit: 0, ySplit: 1 };
+  sheet['!autofilter'] = { ref: sheet['!ref'] };
+  return { sheet, documented };
+};
+
+const sheets = [
+  ['Auth & Public', [...authData, ...addedData.filter((r) => r[1] === 'Auth/Public' || r[1] === 'Public')]],
+  ['Admin Dashboard', [...adminData, ...addedData.filter((r) => r[1] === 'Admin')]],
+  ['Tour Operator', operatorData],
+  ['Customer', customerData],
+  ['Hotel Partner', hotelData]
+];
+
+const documentedKeys = new Set();
+const unknown = [];
+const flatRows = [];
+
+sheets.forEach(([name, rows]) => {
+  const { sheet, documented } = buildSheet(rows);
+  documented.forEach((row) => {
+    const key = `${row[3]} ${row[2]}`;
+    documentedKeys.add(key);
+    if (!allRoutes.has(key)) unknown.push(key);
+  });
+  flatRows.push({ name, rows: documented });
+  XLSX.utils.book_append_sheet(wb, sheet, name);
+});
+
+const missingFromDocs = [...allRoutes].filter((route) => !documentedKeys.has(route));
+
+const outputPath = path.join(__dirname, 'Project_API_Documentation.xlsx');
 XLSX.writeFile(wb, outputPath);
+
+// Keep the flat CSV companion on the same schema as the workbook.
+const csvPath = path.join(__dirname, 'Project_API_Documentation.csv');
+const csvRows = flatRows.flatMap(({ name, rows }) =>
+  rows.map((row) => [row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], `${name} — ${row[8]}`]));
+const csvBook = XLSX.utils.book_new();
+XLSX.utils.book_append_sheet(csvBook, XLSX.utils.aoa_to_sheet([HEADERS, ...csvRows]), 'API Documentation');
+XLSX.writeFile(csvBook, csvPath, { bookType: 'csv' });
+
 console.log('Excel file created at:', outputPath);
+console.log('CSV file created at:', csvPath);
+console.log('Sheets:', wb.SheetNames.join(', '));
+console.log('Documented endpoints:', documentedKeys.size, '/ backend routes:', allRoutes.size);
+if (unknown.length) console.log('WARNING - documented but absent from backend:', unknown);
+if (missingFromDocs.length) console.log('WARNING - backend routes not documented:', missingFromDocs);
