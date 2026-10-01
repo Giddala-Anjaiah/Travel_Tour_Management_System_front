@@ -70,7 +70,12 @@ const Pagination = ({
               className="pagination-select"
               value={limit}
               disabled={disabled}
-              onChange={(event) => onLimitChange(Number(event.target.value))}
+              onChange={(event) => {
+                const next = Number(event.target.value)
+                // Ignore an empty or unknown value: the backend treats 0 as
+                // "return every row", which would silently disable paging.
+                if (PAGE_SIZE_OPTIONS.includes(next)) onLimitChange(next)
+              }}
             >
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
