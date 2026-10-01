@@ -75,7 +75,9 @@ const Pagination = ({
         ) : null}
       </div>
 
-      {totalPages > 1 ? (
+      {/* The controls stay mounted on a single page too, so Previous/Next are
+          always visible; they are simply disabled at the edges. */}
+      {total > 0 ? (
         <div className="pagination-controls">
           <button
             type="button"
