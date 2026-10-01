@@ -472,14 +472,14 @@ const BookingsPayments = () => {
       </div>
 
       <Pagination
-        page={meta.page}
+        page={page}
         totalPages={meta.totalPages}
         total={hasLocalFilters ? filteredBookings.length : totalCount}
         limit={meta.limit}
         onPageChange={handlePageChange}
         onLimitChange={handleLimitChange}
         itemLabel="bookings"
-        disabled={loading || hasLocalFilters}
+        disabled={loading}
       />
 
       {showPaymentModal && selectedBooking && (

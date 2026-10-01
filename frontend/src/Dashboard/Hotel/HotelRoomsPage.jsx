@@ -315,14 +315,14 @@ const HotelRoomsPage = () => {
         )}
 
         <Pagination
-          page={meta.page}
+          page={page}
           totalPages={meta.totalPages}
           total={hasLocalFilters ? filtered.length : meta.total}
           limit={meta.limit}
           onPageChange={handlePageChange}
           onLimitChange={handleLimitChange}
           itemLabel="rooms"
-          disabled={loading || hasLocalFilters}
+          disabled={loading}
         />
       </div>
 

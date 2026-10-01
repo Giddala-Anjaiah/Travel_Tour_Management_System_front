@@ -249,7 +249,7 @@ const HotelReviewsRevenuePage = () => {
             </div>
 
             <Pagination
-              page={metas.reviews.page}
+              page={pages.reviews}
               totalPages={metas.reviews.totalPages}
               total={hasLocalReviews ? filteredReviews.length : metas.reviews.total}
               limit={metas.reviews.limit}
@@ -320,7 +320,7 @@ const HotelReviewsRevenuePage = () => {
             </div>
             )}
             <Pagination
-              page={metas.notifications.page}
+              page={pages.notifications}
               totalPages={metas.notifications.totalPages}
               total={metas.notifications.total}
               limit={metas.notifications.limit}

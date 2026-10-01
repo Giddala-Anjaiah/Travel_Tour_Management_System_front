@@ -228,7 +228,7 @@ const Itineraries = () => {
       </div>
 
       <Pagination
-        page={meta.page}
+        page={page}
         totalPages={meta.totalPages}
         total={meta.total}
         limit={meta.limit}

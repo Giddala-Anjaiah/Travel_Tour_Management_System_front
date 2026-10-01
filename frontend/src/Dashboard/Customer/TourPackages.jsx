@@ -340,14 +340,14 @@ const TourPackages = () => {
       )}
 
       <Pagination
-        page={meta.page}
+        page={page}
         totalPages={meta.totalPages}
         total={hasLocalFilters ? filteredPackages.length : meta.total}
         limit={meta.limit}
         onPageChange={handlePageChange}
         onLimitChange={handleLimitChange}
         itemLabel="packages"
-        disabled={loading || hasLocalFilters}
+        disabled={loading}
       />
     </CustomerLayout>
   )

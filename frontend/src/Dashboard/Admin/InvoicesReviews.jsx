@@ -343,14 +343,14 @@ const InvoicesReviews = () => {
                   </tbody>
                 </table>
                 <Pagination
-                  page={invoiceMeta.page}
+                  page={invoicePage}
                   totalPages={invoiceMeta.totalPages}
                   total={invoiceMeta.total}
                   limit={invoiceMeta.limit}
                   onPageChange={handleInvoicePageChange}
                   onLimitChange={handleInvoiceLimitChange}
                   itemLabel="invoices"
-                  disabled={loading || hasLocalFilters}
+                  disabled={loading}
                 />
               </div>
             )}
@@ -400,14 +400,14 @@ const InvoicesReviews = () => {
               ))}
             </div>
             <Pagination
-              page={reviewMeta.page}
+              page={reviewPage}
               totalPages={reviewMeta.totalPages}
               total={reviewMeta.total}
               limit={reviewMeta.limit}
               onPageChange={handleReviewPageChange}
               onLimitChange={handleReviewLimitChange}
               itemLabel="reviews"
-              disabled={loading || hasLocalFilters}
+              disabled={loading}
             />
           </div>
         </>

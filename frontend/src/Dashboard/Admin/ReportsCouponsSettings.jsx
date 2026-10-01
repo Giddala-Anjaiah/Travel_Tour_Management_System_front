@@ -364,14 +364,13 @@ const ReportsCouponsSettings = () => {
               ))}
             </div>
             <Pagination
-              page={couponMeta.page}
+              page={couponPaging.page}
               totalPages={couponMeta.totalPages}
               total={couponMeta.total}
               limit={couponMeta.limit}
               onPageChange={handleCouponPageChange}
               onLimitChange={handleCouponLimitChange}
               itemLabel="coupons"
-              disabled={hasLocalFilters}
             />
           </div>
         </>

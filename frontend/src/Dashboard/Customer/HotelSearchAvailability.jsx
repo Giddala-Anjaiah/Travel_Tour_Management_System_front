@@ -312,14 +312,14 @@ const HotelSearchAvailability = () => {
       </div>
 
       <Pagination
-        page={meta.page}
+        page={page}
         totalPages={meta.totalPages}
         total={hasLocalFilters ? filteredHotels.length : meta.total}
         limit={meta.limit}
         onPageChange={handlePageChange}
         onLimitChange={handleLimitChange}
         itemLabel="properties"
-        disabled={loading || hasLocalFilters}
+        disabled={loading}
       />
 
       {selectedHotel && (

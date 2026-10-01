@@ -228,7 +228,7 @@ const ItineraryManagement = () => {
                   </tbody>
                 </table>
                 <Pagination
-                  page={itineraryMeta.page}
+                  page={itineraryPage}
                   totalPages={itineraryMeta.totalPages}
                   total={itineraryMeta.total}
                   limit={itineraryMeta.limit}
@@ -271,7 +271,7 @@ const ItineraryManagement = () => {
               ))}
             </div>
             <Pagination
-              page={hotelMeta.page}
+              page={hotelPage}
               totalPages={hotelMeta.totalPages}
               total={hotelMeta.total}
               limit={hotelMeta.limit}

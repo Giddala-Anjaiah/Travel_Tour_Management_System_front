@@ -300,14 +300,14 @@ const InvoicesBookingHistory = () => {
       </div>
 
       <Pagination
-        page={meta.page}
+        page={page}
         totalPages={meta.totalPages}
         total={hasLocalFilters ? filteredInvoices.length : totalCount}
         limit={meta.limit}
         onPageChange={handlePageChange}
         onLimitChange={handleLimitChange}
         itemLabel="invoices"
-        disabled={loading || hasLocalFilters}
+        disabled={loading}
       />
 
       {showInvoiceModal && selectedInvoice && (

@@ -260,14 +260,14 @@ const RoomsManagement = () => {
           </div>
         )}
         <Pagination
-          page={meta.page}
+          page={page}
           totalPages={meta.totalPages}
           total={meta.total}
           limit={meta.limit}
           onPageChange={handlePageChange}
           onLimitChange={handleLimitChange}
           itemLabel="room types"
-          disabled={loading || hasLocalFilters}
+          disabled={loading}
         />
       </div>
 

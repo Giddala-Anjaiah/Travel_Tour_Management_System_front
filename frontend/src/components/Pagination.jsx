@@ -80,9 +80,10 @@ const Pagination = ({
         ) : null}
       </div>
 
-      {/* The controls stay mounted on a single page too, so Previous/Next are
-          always visible; they are simply disabled at the edges. */}
-      {total > 0 ? (
+      {/* Page controls only appear when there is more than one page. Rendering
+          them on a single-page list left Previous/Next permanently disabled,
+          which read as broken controls rather than as "nothing to page". */}
+      {total > 0 && totalPages > 1 ? (
         <div className="pagination-controls">
           <button
             type="button"

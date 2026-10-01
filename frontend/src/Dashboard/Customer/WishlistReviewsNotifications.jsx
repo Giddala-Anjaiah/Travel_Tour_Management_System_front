@@ -427,7 +427,7 @@ const WishlistReviewsNotifications = () => {
            )}
         </div>
         <Pagination
-          page={metas.wishlist.page}
+          page={pages.wishlist}
           totalPages={metas.wishlist.totalPages}
           total={metas.wishlist.total}
           limit={metas.wishlist.limit}
@@ -482,7 +482,7 @@ const WishlistReviewsNotifications = () => {
              )}
           </div>
           <Pagination
-            page={metas.reviews.page}
+            page={pages.reviews}
             totalPages={metas.reviews.totalPages}
             total={metas.reviews.total}
             limit={metas.reviews.limit}
@@ -536,7 +536,7 @@ const WishlistReviewsNotifications = () => {
             )}
           </div>
           <Pagination
-            page={metas.notifications.page}
+            page={pages.notifications}
             totalPages={metas.notifications.totalPages}
             total={metas.notifications.total}
             limit={metas.notifications.limit}

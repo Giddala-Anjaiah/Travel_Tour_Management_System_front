@@ -128,14 +128,14 @@ const OperatorCustomers = () => {
                 ))}
               </div>
               <Pagination
-                page={meta.page}
+                page={page}
                 totalPages={meta.totalPages}
                 total={meta.total}
                 limit={meta.limit}
                 onPageChange={handlePageChange}
                 onLimitChange={handleLimitChange}
                 itemLabel="customers"
-                disabled={loading || hasLocalFilters}
+                disabled={loading}
               />
               </>
           )}

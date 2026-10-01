@@ -272,14 +272,14 @@ const UserManagement = () => {
               </tbody>
             </table>
             <Pagination
-              page={meta.page}
+              page={page}
               totalPages={meta.totalPages}
               total={meta.total}
               limit={meta.limit}
               onPageChange={handlePageChange}
               onLimitChange={handleLimitChange}
               itemLabel="users"
-              disabled={loading || hasLocalFilters}
+              disabled={loading}
             />
           </div>
         )}

@@ -239,14 +239,14 @@ const AuditLogs = () => {
               </tbody>
             </table>
             <Pagination
-              page={meta.page}
+              page={page}
               totalPages={meta.totalPages}
               total={meta.total}
               limit={meta.limit}
               onPageChange={handlePageChange}
               onLimitChange={handleLimitChange}
               itemLabel="audit log entries"
-              disabled={loading || hasLocalFilters}
+              disabled={loading}
             />
           </div>
         </div>
