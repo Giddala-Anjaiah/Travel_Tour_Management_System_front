@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Save, RefreshCw, AlertTriangle, Power, PowerOff } from 'lucide-react'
 import HotelLayout from './HotelLayout'
-import { api, formatCurrency } from '../../api'
+import { api, formatCurrency, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const HotelAvailabilityPage = () => {
@@ -12,28 +13,56 @@ const HotelAvailabilityPage = () => {
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
 
-  const load = async () => {
+  // This page has no filter controls, so `/hotel/availability` is always paged.
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
       setLoading(true)
+      setError('')
       const profile = await api('/hotel/profile').catch(() => ({}))
       const name = profile?.profile?.hotelName || ''
       setHotelName(name)
-      if (!name) { setRooms([]); return }
-      const data = await api(`/hotel/availability?hotelName=${encodeURIComponent(name)}`)
-      setRooms(data.rooms || [])
+      if (!name) { setRooms([]); setMeta(readPagination({}, 0)); return }
+      const data = await api('/hotel/availability', {
+        params: { hotelName: name, page: nextPage, limit: nextLimit }
+      })
+      const rows = data.rooms || []
+      setRooms(rows)
       setEdits({})
+      const next = readPagination(data, rows.length)
+      setMeta(next)
+      if (next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
 
   useEffect(() => {
     Promise.resolve().then(() => load())
-  }, [refreshKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit, refreshKey])
 
   useEffect(() => {
     const id = setInterval(() => setRefreshKey(k => k + 1), 25000)
     return () => clearInterval(id)
   }, [])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const setField = (id, key, val) => {
     setEdits(prev => ({ ...prev, [id]: { ...prev[id], [key]: val } }))
@@ -185,6 +214,17 @@ const HotelAvailabilityPage = () => {
             </table>
           </div>
         )}
+
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="rooms"
+          disabled={loading}
+        />
       </div>
 
       <style>{`

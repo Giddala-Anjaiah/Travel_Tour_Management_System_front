@@ -1,7 +1,32 @@
 import { useEffect, useState } from 'react'
 import { FileText, Star, Plus, Trash2, Search, Download, DollarSign } from 'lucide-react'
-import { api, downloadCsv, formValues, formatCurrency, formatDate } from '../../api'
+import { api, downloadCsv, fetchAllPages, formValues, formatCurrency, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
+
+const mapInvoice = (invoice) => ({
+  id: invoice._id,
+  invoiceNo: invoice.invoiceNo,
+  customer: invoice.customer,
+  email: invoice.email,
+  package: invoice.package,
+  amount: invoice.amount,
+  status: invoice.status,
+  date: formatDate(invoice.date),
+  dueDate: formatDate(invoice.dueDate)
+})
+
+const mapReview = (review) => ({
+  id: review._id,
+  customer: review.customer,
+  package: review.package,
+  rating: review.rating,
+  comment: review.comment,
+  status: review.status,
+  date: formatDate(review.date)
+})
+
+const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
 
 const InvoicesReviews = () => {
   const [activeTab, setActiveTab] = useState('invoices')
@@ -14,35 +39,52 @@ const InvoicesReviews = () => {
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  // Each tab owns its own page/limit/meta so switching tabs never shares a page.
+  const [invoicePage, setInvoicePage] = useState(1)
+  const [invoiceLimit, setInvoiceLimit] = useState(10)
+  const [invoiceMeta, setInvoiceMeta] = useState(emptyMeta)
+  const [invoiceStats, setInvoiceStats] = useState(null)
+  const [reviewPage, setReviewPage] = useState(1)
+  const [reviewLimit, setReviewLimit] = useState(10)
+  const [reviewMeta, setReviewMeta] = useState(emptyMeta)
+  const [reviewStats, setReviewStats] = useState(null)
 
-  const load = async () => {
+  // Both routes only filter server-side on `search`. An active status filter
+  // pulls the whole set and filters the rows locally instead.
+  const hasLocalFilters = filterStatus !== 'all'
+
+  const load = async (overrides = {}) => {
+    const nextInvoicePage = overrides.invoicePage ?? invoicePage
+    const nextInvoiceLimit = overrides.invoiceLimit ?? invoiceLimit
+    const nextReviewPage = overrides.reviewPage ?? reviewPage
+    const nextReviewLimit = overrides.reviewLimit ?? reviewLimit
     try {
       setError('')
       const [invoiceData, reviewData, packageData] = await Promise.all([
-        api('/admin/invoices'),
-        api('/admin/reviews'),
-        api('/admin/packages')
+        api('/admin/invoices', {
+          params: {
+            page: hasLocalFilters ? undefined : nextInvoicePage,
+            limit: hasLocalFilters ? 'all' : nextInvoiceLimit,
+            search: searchTerm
+          }
+        }),
+        api('/admin/reviews', {
+          params: {
+            page: hasLocalFilters ? undefined : nextReviewPage,
+            limit: hasLocalFilters ? 'all' : nextReviewLimit,
+            search: searchTerm
+          }
+        }),
+        api('/admin/packages', { params: { limit: 'all' } })
       ])
-      setInvoices((invoiceData.invoices || []).map((invoice) => ({
-        id: invoice._id,
-        invoiceNo: invoice.invoiceNo,
-        customer: invoice.customer,
-        email: invoice.email,
-        package: invoice.package,
-        amount: invoice.amount,
-        status: invoice.status,
-        date: formatDate(invoice.date),
-        dueDate: formatDate(invoice.dueDate)
-      })))
-      setReviews((reviewData.reviews || []).map((review) => ({
-        id: review._id,
-        customer: review.customer,
-        package: review.package,
-        rating: review.rating,
-        comment: review.comment,
-        status: review.status,
-        date: formatDate(review.date)
-      })))
+      const mappedInvoices = (invoiceData.invoices || []).map(mapInvoice)
+      setInvoices(mappedInvoices)
+      setInvoiceMeta(readPagination(invoiceData, mappedInvoices.length))
+      if (invoiceData.stats) setInvoiceStats(invoiceData.stats)
+      const mappedReviews = (reviewData.reviews || []).map(mapReview)
+      setReviews(mappedReviews)
+      setReviewMeta(readPagination(reviewData, mappedReviews.length))
+      if (reviewData.stats) setReviewStats(reviewData.stats)
       setPackages(packageData.packages || [])
     } catch (err) {
       setError(err.message)
@@ -53,22 +95,58 @@ const InvoicesReviews = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => load())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [invoicePage, invoiceLimit, reviewPage, reviewLimit])
 
-  const filteredInvoices = invoices.filter((invoice) => {
-    const haystack = `${invoice.customer} ${invoice.invoiceNo} ${invoice.package}`.toLowerCase()
-    return haystack.includes(searchTerm.toLowerCase()) && (filterStatus === 'all' || invoice.status === filterStatus)
-  })
-  const filteredReviews = reviews.filter((review) => {
-    const haystack = `${review.customer} ${review.package}`.toLowerCase()
-    return haystack.includes(searchTerm.toLowerCase()) && (filterStatus === 'all' || review.status === filterStatus)
-  })
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setInvoicePage(1)
+      setReviewPage(1)
+      if (invoicePage === 1 && reviewPage === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus])
+
+  const handleInvoicePageChange = (nextPage) => {
+    setInvoicePage(nextPage)
+    setLoading(true)
+  }
+
+  const handleInvoiceLimitChange = (nextLimit) => {
+    setInvoiceLimit(nextLimit)
+    setInvoicePage(1)
+    setLoading(true)
+  }
+
+  const handleReviewPageChange = (nextPage) => {
+    setReviewPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleReviewLimitChange = (nextLimit) => {
+    setReviewLimit(nextLimit)
+    setReviewPage(1)
+    setLoading(true)
+  }
+
+  const filteredInvoices = hasLocalFilters
+    ? invoices.filter((invoice) => filterStatus === 'all' || invoice.status === filterStatus)
+    : invoices
+  const filteredReviews = hasLocalFilters
+    ? reviews.filter((review) => filterStatus === 'all' || review.status === filterStatus)
+    : reviews
 
   const handleDeleteInvoice = async (id) => {
     if (!window.confirm('Delete this invoice?')) return
     try {
       await api(`/admin/invoices/${id}`, { method: 'DELETE' })
-      setInvoices(invoices.filter((invoice) => invoice.id !== id))
+      if (filteredInvoices.length <= 1 && invoicePage > 1) {
+        setInvoicePage(invoicePage - 1)
+        setLoading(true)
+      } else {
+        load()
+      }
     } catch (err) {
       alert(err.message)
     }
@@ -78,7 +156,12 @@ const InvoicesReviews = () => {
     if (!window.confirm('Delete this review?')) return
     try {
       await api(`/admin/reviews/${id}`, { method: 'DELETE' })
-      setReviews(reviews.filter((review) => review.id !== id))
+      if (filteredReviews.length <= 1 && reviewPage > 1) {
+        setReviewPage(reviewPage - 1)
+        setLoading(true)
+      } else {
+        load()
+      }
     } catch (err) {
       alert(err.message)
     }
@@ -87,7 +170,7 @@ const InvoicesReviews = () => {
   const updateReviewStatus = async (id, status) => {
     try {
       await api(`/admin/reviews/${id}`, { method: 'PUT', body: JSON.stringify({ status }) })
-      setReviews(reviews.map((review) => review.id === id ? { ...review, status } : review))
+      load()
     } catch (err) {
       alert(err.message)
     }
@@ -156,7 +239,25 @@ const InvoicesReviews = () => {
     URL.revokeObjectURL(url)
   }
 
-  const avgRating = reviews.length ? (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(1) : '0.0'
+  const handleExport = async () => {
+    if (activeTab === 'invoices') {
+      const rows = await fetchAllPages('/admin/invoices', { key: 'invoices', params: { search: searchTerm } })
+      const mapped = rows.map(mapInvoice)
+      const exported = hasLocalFilters
+        ? mapped.filter((invoice) => filterStatus === 'all' || invoice.status === filterStatus)
+        : mapped
+      downloadCsv('invoices.csv', ['Invoice', 'Customer', 'Email', 'Package', 'Amount', 'Status', 'Date', 'Due'], exported.map((i) => [i.invoiceNo, i.customer, i.email, i.package, i.amount, i.status, i.date, i.dueDate]))
+    } else {
+      const rows = await fetchAllPages('/admin/reviews', { key: 'reviews', params: { search: searchTerm } })
+      const mapped = rows.map(mapReview)
+      const exported = hasLocalFilters
+        ? mapped.filter((review) => filterStatus === 'all' || review.status === filterStatus)
+        : mapped
+      downloadCsv('reviews.csv', ['Customer', 'Package', 'Rating', 'Comment', 'Status', 'Date'], exported.map((r) => [r.customer, r.package, r.rating, r.comment, r.status, r.date]))
+    }
+  }
+
+  const avgRating = reviewStats?.averageRating ?? (reviews.length ? (reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length).toFixed(1) : '0.0')
 
   return (
     <AdminLayout
@@ -164,10 +265,7 @@ const InvoicesReviews = () => {
       title="Invoices & Reviews"
       actions={
         <>
-          <button className="action-btn" onClick={() => {
-            if (activeTab === 'invoices') downloadCsv('invoices.csv', ['Invoice', 'Customer', 'Email', 'Package', 'Amount', 'Status', 'Date', 'Due'], filteredInvoices.map((i) => [i.invoiceNo, i.customer, i.email, i.package, i.amount, i.status, i.date, i.dueDate]))
-            else downloadCsv('reviews.csv', ['Customer', 'Package', 'Rating', 'Comment', 'Status', 'Date'], filteredReviews.map((r) => [r.customer, r.package, r.rating, r.comment, r.status, r.date]))
-          }}><Download className="h-4 w-4" /> Export</button>
+          <button className="action-btn" onClick={handleExport}><Download className="h-4 w-4" /> Export</button>
           {activeTab === 'invoices' && <button className="action-btn" onClick={() => setShowAddModal(true)}><Plus className="h-4 w-4" /> Create Invoice</button>}
           {activeTab === 'reviews' && <button className="action-btn" onClick={() => setShowReviewModal(true)}><Plus className="h-4 w-4" /> Add Review</button>}
         </>
@@ -206,13 +304,13 @@ const InvoicesReviews = () => {
       {activeTab === 'invoices' && (
         <>
           <div className="stats-grid">
-            <div className="stat-card"><FileText className="stat-icon" /><div className="stat-content"><h3>Total Invoices</h3><p className="stat-number">{invoices.length}</p></div></div>
-            <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Total Amount</h3><p className="stat-number">{formatCurrency(invoices.reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
+            <div className="stat-card"><FileText className="stat-icon" /><div className="stat-content"><h3>Total Invoices</h3><p className="stat-number">{invoiceStats?.total ?? invoiceMeta.total}</p></div></div>
+            <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Total Amount</h3><p className="stat-number">{formatCurrency(invoiceStats?.totalAmount ?? invoices.reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
             <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Paid</h3><p className="stat-number">{formatCurrency(invoices.filter((i) => i.status === 'paid').reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
             <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Pending</h3><p className="stat-number">{formatCurrency(invoices.filter((i) => i.status !== 'paid').reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
           </div>
           <div className="section-card full-width">
-            <h3>Invoices ({filteredInvoices.length})</h3>
+            <h3>Invoices ({hasLocalFilters ? filteredInvoices.length : invoiceMeta.total})</h3>
             {loading ? <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div> : (
               <div className="table-container">
                 <table className="data-table">
@@ -226,7 +324,7 @@ const InvoicesReviews = () => {
                         <td>{invoice.package}</td>
                         <td>₹{invoice.amount.toLocaleString()}</td>
                         <td>
-                          <select className="status-select" value={invoice.status} onChange={(e) => api(`/admin/invoices/${invoice.id}`, { method: 'PUT', body: JSON.stringify({ status: e.target.value }) }).then(load).catch((err) => console.error('Status update failed:', err))}>
+                          <select className="status-select" value={invoice.status} onChange={(e) => api(`/admin/invoices/${invoice.id}`, { method: 'PUT', body: JSON.stringify({ status: e.target.value }) }).then(() => load()).catch((err) => console.error('Status update failed:', err))}>
                             <option value="paid">paid</option>
                             <option value="pending">pending</option>
                             <option value="overdue">overdue</option>
@@ -244,6 +342,16 @@ const InvoicesReviews = () => {
                     ))}
                   </tbody>
                 </table>
+                <Pagination
+                  page={invoiceMeta.page}
+                  totalPages={invoiceMeta.totalPages}
+                  total={invoiceMeta.total}
+                  limit={invoiceMeta.limit}
+                  onPageChange={handleInvoicePageChange}
+                  onLimitChange={handleInvoiceLimitChange}
+                  itemLabel="invoices"
+                  disabled={loading || hasLocalFilters}
+                />
               </div>
             )}
           </div>
@@ -253,12 +361,12 @@ const InvoicesReviews = () => {
       {activeTab === 'reviews' && (
         <>
           <div className="stats-grid">
-            <div className="stat-card"><Star className="stat-icon" /><div className="stat-content"><h3>Total Reviews</h3><p className="stat-number">{reviews.length}</p></div></div>
+            <div className="stat-card"><Star className="stat-icon" /><div className="stat-content"><h3>Total Reviews</h3><p className="stat-number">{reviewStats?.total ?? reviewMeta.total}</p></div></div>
             <div className="stat-card"><Star className="stat-icon" /><div className="stat-content"><h3>Average Rating</h3><p className="stat-number">{avgRating}</p></div></div>
-            <div className="stat-card"><FileText className="stat-icon" /><div className="stat-content"><h3>Pending Approval</h3><p className="stat-number">{reviews.filter((r) => r.status === 'pending').length}</p></div></div>
+            <div className="stat-card"><FileText className="stat-icon" /><div className="stat-content"><h3>Pending Approval</h3><p className="stat-number">{reviewStats?.byStatus?.pending ?? reviews.filter((r) => r.status === 'pending').length}</p></div></div>
           </div>
           <div className="section-card full-width">
-            <h3>Reviews ({filteredReviews.length})</h3>
+            <h3>Reviews ({hasLocalFilters ? filteredReviews.length : reviewMeta.total})</h3>
             <div className="reviews-list">
               {filteredReviews.length === 0 && <div style={{ padding: '2rem', textAlign: 'center' }}>No reviews found</div>}
               {filteredReviews.map((review) => (
@@ -291,6 +399,16 @@ const InvoicesReviews = () => {
                 </div>
               ))}
             </div>
+            <Pagination
+              page={reviewMeta.page}
+              totalPages={reviewMeta.totalPages}
+              total={reviewMeta.total}
+              limit={reviewMeta.limit}
+              onPageChange={handleReviewPageChange}
+              onLimitChange={handleReviewLimitChange}
+              itemLabel="reviews"
+              disabled={loading || hasLocalFilters}
+            />
           </div>
         </>
       )}

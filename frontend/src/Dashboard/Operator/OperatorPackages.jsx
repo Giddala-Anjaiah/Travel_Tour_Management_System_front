@@ -1,6 +1,7 @@
-import { API_BASE } from '../../api'
+import { API_BASE, api, readPagination } from '../../api'
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
+import Pagination from '../../components/Pagination'
 import { MapPin, Calendar, Clock, Plus, Search, Pencil as Edit, Trash2, Star, CheckCircle, XCircle, Sparkles, Award, Image as ImageIcon } from 'lucide-react'
 import '../Dashboard.css'
 
@@ -11,6 +12,9 @@ const OperatorPackages = () => {
   const [filterStatus, setFilterStatus] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [editingPackage, setEditingPackage] = useState(null)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
   const [formData, setFormData] = useState({
     name: '',
     destination: '',
@@ -34,18 +38,23 @@ const OperatorPackages = () => {
     images: []
   })
 
-  const fetchPackages = async () => {
+  const hasLocalFilters = filterStatus !== 'all'
+
+  const fetchPackages = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(API_BASE + '/operator/packages', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const data = await api('/operator/packages', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
         }
       })
-      const data = await response.json()
       if (data.packages) {
         setPackages(data.packages)
       }
+      setMeta(readPagination(data, data.packages?.length || 0))
     } catch (error) {
       console.error('Error fetching packages:', error)
     } finally {
@@ -55,9 +64,30 @@ const OperatorPackages = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchPackages())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchPackages({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus])
 
   usePolling(fetchPackages, 15000)
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const handleCreate = () => {
     setEditingPackage(null)
@@ -125,7 +155,11 @@ const OperatorPackages = () => {
         })
         if (response.ok) {
           alert('Package deleted successfully')
-          fetchPackages()
+          if (packages.length === 1 && page > 1) {
+            setPage(page - 1)
+          } else {
+            fetchPackages()
+          }
         } else {
           alert('Error deleting package')
         }
@@ -178,12 +212,9 @@ const OperatorPackages = () => {
     }
   }
 
-  const filteredPackages = packages.filter(pkg => {
-    const matchesSearch = pkg.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         pkg.destination.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = filterStatus === 'all' || pkg.publishedStatus === filterStatus
-    return matchesSearch && matchesStatus
-  })
+  const filteredPackages = hasLocalFilters
+    ? packages.filter(pkg => pkg.publishedStatus === filterStatus)
+    : packages
 
   const getStatusBadge = (status) => {
     const badges = {
@@ -240,6 +271,7 @@ const OperatorPackages = () => {
               </button>
             </div>
           ) : (
+            <>
             <div className="packages-grid enhanced">
               {filteredPackages.map(pkg => (
                 <div key={pkg._id} className="package-card enhanced">
@@ -287,6 +319,17 @@ const OperatorPackages = () => {
                 </div>
               ))}
             </div>
+            <Pagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="packages"
+              disabled={loading || hasLocalFilters}
+            />
+            </>
           )}
 
       {showModal && (

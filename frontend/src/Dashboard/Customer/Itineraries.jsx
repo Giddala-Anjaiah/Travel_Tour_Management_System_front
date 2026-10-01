@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Clock, Building, Star, Search, Eye, ArrowRight, Compass, Sparkles, CheckCircle, Info } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
-import { api } from '../../api'
+import { api, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const Itineraries = () => {
@@ -12,21 +13,60 @@ const Itineraries = () => {
   const [packages, setPackages] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(12)
+  const [meta, setMeta] = useState({ page: 1, limit: 12, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+
+  // `/customer/itineraries` has no unsupported filters on this page — the search
+  // box is the only control and the route filters server-side on it.
+  const fetchItineraries = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setError('')
+      const data = await api('/customer/itineraries', {
+        params: { page: nextPage, limit: nextLimit, search: searchTerm }
+      })
+      const rows = data.itineraries || []
+      setPackages(rows)
+      const next = readPagination(data, rows.length)
+      setMeta(next)
+      if (next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load itineraries')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setError('')
-        const data = await api('/customer/itineraries')
-        setPackages(data.itineraries || [])
-      } catch (err) {
-        setError(err.message || 'Failed to load itineraries')
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
+    Promise.resolve().then(() => fetchItineraries())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      setLoading(true)
+      fetchItineraries({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const itineraries = packages.map(it => ({
     id: it._id,
@@ -42,10 +82,7 @@ const Itineraries = () => {
     schedule: it.dayDetails || []
   }))
 
-  const filteredItineraries = itineraries.filter(it =>
-    (it.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (it.package || '').toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredItineraries = itineraries
 
   const viewDetails = (itinerary) => {
     setSelectedItinerary(itinerary)
@@ -80,7 +117,7 @@ const Itineraries = () => {
         <div className="header-stats">
           <div className="stat-badge">
             <Sparkles className="h-4 w-4" />
-            <span>{itineraries.length} itineraries</span>
+            <span>{meta.total} itineraries</span>
           </div>
         </div>
       }
@@ -189,6 +226,17 @@ const Itineraries = () => {
           )
         })}
       </div>
+
+      <Pagination
+        page={meta.page}
+        totalPages={meta.totalPages}
+        total={meta.total}
+        limit={meta.limit}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        itemLabel="itineraries"
+        disabled={loading}
+      />
 
       {showDetails && selectedItinerary && (
         <div className="modal-overlay">

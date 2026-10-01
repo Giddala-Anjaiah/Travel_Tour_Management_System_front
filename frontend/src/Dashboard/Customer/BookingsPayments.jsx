@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { CreditCard, Search, Clock, CheckCircle, XCircle, AlertCircle, Download, Eye, Sparkles, Shield, Ticket, Calendar as CalendarIcon, Wallet, Zap, Users, MapPin } from 'lucide-react'
 import { useSearchParams, useLocation } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
-import { api, formatDate } from '../../api'
+import { api, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const BookingsPayments = () => {
@@ -34,26 +35,81 @@ const BookingsPayments = () => {
   const [formError, setFormError] = useState('')
   const [searchParams] = useSearchParams()
   const location = useLocation()
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [stats, setStats] = useState(null)
 
+  // `/customer/bookings` filters server-side on `search` only. Status is not
+  // supported, so when it is active we load the full set and filter rows locally.
+  const hasLocalFilters = filterStatus !== 'all'
+
+  const fetchBookings = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setError('')
+      const data = await api('/customer/bookings', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
+        }
+      })
+      const rows = data.bookings || []
+      setBookings(rows)
+      const next = readPagination(data, rows.length)
+      setMeta(next)
+      if (data.stats) setStats(data.stats)
+      if (!hasLocalFilters && next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Lookup sources for the booking modal and the deep link — always the full set.
   useEffect(() => {
     const load = async () => {
-      try {
-        const [bookingsData, packagesData, hotelsData] = await Promise.all([
-          api('/customer/bookings').catch(() => ({ bookings: [] })),
-          api('/packages?publishedOnly=true').catch(() => ({ packages: [] })),
-          api('/public/hotels').catch(() => ({ hotels: [] }))
-        ])
-        setBookings(bookingsData.bookings || [])
-        setPackages(packagesData.packages || [])
-        setHotels(hotelsData.hotels || [])
-      } catch (err) {
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
+      const [packagesData, hotelsData] = await Promise.all([
+        api('/packages', { params: { publishedOnly: 'true', limit: 'all' } }).catch(() => ({ packages: [] })),
+        api('/public/hotels', { params: { limit: 'all' } }).catch(() => ({ hotels: [] }))
+      ])
+      setPackages(packagesData.packages || [])
+      setHotels(hotelsData.hotels || [])
     }
     load()
   }, [])
+
+  useEffect(() => {
+    Promise.resolve().then(() => fetchBookings())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      setLoading(true)
+      fetchBookings({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   useEffect(() => {
     const packageId = searchParams.get('packageId')
@@ -94,11 +150,11 @@ const BookingsPayments = () => {
     })
   }, [searchParams, location.state, packages])
 
+  // `search` runs server-side (bookingId/customer/package/email); only the
+  // unsupported status filter is resolved locally.
   const filteredBookings = bookings.filter(booking => {
-    const matchesSearch = (booking.package || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (booking.bookingId || '').toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = filterStatus === 'all' || booking.status === filterStatus
-    return matchesSearch && matchesStatus
+    return matchesStatus
   })
 
   const getStatusIcon = (status) => {
@@ -146,9 +202,10 @@ const BookingsPayments = () => {
         method: 'PUT',
         body: JSON.stringify({ amount: remaining })
       })
-      setBookings(prev => prev.map(b => b._id === selectedBooking._id ? data.booking : b))
+      void data
       setShowPaymentModal(false)
       setSelectedBooking(null)
+      await fetchBookings()
     } catch (err) {
       alert(err.message || 'Payment failed')
     } finally {
@@ -204,7 +261,7 @@ const BookingsPayments = () => {
         method: 'POST',
         body: JSON.stringify(payload)
       })
-      setBookings(prev => [data.booking, ...prev])
+      void data
       setShowBookingModal(false)
       setForm({
         packageId: '',
@@ -225,7 +282,8 @@ const BookingsPayments = () => {
     }
   }
 
-  const totalSpent = bookings.reduce((sum, b) => sum + (b.paidAmount || 0), 0)
+  const totalCount = stats?.total ?? meta.total
+  const totalSpent = stats?.totalSpent ?? bookings.reduce((sum, b) => sum + (b.paidAmount || 0), 0)
   const pendingPayment = bookings.reduce((sum, b) => sum + ((b.amount || 0) - (b.paidAmount || 0)), 0)
 
   return (
@@ -237,7 +295,7 @@ const BookingsPayments = () => {
         <div className="header-stats">
           <div className="stat-badge">
             <Sparkles className="h-4 w-4" />
-            <span>{bookings.length} bookings</span>
+            <span>{totalCount} bookings</span>
           </div>
           <div className="stat-badge">
             <Shield className="h-4 w-4" />
@@ -252,8 +310,8 @@ const BookingsPayments = () => {
         <div className="stat-card enhanced">
           <Ticket className="stat-icon" />
           <div className="stat-content">
-            <h3>Total Bookings</h3>
-            <p className="stat-number">{bookings.length}</p>
+<h3>Total Bookings</h3>
+          <p className="stat-number">{totalCount}</p>
           </div>
         </div>
         <div className="stat-card enhanced">
@@ -412,6 +470,17 @@ const BookingsPayments = () => {
           </div>
         ))}
       </div>
+
+      <Pagination
+        page={meta.page}
+        totalPages={meta.totalPages}
+        total={hasLocalFilters ? filteredBookings.length : totalCount}
+        limit={meta.limit}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        itemLabel="bookings"
+        disabled={loading || hasLocalFilters}
+      />
 
       {showPaymentModal && selectedBooking && (
         <div className="modal-overlay">

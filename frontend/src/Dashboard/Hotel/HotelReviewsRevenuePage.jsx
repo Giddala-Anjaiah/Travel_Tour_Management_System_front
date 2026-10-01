@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Star, TrendingUp, Bell, Reply, CheckCircle, XCircle, Trash2, Send, Search, X } from 'lucide-react'
 import HotelLayout from './HotelLayout'
-import { api, formatCurrency, formatDate } from '../../api'
+import { api, formatCurrency, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
+
+const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
 
 const HotelReviewsRevenuePage = () => {
   const [activeTab, setActiveTab] = useState('reviews')
@@ -19,28 +22,58 @@ const HotelReviewsRevenuePage = () => {
   const [search, setSearch] = useState('')
   const [range, setRange] = useState('month')
   const [refreshKey, setRefreshKey] = useState(0)
+  // Reviews and notifications page independently; the revenue tab renders
+  // aggregates only, so it has no pager.
+  const [pages, setPages] = useState({ reviews: 1, notifications: 1 })
+  const [limits, setLimits] = useState({ reviews: 10, notifications: 10 })
+  const [metas, setMetas] = useState({ reviews: emptyMeta, notifications: emptyMeta })
+
+  // `/hotel/reviews` filters server-side on `search` (customer/comment/package)
+  // only. Rating and status are not supported, so when either is active we load
+  // the full set and filter the rendered rows locally.
+  const hasLocalReviews = filterRating !== 'all' || filterStatus !== 'all'
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
       setError('')
       if (activeTab === 'reviews') {
-        const data = await api('/hotel/reviews')
-        setReviews(data.reviews || [])
+        const data = await api('/hotel/reviews', {
+          params: {
+            page: hasLocalReviews ? undefined : pages.reviews,
+            limit: hasLocalReviews ? 'all' : limits.reviews,
+            search
+          }
+        })
+        const rows = data.reviews || []
+        setReviews(rows)
+        const next = readPagination(data, rows.length)
+        setMetas(prev => ({ ...prev, reviews: next }))
+        if (!hasLocalReviews && next.totalPages > 0 && pages.reviews > next.totalPages) {
+          setPages(prev => ({ ...prev, reviews: next.totalPages }))
+        }
       } else if (activeTab === 'revenue') {
-        const data = await api(`/hotel/revenue?range=${range}`)
+        const data = await api(`/hotel/revenue`, { params: { range } })
         setRevenue(data)
       } else if (activeTab === 'notifications') {
-        const data = await api('/hotel/notifications')
-        setNotifications(data.notifications || [])
+        const data = await api('/hotel/notifications', {
+          params: { page: pages.notifications, limit: limits.notifications }
+        })
+        const rows = data.notifications || []
+        setNotifications(rows)
         setUnreadCount(data.unreadCount || 0)
+        const next = readPagination(data, rows.length)
+        setMetas(prev => ({ ...prev, notifications: next }))
+        if (next.totalPages > 0 && pages.notifications > next.totalPages) {
+          setPages(prev => ({ ...prev, notifications: next.totalPages }))
+        }
       }
     } catch (err) {
       setError(err.message)
     } finally {
       setLoading(false)
     }
-  }, [activeTab, range])
+  }, [activeTab, range, pages, limits, search, hasLocalReviews])
 
   useEffect(() => {
     Promise.resolve().then(() => load())
@@ -51,36 +84,55 @@ const HotelReviewsRevenuePage = () => {
     return () => clearInterval(id)
   }, [])
 
+  const handlePageChange = (tab) => (nextPage) => {
+    setPages(prev => ({ ...prev, [tab]: nextPage }))
+    setLoading(true)
+  }
+
+  const handleLimitChange = (tab) => (nextLimit) => {
+    setLimits(prev => ({ ...prev, [tab]: nextLimit }))
+    setPages(prev => ({ ...prev, [tab]: 1 }))
+    setLoading(true)
+  }
+
+  // Deleting the only row on a page steps back one page instead of showing nothing.
+  const stepBackAfterDelete = (tab, rows) => {
+    if (pages[tab] > 1 && !hasLocalReviews && rows.length <= 1) {
+      setLoading(true)
+      setPages(prev => ({ ...prev, [tab]: prev[tab] - 1 }))
+      return true
+    }
+    return false
+  }
+
   const markAllRead = async () => {
     try {
       await api('/hotel/notifications/read-all', { method: 'PUT' })
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
-      setUnreadCount(0)
+      await load()
     } catch (err) { alert(err.message) }
   }
 
   const markRead = async (id) => {
     try {
       await api(`/hotel/notifications/${id}/read`, { method: 'PUT' })
-      setNotifications(prev => prev.map(n => n._id === id ? { ...n, read: true } : n))
-      setUnreadCount(prev => Math.max(0, prev - 1))
+      await load()
     } catch (err) { alert(err.message) }
   }
 
   const sendResponse = async () => {
     if (!responding || !responseText.trim()) return
     try {
-      const data = await api(`/hotel/reviews/${responding._id}/respond`, { method: 'PUT', body: JSON.stringify({ response: responseText }) })
-      setReviews(prev => prev.map(r => r._id === responding._id ? data.review : r))
+      await api(`/hotel/reviews/${responding._id}/respond`, { method: 'PUT', body: JSON.stringify({ response: responseText }) })
       setResponding(null)
       setResponseText('')
+      await load()
     } catch (err) { alert(err.message) }
   }
 
   const updateReviewStatus = async (id, status) => {
     try {
-      const data = await api(`/hotel/reviews/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) })
-      setReviews(prev => prev.map(r => r._id === id ? data.review : r))
+      await api(`/hotel/reviews/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) })
+      await load()
     } catch (err) { alert(err.message) }
   }
 
@@ -88,14 +140,15 @@ const HotelReviewsRevenuePage = () => {
     if (!confirm('Delete this review?')) return
     try {
       await api(`/hotel/reviews/${r._id}`, { method: 'DELETE' })
-      setReviews(prev => prev.filter(x => x._id !== r._id))
+      if (!stepBackAfterDelete('reviews', reviews)) await load()
     } catch (err) { alert(err.message) }
   }
 
+  // `search` is applied server-side; only the unsupported rating/status bands
+  // are resolved here, over the full set fetched while they are active.
   const filteredReviews = reviews.filter(r => {
     if (filterRating !== 'all' && r.rating !== Number(filterRating)) return false
     if (filterStatus !== 'all' && r.status !== filterStatus) return false
-    if (search && !(r.customer || '').toLowerCase().includes(search.toLowerCase()) && !(r.comment || '').toLowerCase().includes(search.toLowerCase())) return false
     return true
   })
 
@@ -194,6 +247,17 @@ const HotelReviewsRevenuePage = () => {
                 </div>
               ))}
             </div>
+
+            <Pagination
+              page={metas.reviews.page}
+              totalPages={metas.reviews.totalPages}
+              total={hasLocalReviews ? filteredReviews.length : metas.reviews.total}
+              limit={metas.reviews.limit}
+              onPageChange={handlePageChange('reviews')}
+              onLimitChange={handleLimitChange('reviews')}
+              itemLabel="reviews"
+              disabled={loading || hasLocalReviews}
+            />
           </>
         )}
 
@@ -237,7 +301,8 @@ const HotelReviewsRevenuePage = () => {
         )}
 
         {activeTab === 'notifications' && (
-          notifications.length === 0 && !loading ? <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>No notifications yet.</p> : (
+          <>
+            {notifications.length === 0 && !loading ? <p style={{ color: '#64748b', textAlign: 'center', padding: '2rem' }}>No notifications yet.</p> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
               {notifications.map(n => (
                 <div key={n._id} className={`notification-card ${n.read ? 'read' : 'unread'}`} onClick={() => !n.read && markRead(n._id)} style={{ cursor: !n.read ? 'pointer' : 'default' }}>
@@ -251,9 +316,20 @@ const HotelReviewsRevenuePage = () => {
                     {!n.read && <span className="badge-dot">{n.type}</span>}
                   </div>
                 </div>
-              ))}
+))}
             </div>
-          )
+            )}
+            <Pagination
+              page={metas.notifications.page}
+              totalPages={metas.notifications.totalPages}
+              total={metas.notifications.total}
+              limit={metas.notifications.limit}
+              onPageChange={handlePageChange('notifications')}
+              onLimitChange={handleLimitChange('notifications')}
+              itemLabel="notifications"
+              disabled={loading}
+            />
+          </>
         )}
       </div>
 

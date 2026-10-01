@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { MapPin, Users, Star, Heart, Search, ArrowRight, Clock, Sparkles, Check, Zap, Shield, Award } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
-import { api } from '../../api'
+import { api, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80'
@@ -28,21 +29,68 @@ const TourPackages = () => {
       return []
     }
   })
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(12)
+  const [meta, setMeta] = useState({ page: 1, limit: 12, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+
+  // `/packages` filters server-side on `search` only. Price and duration bands are
+  // not supported, so when either is active we ask for the full set and filter the
+  // rendered rows locally instead of paging a partial match.
+  const hasLocalFilters = filterPrice !== 'all' || filterDuration !== 'all'
+
+  const fetchPackages = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setError('')
+      const data = await api('/packages', {
+        params: {
+          publishedOnly: 'true',
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
+        }
+      })
+      setPackages(data.packages || [])
+      const next = readPagination(data, data.packages?.length || 0)
+      setMeta(next)
+      // A delete or a shrinking dataset can strand us past the last page.
+      if (!hasLocalFilters && next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        setError('')
-        const data = await api('/packages?publishedOnly=true')
-        setPackages(data.packages || [])
-      } catch (err) {
-        setError(err.message)
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
+    Promise.resolve().then(() => fetchPackages())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      setLoading(true)
+      fetchPackages({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterPrice, filterDuration])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   useEffect(() => {
     localStorage.setItem(WISHLIST_KEY, JSON.stringify(favorites))
@@ -66,9 +114,9 @@ const TourPackages = () => {
     category: (pkg.category || '').toLowerCase() || 'tour'
   })), [packages])
 
+  // `search` is applied server-side (name/destination/category), so only the
+  // unsupported price/duration bands are resolved here.
   const filteredPackages = normalized.filter(pkg => {
-    const matchesSearch = pkg.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         pkg.destination.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesPrice = filterPrice === 'all' ||
                         (filterPrice === 'low' && pkg.price < 20000) ||
                         (filterPrice === 'medium' && pkg.price >= 20000 && pkg.price < 35000) ||
@@ -77,7 +125,7 @@ const TourPackages = () => {
                           (filterDuration === 'short' && pkg.durationDays <= 4) ||
                           (filterDuration === 'medium' && pkg.durationDays > 4 && pkg.durationDays <= 6) ||
                           (filterDuration === 'long' && pkg.durationDays > 6)
-    return matchesSearch && matchesPrice && matchesDuration
+    return matchesPrice && matchesDuration
   })
 
   const toggleFavorite = (id) => {
@@ -107,7 +155,7 @@ const TourPackages = () => {
         <div className="header-stats">
           <div className="stat-badge">
             <Sparkles className="h-4 w-4" />
-            <span>{normalized.length} packages</span>
+            <span>{meta.total} packages</span>
           </div>
           <div className="stat-badge">
             <Award className="h-4 w-4" />
@@ -124,7 +172,7 @@ const TourPackages = () => {
           <p>Curated tour packages from verified operators. Filter by price, duration or destination to narrow down your pick.</p>
         </div>
         <div className="result-count">
-          <strong>{filteredPackages.length}</strong>
+          <strong>{hasLocalFilters ? filteredPackages.length : meta.total}</strong>
           {filteredPackages.length === 1 ? 'package' : 'packages'} available
         </div>
       </div>
@@ -290,6 +338,17 @@ const TourPackages = () => {
           })}
         </div>
       )}
+
+      <Pagination
+        page={meta.page}
+        totalPages={meta.totalPages}
+        total={hasLocalFilters ? filteredPackages.length : meta.total}
+        limit={meta.limit}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        itemLabel="packages"
+        disabled={loading || hasLocalFilters}
+      />
     </CustomerLayout>
   )
 }

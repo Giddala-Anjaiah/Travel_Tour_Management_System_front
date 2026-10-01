@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { MapPin, Star, Search, Heart, Bed, Wifi, Coffee, Sparkles, Shield, CheckCircle, Utensils, Dumbbell, Waves, AlertCircle, X } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
-import { api } from '../../api'
+import { api, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const HotelSearchAvailability = () => {
@@ -19,26 +20,67 @@ const HotelSearchAvailability = () => {
   const [favorites, setFavorites] = useState([])
   const [selectedHotel, setSelectedHotel] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(12)
+  const [meta, setMeta] = useState({ page: 1, limit: 12, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+
+  // `/public/hotels` only filters server-side on `search` (hotel name). Rating and
+  // price bands are unsupported, and the location dropdown is built from the
+  // returned set — so any of those three active means "load all, filter locally".
+  const hasLocalFilters = filterRating !== 'all' || filterPrice !== 'all' || filterLocation !== 'all'
+
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setLoading(true)
+      setError('')
+      const data = await api('/public/hotels', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
+        }
+      })
+      setHotels(data.hotels || [])
+      const next = readPagination(data, data.hotels?.length || 0)
+      setMeta(next)
+      if (!hasLocalFilters && next.totalPages > 0 && nextPage > next.totalPages) {
+        setPage(next.totalPages)
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load hotels')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false
     const stored = JSON.parse(localStorage.getItem('favorites_hotels') || '[]')
     Promise.resolve().then(() => setFavorites(stored))
-    const load = async () => {
-      try {
-        setLoading(true)
-        setError('')
-        const data = await api('/public/hotels')
-        if (!cancelled) setHotels(data.hotels || [])
-      } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load hotels')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
     Promise.resolve().then(() => load())
-    return () => { cancelled = true }
-  }, [refreshKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit, refreshKey])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      load({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterRating, filterPrice, filterLocation])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   useEffect(() => {
     localStorage.setItem('favorites_hotels', JSON.stringify(favorites))
@@ -46,12 +88,9 @@ const HotelSearchAvailability = () => {
 
   const locations = [...new Set(hotels.map(h => h.location).filter(Boolean))]
 
+  // `search` runs server-side (hotel name); the rating/price/location bands are
+  // resolved here over the full set that was requested while they are active.
   const filteredHotels = hotels.filter(hotel => {
-    const q = searchTerm.toLowerCase()
-    const matchesSearch = !q ||
-      hotel.name.toLowerCase().includes(q) ||
-      hotel.location.toLowerCase().includes(q) ||
-      (hotel.partner || '').toLowerCase().includes(q)
     const matchesRating = filterRating === 'all' ||
                         (filterRating === '3plus' && hotel.rating >= 3) ||
                         (filterRating === '4plus' && hotel.rating >= 4) ||
@@ -62,7 +101,7 @@ const HotelSearchAvailability = () => {
                        (filterPrice === 'mid' && price >= 5000 && price < 10000) ||
                        (filterPrice === 'luxury' && price >= 10000)
     const matchesLocation = filterLocation === 'all' || hotel.location === filterLocation
-    return matchesSearch && matchesRating && matchesPrice && matchesLocation
+    return matchesRating && matchesPrice && matchesLocation
   })
 
   const toggleFavorite = (id) => {
@@ -108,7 +147,7 @@ const HotelSearchAvailability = () => {
         <div className="header-stats">
           <div className="stat-badge">
             <Sparkles className="h-4 w-4" />
-            <span>{hotels.length} properties</span>
+            <span>{meta.total} properties</span>
           </div>
           <div className="stat-badge">
             <Shield className="h-4 w-4" />
@@ -173,7 +212,7 @@ const HotelSearchAvailability = () => {
 
       {loading && <div className="hotel-loading">Loading hotels...</div>}
       {error && <div className="hotel-error"><AlertCircle size={18} /> {error}</div>}
-      {!loading && !error && hotels.length === 0 && (
+      {!loading && !error && hotels.length === 0 && meta.total === 0 && (
         <div className="hotel-empty">
           <Bed size={48} style={{ color: '#cbd5e1' }} />
           <h4>No hotels available yet</h4>
@@ -271,6 +310,17 @@ const HotelSearchAvailability = () => {
           )
         })}
       </div>
+
+      <Pagination
+        page={meta.page}
+        totalPages={meta.totalPages}
+        total={hasLocalFilters ? filteredHotels.length : meta.total}
+        limit={meta.limit}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        itemLabel="properties"
+        disabled={loading || hasLocalFilters}
+      />
 
       {selectedHotel && (
         <div className="modal-overlay" onClick={() => setSelectedHotel(null)}>

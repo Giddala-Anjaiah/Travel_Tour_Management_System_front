@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Search, Users, Mail, Phone, DollarSign, X, Edit3, Trash2, Plus, Save } from 'lucide-react'
 import HotelLayout from './HotelLayout'
-import { api, formatCurrency, formatDate } from '../../api'
+import { api, formatCurrency, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const emptyGuestBooking = () => ({
@@ -24,35 +25,70 @@ const HotelGuestsPage = () => {
   const [form, setForm] = useState(emptyGuestBooking())
   const [saving, setSaving] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [guestStats, setGuestStats] = useState(null)
+
+  // Guest name/email/phone search runs server-side on `/hotel/guests`; this page
+  // has no other filter controls, so the guest list is always server-paged.
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setLoading(true)
+      setError('')
+      // Guests are paged; the bookings behind the "View History" modal must not be.
+      const [g, b] = await Promise.all([
+        api('/hotel/guests', { params: { page: nextPage, limit: nextLimit, search } }),
+        api('/hotel/bookings', { params: { limit: 'all' } })
+      ])
+      const rows = g.guests || []
+      setGuests(rows)
+      setBookings(b.bookings || [])
+      const next = readPagination(g, rows.length)
+      setMeta(next)
+      if (g.stats) setGuestStats(g.stats)
+      if (next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        setLoading(true)
-        const [b, g] = await Promise.all([api('/hotel/bookings'), api('/hotel/guests')])
-        if (!cancelled) {
-          setBookings(b.bookings || [])
-          setGuests(g.guests || [])
-        }
-      } catch (err) {
-        if (!cancelled) setError(err.message)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [refreshKey])
+    Promise.resolve().then(() => load())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit, refreshKey])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      load({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search])
+
+  // Refetches the CURRENT page with the current search.
   const refresh = () => setRefreshKey(k => k + 1)
 
-  const filtered = guests.filter(g => {
-    if (!search) return true
-    return (g.name || '').toLowerCase().includes(search.toLowerCase()) ||
-           (g.email || '').toLowerCase().includes(search.toLowerCase()) ||
-           (g.phone || '').includes(search)
-  })
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
+  const filtered = guests
 
   const guestBookings = (g) => bookings.filter(b =>
     (g.email && b.guestEmail === g.email) || b.guestName === g.name
@@ -100,15 +136,28 @@ const HotelGuestsPage = () => {
     if (!confirm(`Delete booking for ${b.guestName}?`)) return
     try {
       await api(`/hotel/bookings/${b._id}`, { method: 'DELETE' })
-      refresh()
+      // Deleting the only row on a page steps back one page instead of showing nothing.
+      if (page > 1 && filtered.length <= 1) {
+        setLoading(true)
+        setPage(page - 1)
+      } else {
+        refresh()
+      }
     } catch (err) { alert(err.message) }
   }
 
-  const stats = {
-    totalGuests: guests.length,
+  // The route counts unique guests over the whole scoped search; the remaining
+  // roll-ups have no server aggregate and fall back to the loaded rows.
+  const localStats = {
     returning: guests.filter(g => g.totalStays > 1).length,
     totalSpent: guests.reduce((s, g) => s + (g.totalSpent || 0), 0),
     totalStays: guests.reduce((s, g) => s + (g.totalStays || 0), 0)
+  }
+  const stats = {
+    totalGuests: guestStats?.totalGuests ?? meta.total,
+    returning: localStats.returning,
+    totalSpent: localStats.totalSpent,
+    totalStays: localStats.totalStays
   }
 
   return (
@@ -122,7 +171,7 @@ const HotelGuestsPage = () => {
 
       <div className="section-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <h3 style={{ margin: 0 }}>Guests ({filtered.length})</h3>
+          <h3 style={{ margin: 0 }}>Guests ({meta.total})</h3>
           <button className="btn-primary" onClick={openCreate}><Plus size={14} /> Add Booking</button>
         </div>
 
@@ -133,7 +182,7 @@ const HotelGuestsPage = () => {
 
         {loading && <p>Loading guests...</p>}
         {error && <p style={{ color: '#ef4444' }}>{error}</p>}
-        {!loading && guests.length === 0 && (
+        {!loading && guests.length === 0 && meta.total === 0 && (
           <div className="placeholder-content">
             <p>No guest data yet. Guests appear here once you receive bookings.</p>
           </div>
@@ -161,6 +210,17 @@ const HotelGuestsPage = () => {
             </table>
           </div>
         )}
+
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="guests"
+          disabled={loading}
+        />
       </div>
 
       {viewing && (

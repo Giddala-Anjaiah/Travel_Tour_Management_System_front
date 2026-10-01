@@ -1,7 +1,17 @@
 import { useEffect, useState } from 'react'
 import {  Send, Search, Download, CheckCircle, Trash2 } from 'lucide-react'
-import { api, downloadCsv } from '../../api'
+import { api, downloadCsv, fetchAllPages, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
+
+const matchesFilters = (notif, searchTerm, filterType, filterRead) => {
+  const matchesSearch = notif.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    notif.message?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    notif.userId?.fullName?.toLowerCase().includes(searchTerm.toLowerCase())
+  const matchesType = filterType === 'all' || notif.type === filterType
+  const matchesRead = filterRead === 'all' || (filterRead === 'read' ? notif.read : !notif.read)
+  return matchesSearch && matchesType && matchesRead
+}
 
 const NotificationsManagement = () => {
   const [notifications, setNotifications] = useState([])
@@ -14,6 +24,9 @@ const NotificationsManagement = () => {
   const [showSendModal, setShowSendModal] = useState(false)
   const [sendForm, setSendForm] = useState({ title: '', message: '', type: 'system', recipient: 'all', customUserIds: '' })
   const [sending, setSending] = useState(false)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
 
   const notificationTypes = [
     { value: 'booking', label: 'Booking' },
@@ -24,12 +37,24 @@ const NotificationsManagement = () => {
     { value: 'availability', label: 'Availability' }
   ]
 
-  const load = async () => {
+  // /admin/notifications only honours `olderThan`, so search and the
+  // type/read selects all fall back to the full set plus local filtering.
+  const hasLocalFilters = searchTerm !== '' || filterType !== 'all' || filterRead !== 'all'
+
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
       setError('')
       setLoading(true)
-      const data = await api('/admin/notifications?limit=200')
+      const data = await api('/admin/notifications', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit
+        }
+      })
       setNotifications(data.notifications || [])
+      setMeta(readPagination(data, (data.notifications || []).length))
       setStats(data.stats || null)
     } catch (err) {
       setError(err.message)
@@ -40,7 +65,28 @@ const NotificationsManagement = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => load())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      if (page === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterType, filterRead])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const handleSend = async () => {
     if (!sendForm.title || !sendForm.message) {
@@ -74,11 +120,19 @@ const NotificationsManagement = () => {
     }
   }
 
+  const filteredLogs = hasLocalFilters
+    ? notifications.filter((notif) => matchesFilters(notif, searchTerm, filterType, filterRead))
+    : notifications
+
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this notification?')) return
     try {
       await api(`/admin/notifications/${id}`, { method: 'DELETE' })
-      await load()
+      if (filteredLogs.length <= 1 && page > 1) {
+        setPage(page - 1)
+      } else {
+        await load()
+      }
     } catch (err) {
       setError(err.message)
     }
@@ -96,21 +150,31 @@ const NotificationsManagement = () => {
   const handleDeleteOlder = async () => {
     if (!window.confirm('Delete all notifications older than 30 days? This cannot be undone.')) return
     try {
-      await api('/admin/notifications?olderThan=30', { method: 'DELETE' })
+      await api('/admin/notifications', { method: 'DELETE', params: { olderThan: 30 } })
       await load()
     } catch (err) {
       setError(err.message)
     }
   }
 
-  const filteredLogs = notifications.filter((notif) => {
-    const matchesSearch = notif.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      notif.message?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      notif.userId?.fullName?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = filterType === 'all' || notif.type === filterType
-    const matchesRead = filterRead === 'all' || (filterRead === 'read' ? notif.read : !notif.read)
-    return matchesSearch && matchesType && matchesRead
-  })
+  const handleExport = async () => {
+    const rows = await fetchAllPages('/admin/notifications', { key: 'notifications' })
+    const exported = rows.filter((notif) => matchesFilters(notif, searchTerm, filterType, filterRead))
+    if (exported.length > 0) {
+      downloadCsv('notifications.csv',
+        ['Date', 'Recipient', 'Role', 'Type', 'Title', 'Message', 'Status'],
+        exported.map((n) => [
+          new Date(n.createdAt).toLocaleString(),
+          n.userId?.fullName || 'Unknown',
+          n.userId?.role || '',
+          typeLabels[n.type] || n.type,
+          n.title || '',
+          n.message || '',
+          n.read ? 'Read' : 'Unread'
+        ])
+      )
+    }
+  }
 
   const typeIcons = {
     booking: '📅',
@@ -138,22 +202,7 @@ const NotificationsManagement = () => {
         <button key="delete-old" className="action-btn" onClick={handleDeleteOlder} style={{ color: '#ef4444' }}>
           <Trash2 className="h-4 w-4" /> Delete Older
         </button>,
-        <button key="export" className="action-btn" onClick={() => {
-          if (filteredLogs.length > 0) {
-            downloadCsv('notifications.csv',
-              ['Date', 'Recipient', 'Role', 'Type', 'Title', 'Message', 'Status'],
-              filteredLogs.map((n) => [
-                new Date(n.createdAt).toLocaleString(),
-                n.userId?.fullName || 'Unknown',
-                n.userId?.role || '',
-                typeLabels[n.type] || n.type,
-                n.title || '',
-                n.message || '',
-                n.read ? 'Read' : 'Unread'
-              ])
-            )
-          }
-        }}>
+        <button key="export" className="action-btn" onClick={handleExport}>
           <Download className="h-4 w-4" /> Export
         </button>,
         <button key="send" className="action-btn" style={{ background: '#4f46e5', color: 'white' }} onClick={() => setShowSendModal(true)}>
@@ -210,7 +259,7 @@ const NotificationsManagement = () => {
         <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading notifications...</div>
       ) : (
         <div className="section-card full-width">
-          <h3>Notification Entries ({filteredLogs.length})</h3>
+          <h3>Notification Entries ({hasLocalFilters ? filteredLogs.length : meta.total})</h3>
           <div className="table-container">
             <table className="data-table">
               <thead>
@@ -273,6 +322,16 @@ const NotificationsManagement = () => {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="notifications"
+              disabled={loading || hasLocalFilters}
+            />
           </div>
         </div>
       )}

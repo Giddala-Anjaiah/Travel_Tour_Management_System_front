@@ -24,7 +24,9 @@ const DestinationExploration = () => {
     const load = async () => {
       try {
         setError('')
-        const data = await api('/packages?publishedOnly=true')
+        // Destinations are derived from the whole package list, so this fetch
+        // intentionally opts out of pagination (limit=all).
+        const data = await api('/packages', { params: { publishedOnly: 'true', limit: 'all' } })
         setPackages(data.packages || [])
       } catch (err) {
         setError(err.message || 'Failed to load destinations')

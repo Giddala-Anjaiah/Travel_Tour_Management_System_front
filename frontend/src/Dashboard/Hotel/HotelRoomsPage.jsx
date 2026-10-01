@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Plus, Search, Bed, Edit3, Trash2, Eye, X, Save, Power, PowerOff, AlertCircle, CheckCircle } from 'lucide-react'
 import HotelLayout from './HotelLayout'
-import { api, formatCurrency } from '../../api'
+import { api, formatCurrency, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const TYPES = ['Standard', 'Deluxe', 'Suite', 'Family', 'Presidential']
@@ -27,35 +28,82 @@ const HotelRoomsPage = () => {
   const [refreshKey, setRefreshKey] = useState(0)
   const [formError, setFormError] = useState('')
   const [formSuccess, setFormSuccess] = useState('')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [roomStats, setRoomStats] = useState(null)
+
+  // `/hotel/rooms` filters server-side on `hotelName` and `search` (room type)
+  // only. Type/status are not supported, so when either is active we load the
+  // full set and filter the rows locally.
+  const hasLocalFilters = filterType !== 'all' || filterStatus !== 'all'
+
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setLoading(true)
+      setError('')
+      const profile = await api('/hotel/profile').catch(() => ({}))
+      const name = profile?.profile?.hotelName || ''
+      setHotelName(name)
+      if (!name) { setRooms([]); setMeta(readPagination({}, 0)); return }
+      const data = await api('/hotel/rooms', {
+        params: {
+          hotelName: name,
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search
+        }
+      })
+      const rows = data.rooms || []
+      setRooms(rows)
+      const next = readPagination(data, rows.length)
+      setMeta(next)
+      if (data.stats) setRoomStats(data.stats)
+      if (!hasLocalFilters && next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        setLoading(true)
-        const profile = await api('/hotel/profile').catch(() => ({}))
-        const name = profile?.profile?.hotelName || ''
-        if (!cancelled) setHotelName(name)
-        if (!name) { if(!cancelled) setRooms([]); return }
-        const data = await api(`/hotel/rooms?hotelName=${encodeURIComponent(name)}`)
-        if (!cancelled) setRooms(data.rooms || [])
-      } catch (err) {
-        if (!cancelled) setError(err.message)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [refreshKey])
+    Promise.resolve().then(() => load())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit, refreshKey])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      load({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, filterType, filterStatus])
+
+  // Refetches the CURRENT page with the current filters — never resets the user.
   const refresh = () => setRefreshKey(k => k + 1)
 
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
   const filtered = rooms.filter(r => {
-    const matchSearch = !search || (r.type || '').toLowerCase().includes(search.toLowerCase())
     const matchType = filterType === 'all' || r.type === filterType
     const matchStatus = filterStatus === 'all' || r.status === filterStatus
-    return matchSearch && matchType && matchStatus
+    return matchType && matchStatus
   })
 
   const openCreate = () => {
@@ -132,7 +180,13 @@ const HotelRoomsPage = () => {
     if (!confirm(`Delete ${r.type} room? This cannot be undone.`)) return
     try {
       await api(`/hotel/rooms/${r._id}`, { method: 'DELETE' })
-      refresh()
+      // Deleting the only row on a page steps back one page instead of showing nothing.
+      if (page > 1 && !hasLocalFilters && filtered.length <= 1) {
+        setLoading(true)
+        setPage(page - 1)
+      } else {
+        refresh()
+      }
     } catch (err) { alert(err.message) }
   }
 
@@ -146,11 +200,19 @@ const HotelRoomsPage = () => {
     } catch (err) { alert(err.message) }
   }
 
-  const stats = {
+  // The route aggregates room-status counts over the whole scoped filter, so those
+  // come from `stats`; potential revenue has no server aggregate.
+  const localStats = {
     total: rooms.reduce((s, r) => s + (r.total || 0), 0),
     available: rooms.reduce((s, r) => s + (r.available || 0), 0),
     booked: rooms.reduce((s, r) => s + (r.booked || 0), 0),
     revenue: rooms.reduce((s, r) => s + (r.booked || 0) * (r.price || 0), 0)
+  }
+  const stats = {
+    total: roomStats?.total ?? localStats.total,
+    available: roomStats?.available ?? localStats.available,
+    booked: roomStats?.occupied ?? localStats.booked,
+    revenue: localStats.revenue
   }
 
   return (
@@ -174,7 +236,7 @@ const HotelRoomsPage = () => {
 
       <div className="hr-card">
         <div className="hr-card-head">
-          <h3 className="hr-card-title">Rooms ({filtered.length}) {hotelName && <small>· {hotelName}</small>}</h3>
+          <h3 className="hr-card-title">Rooms ({hasLocalFilters ? filtered.length : meta.total}) {hotelName && <small>· {hotelName}</small>}</h3>
           <button className="hr-btn hr-btn-primary" onClick={openCreate} type="button">
             <Plus size={16} /> Add Room
           </button>
@@ -251,6 +313,17 @@ const HotelRoomsPage = () => {
             </table>
           </div>
         )}
+
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={hasLocalFilters ? filtered.length : meta.total}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="rooms"
+          disabled={loading || hasLocalFilters}
+        />
       </div>
 
       {showForm && (

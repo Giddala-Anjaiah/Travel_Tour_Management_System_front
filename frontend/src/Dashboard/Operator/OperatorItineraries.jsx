@@ -1,6 +1,7 @@
-import { API_BASE } from '../../api'
+import { API_BASE, api, readPagination } from '../../api'
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
+import Pagination from '../../components/Pagination'
 import { Calendar, Plus, Search, Pencil as Edit, Trash2, Building, Sparkles } from 'lucide-react'
 import '../Dashboard.css'
 
@@ -31,19 +32,25 @@ const OperatorItineraries = () => {
     dayDetails: [emptyDay()]
   })
   const [editingId, setEditingId] = useState(null)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
 
-  const fetchItineraries = async () => {
+  const fetchItineraries = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(API_BASE + '/operator/itineraries', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const data = await api('/operator/itineraries', {
+        params: {
+          page: nextPage,
+          limit: nextLimit,
+          search: searchTerm
         }
       })
-      const data = await response.json()
       if (data.itineraries) {
         setItineraries(data.itineraries)
       }
+      setMeta(readPagination(data, data.itineraries?.length || 0))
     } catch (error) {
       console.error('Error fetching itineraries:', error)
     } finally {
@@ -53,13 +60,7 @@ const OperatorItineraries = () => {
 
   const fetchPackages = async () => {
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(API_BASE + '/operator/packages', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      })
-      const data = await response.json()
+      const data = await api('/operator/packages', { params: { limit: 'all' } })
       if (data.packages) {
         setPackages(data.packages)
       }
@@ -69,13 +70,35 @@ const OperatorItineraries = () => {
   }
 
   useEffect(() => {
-    Promise.resolve().then(() => {
-      fetchItineraries()
-      fetchPackages()
-    })
+    Promise.resolve().then(() => fetchPackages())
   }, [])
 
+  useEffect(() => {
+    Promise.resolve().then(() => fetchItineraries())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchItineraries({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm])
+
   usePolling(fetchItineraries, 15000)
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const handleCreate = () => {
     setEditingId(null)
@@ -119,7 +142,11 @@ const OperatorItineraries = () => {
       })
       if (response.ok) {
         alert('Itinerary deleted successfully')
-        fetchItineraries()
+        if (itineraries.length === 1 && page > 1) {
+          setPage(page - 1)
+        } else {
+          fetchItineraries()
+        }
       } else {
         alert('Error deleting itinerary')
       }
@@ -195,10 +222,7 @@ const OperatorItineraries = () => {
     }
   }
 
-  const filteredItineraries = itineraries.filter(itin => 
-    itin.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    itin.packageName?.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const filteredItineraries = itineraries
 
   return (
     <>
@@ -227,6 +251,7 @@ const OperatorItineraries = () => {
               <p>Create itineraries for your packages</p>
             </div>
           ) : (
+            <>
             <div className="itineraries-list enhanced">
               {filteredItineraries.map(itin => (
                 <div key={itin._id} className="itinerary-card enhanced">
@@ -249,6 +274,17 @@ const OperatorItineraries = () => {
                 </div>
               ))}
             </div>
+            <Pagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="itineraries"
+              disabled={loading}
+            />
+            </>
           )}
       {showModal && (
         <div className="modal-overlay">

@@ -1,7 +1,26 @@
 import { useEffect, useState } from 'react'
 import { MapPin, Plus, Pencil as Edit, Trash2, Search, Download, Star, DollarSign, Calendar, Users } from 'lucide-react'
-import { api, downloadCsv, formValues, formatCurrency } from '../../api'
+import { api, downloadCsv, fetchAllPages, formValues, formatCurrency, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
+
+const mapPackage = (pkg) => ({
+  id: pkg._id,
+  name: pkg.name,
+  destination: pkg.destination,
+  duration: pkg.duration,
+  price: pkg.price,
+  rating: pkg.rating || 0,
+  bookings: pkg.bookings || 0,
+  status: pkg.status || 'active',
+  publishedStatus: pkg.publishedStatus || 'published',
+  description: pkg.description || '',
+  inclusions: Array.isArray(pkg.inclusions) ? pkg.inclusions.join('\n') : (pkg.inclusions || ''),
+  highlights: Array.isArray(pkg.highlights) ? pkg.highlights.join('\n') : (pkg.highlights || ''),
+  image: pkg.image || '',
+  category: pkg.category || '',
+  shortDescription: pkg.shortDescription || ''
+})
 
 const DestinationManagement = () => {
   const [packages, setPackages] = useState([])
@@ -12,28 +31,31 @@ const DestinationManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedPackage, setSelectedPackage] = useState(null)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [stats, setStats] = useState(null)
 
-  const fetchPackages = async () => {
+  // `search` is honoured server-side on /admin/packages; the status select is
+  // not, so an active status filter pulls the whole set and filters locally.
+  const hasLocalFilters = filterStatus !== 'all'
+
+  const fetchPackages = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
       setError('')
-      const data = await api('/admin/packages')
-      setPackages((data.packages || []).map((pkg) => ({
-        id: pkg._id,
-        name: pkg.name,
-        destination: pkg.destination,
-        duration: pkg.duration,
-        price: pkg.price,
-        rating: pkg.rating || 0,
-        bookings: pkg.bookings || 0,
-        status: pkg.status || 'active',
-        publishedStatus: pkg.publishedStatus || 'published',
-        description: pkg.description || '',
-        inclusions: Array.isArray(pkg.inclusions) ? pkg.inclusions.join('\n') : (pkg.inclusions || ''),
-        highlights: Array.isArray(pkg.highlights) ? pkg.highlights.join('\n') : (pkg.highlights || ''),
-        image: pkg.image || '',
-        category: pkg.category || '',
-        shortDescription: pkg.shortDescription || ''
-      })))
+      const data = await api('/admin/packages', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
+        }
+      })
+      const mapped = (data.packages || []).map(mapPackage)
+      setPackages(mapped)
+      setMeta(readPagination(data, mapped.length))
+      if (data.stats) setStats(data.stats)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -43,13 +65,32 @@ const DestinationManagement = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchPackages())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
 
-  const filteredPackages = packages.filter((pkg) => {
-    const matchesSearch = pkg.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      pkg.destination.toLowerCase().includes(searchTerm.toLowerCase())
-    return (filterStatus === 'all' || pkg.status === filterStatus) && matchesSearch
-  })
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      if (page === 1) Promise.resolve().then(() => fetchPackages())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
+  const filteredPackages = hasLocalFilters
+    ? packages.filter((pkg) => filterStatus === 'all' || pkg.status === filterStatus)
+    : packages
 
   const payloadFromForm = (values) => ({
     name: values.name,
@@ -95,7 +136,12 @@ const DestinationManagement = () => {
     if (!window.confirm('Delete this package?')) return
     try {
       await api(`/admin/packages/${id}`, { method: 'DELETE' })
-      setPackages(packages.filter((pkg) => pkg.id !== id))
+      if (filteredPackages.length <= 1 && page > 1) {
+        setPage(page - 1)
+        setLoading(true)
+      } else {
+        fetchPackages()
+      }
     } catch (err) {
       alert(err.message)
     }
@@ -106,11 +152,25 @@ const DestinationManagement = () => {
     const status = pkg.status === 'active' ? 'inactive' : 'active'
     try {
       await api(`/admin/packages/${id}`, { method: 'PUT', body: JSON.stringify({ status }) })
-      setPackages(packages.map((item) => item.id === id ? { ...item, status } : item))
+      fetchPackages()
     } catch (err) {
       alert(err.message)
     }
   }
+
+  const handleExport = async () => {
+    const rows = await fetchAllPages('/admin/packages', {
+      key: 'packages',
+      params: { search: searchTerm }
+    })
+    const mapped = rows.map(mapPackage)
+    const exported = hasLocalFilters
+      ? mapped.filter((pkg) => filterStatus === 'all' || pkg.status === filterStatus)
+      : mapped
+    downloadCsv('packages.csv', ['Name', 'Destination', 'Duration', 'Price', 'Bookings', 'Status'], exported.map((p) => [p.name, p.destination, p.duration, p.price, p.bookings, p.status]))
+  }
+
+  const totalBookings = stats?.totalBookings ?? packages.reduce((sum, pkg) => sum + pkg.bookings, 0)
 
   return (
     <AdminLayout
@@ -120,7 +180,7 @@ const DestinationManagement = () => {
         <>
           <button
             className="action-btn"
-            onClick={() => downloadCsv('packages.csv', ['Name', 'Destination', 'Duration', 'Price', 'Bookings', 'Status'], filteredPackages.map((p) => [p.name, p.destination, p.duration, p.price, p.bookings, p.status]))}
+            onClick={handleExport}
           >
             <Download className="h-4 w-4" /> Export
           </button>
@@ -144,13 +204,13 @@ const DestinationManagement = () => {
       </div>
 
       <div className="stats-grid">
-        <div className="stat-card"><MapPin className="stat-icon" /><div className="stat-content"><h3>Total Packages</h3><p className="stat-number">{packages.length}</p></div></div>
-        <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Total Bookings</h3><p className="stat-number">{packages.reduce((sum, pkg) => sum + pkg.bookings, 0)}</p></div></div>
-        <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Est. Revenue</h3><p className="stat-number">{formatCurrency(packages.reduce((sum, pkg) => sum + pkg.price * pkg.bookings, 0))}</p></div></div>
+        <div className="stat-card"><MapPin className="stat-icon" /><div className="stat-content"><h3>Total Packages</h3><p className="stat-number">{stats?.total ?? meta.total}</p></div></div>
+        <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Total Bookings</h3><p className="stat-number">{totalBookings}</p></div></div>
+        <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Est. Revenue</h3><p className="stat-number">{formatCurrency(stats?.estimatedRevenue ?? packages.reduce((sum, pkg) => sum + pkg.price * pkg.bookings, 0))}</p></div></div>
       </div>
 
       <div className="section-card full-width">
-        <h3>Tour Packages ({filteredPackages.length})</h3>
+        <h3>Tour Packages ({hasLocalFilters ? filteredPackages.length : meta.total})</h3>
         {loading ? <div style={{ textAlign: 'center', padding: '2rem' }}>Loading packages...</div> : (
           <div className="packages-grid">
             {filteredPackages.length === 0 ? <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No packages found</div> : filteredPackages.map((pkg) => (
@@ -200,6 +260,16 @@ const DestinationManagement = () => {
             ))}
           </div>
         )}
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="packages"
+          disabled={loading || hasLocalFilters}
+        />
       </div>
 
       {(showAddModal || (showEditModal && selectedPackage)) && (

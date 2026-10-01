@@ -1,7 +1,19 @@
 import { useEffect, useState } from 'react'
 import { Bed, Plus, Pencil as Edit, Trash2, Search, Download, Building, Users, DollarSign } from 'lucide-react'
-import { api, downloadCsv, formValues, formatCurrency } from '../../api'
+import { api, downloadCsv, fetchAllPages, formValues, formatCurrency, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
+
+const mapRoom = (room) => ({
+  id: room._id,
+  hotel: room.hotel,
+  type: room.type,
+  total: room.total,
+  available: room.available,
+  booked: room.booked || 0,
+  price: room.price,
+  status: room.status || 'active'
+})
 
 const RoomsManagement = () => {
   const [rooms, setRooms] = useState([])
@@ -13,21 +25,32 @@ const RoomsManagement = () => {
   const [selectedRoom, setSelectedRoom] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
 
-  const load = async () => {
+  // `search` is honoured server-side on /admin/rooms. The hotel select is not,
+  // so an active hotel filter pulls the whole set and filters it locally.
+  const hasLocalFilters = filterHotel !== 'all'
+
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
       setError('')
-      const [roomData, hotelData] = await Promise.all([api('/admin/rooms'), api('/admin/hotels')])
-      setRooms((roomData.rooms || []).map((room) => ({
-        id: room._id,
-        hotel: room.hotel,
-        type: room.type,
-        total: room.total,
-        available: room.available,
-        booked: room.booked || 0,
-        price: room.price,
-        status: room.status || 'active'
-      })))
+      const [roomData, hotelData] = await Promise.all([
+        api('/admin/rooms', {
+          params: {
+            page: hasLocalFilters ? undefined : nextPage,
+            limit: hasLocalFilters ? 'all' : nextLimit,
+            search: searchTerm
+          }
+        }),
+        api('/admin/hotels', { params: { limit: 'all' } })
+      ])
+      const mapped = (roomData.rooms || []).map(mapRoom)
+      setRooms(mapped)
+      setMeta(readPagination(roomData, mapped.length))
       setHotels(hotelData.hotels || [])
     } catch (err) {
       setError(err.message)
@@ -38,18 +61,37 @@ const RoomsManagement = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => load())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      if (page === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterHotel])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const hotelNames = [...new Set([
     ...hotels.map((hotel) => hotel.name),
     ...rooms.map((room) => room.hotel)
   ].filter(Boolean))]
 
-  const filteredRooms = rooms.filter((room) => {
-    const matchesSearch = room.type.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      room.hotel.toLowerCase().includes(searchTerm.toLowerCase())
-    return matchesSearch && (filterHotel === 'all' || room.hotel === filterHotel)
-  })
+  const filteredRooms = hasLocalFilters
+    ? rooms.filter((room) => filterHotel === 'all' || room.hotel === filterHotel)
+    : rooms
 
   const persistRoom = async (id, payload) => {
     await api(`/admin/rooms/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
@@ -59,7 +101,12 @@ const RoomsManagement = () => {
     if (!window.confirm('Delete this room type?')) return
     try {
       await api(`/admin/rooms/${id}`, { method: 'DELETE' })
-      setRooms(rooms.filter((room) => room.id !== id))
+      if (filteredRooms.length <= 1 && page > 1) {
+        setPage(page - 1)
+        setLoading(true)
+      } else {
+        load()
+      }
     } catch (err) {
       alert(err.message)
     }
@@ -70,7 +117,7 @@ const RoomsManagement = () => {
     const status = room.status === 'active' ? 'inactive' : 'active'
     try {
       await persistRoom(id, { status })
-      setRooms(rooms.map((item) => item.id === id ? { ...item, status } : item))
+      load()
     } catch (err) {
       alert(err.message)
     }
@@ -82,10 +129,22 @@ const RoomsManagement = () => {
     const booked = room.total - available
     try {
       await persistRoom(id, { available, booked })
-      setRooms(rooms.map((item) => item.id === id ? { ...item, available, booked } : item))
+      load()
     } catch (err) {
       alert(err.message)
     }
+  }
+
+  const handleExport = async () => {
+    const rows = await fetchAllPages('/admin/rooms', {
+      key: 'rooms',
+      params: { search: searchTerm }
+    })
+    const mapped = rows.map(mapRoom)
+    const exported = hasLocalFilters
+      ? mapped.filter((room) => filterHotel === 'all' || room.hotel === filterHotel)
+      : mapped
+    downloadCsv('rooms.csv', ['Hotel', 'Type', 'Total', 'Available', 'Booked', 'Price', 'Status'], exported.map((r) => [r.hotel, r.type, r.total, r.available, r.booked, r.price, r.status]))
   }
 
   const handleAddRoom = async (e) => {
@@ -137,7 +196,7 @@ const RoomsManagement = () => {
       title="Rooms & Availability"
       actions={
         <>
-          <button className="action-btn" onClick={() => downloadCsv('rooms.csv', ['Hotel', 'Type', 'Total', 'Available', 'Booked', 'Price', 'Status'], filteredRooms.map((r) => [r.hotel, r.type, r.total, r.available, r.booked, r.price, r.status]))}>
+          <button className="action-btn" onClick={handleExport}>
             <Download className="h-4 w-4" /> Export
           </button>
           <button className="action-btn" onClick={() => setShowAddModal(true)}><Plus className="h-4 w-4" /> Add Room Type</button>
@@ -166,7 +225,7 @@ const RoomsManagement = () => {
       </div>
 
       <div className="section-card full-width">
-        <h3>Room Types ({filteredRooms.length})</h3>
+        <h3>Room Types ({hasLocalFilters ? filteredRooms.length : meta.total})</h3>
         {loading ? <div style={{ padding: '2rem', textAlign: 'center' }}>Loading rooms...</div> : (
           <div className="rooms-grid">
             {filteredRooms.length === 0 ? <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No rooms found. Add a hotel first, then a room type.</div> : filteredRooms.map((room) => (
@@ -200,6 +259,16 @@ const RoomsManagement = () => {
             ))}
           </div>
         )}
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="room types"
+          disabled={loading || hasLocalFilters}
+        />
       </div>
 
       {showAddModal && (

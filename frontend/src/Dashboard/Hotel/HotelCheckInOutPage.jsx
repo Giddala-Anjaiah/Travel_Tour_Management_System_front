@@ -28,7 +28,10 @@ const HotelCheckInOutPage = () => {
     const load = async () => {
       try {
         setLoading(true)
-        const data = await api('/hotel/bookings')
+        // Every tab on this page is a slice of the same booking set (arrivals,
+        // departures, in-house, upcoming, all), so the whole set is requested —
+        // a server pager would only ever cut an already-derived list in half.
+        const data = await api('/hotel/bookings', { params: { limit: 'all' } })
         if (!cancelled) setBookings(data.bookings || [])
       } catch (err) {
         if (!cancelled) setError(err.message)
@@ -40,12 +43,14 @@ const HotelCheckInOutPage = () => {
     return () => { cancelled = true }
   }, [refreshKey])
 
-  // Auto-refresh every 20s for real-time updates
+  // Auto-refresh every 20s for real-time updates. The interval never depends on
+  // fetch state, so it cannot churn or retrigger itself.
   useEffect(() => {
     const id = setInterval(() => setRefreshKey(k => k + 1), 20000)
     return () => clearInterval(id)
   }, [])
 
+  // Refetches the current (unpaged) data set; no user state is reset.
   const refresh = () => setRefreshKey(k => k + 1)
 
   const today = new Date().toISOString().split('T')[0]

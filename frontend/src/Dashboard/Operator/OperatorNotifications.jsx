@@ -1,6 +1,7 @@
-import { API_BASE } from '../../api'
+import { API_BASE, api, readPagination } from '../../api'
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
+import Pagination from '../../components/Pagination'
 import { Bell, Search, Check, Trash2, Clock, DollarSign, Star, Settings, AlertCircle, Sparkles } from 'lucide-react'
 import '../Dashboard.css'
 
@@ -10,20 +11,28 @@ const OperatorNotifications = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
 
-  const fetchNotifications = async () => {
+  const hasLocalFilters = searchTerm !== '' || filterType !== 'all'
+
+  const fetchNotifications = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(API_BASE + '/operator/notifications', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const data = await api('/operator/notifications', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
         }
       })
-      const data = await response.json()
       if (data.notifications) {
         setNotifications(data.notifications)
         setUnreadCount(data.unreadCount || 0)
       }
+      setMeta(readPagination(data, data.notifications?.length || 0))
     } catch (error) {
       console.error('Error fetching notifications:', error)
     } finally {
@@ -33,9 +42,30 @@ const OperatorNotifications = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchNotifications())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchNotifications({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterType])
 
   usePolling(fetchNotifications, 15000)
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const handleMarkAsRead = async (id) => {
     try {
@@ -51,6 +81,7 @@ const OperatorNotifications = () => {
           n._id === id ? { ...n, read: true } : n
         ))
         setUnreadCount(Math.max(0, unreadCount - 1))
+        fetchNotifications()
       }
     } catch (error) {
       console.error('Error marking as read:', error)
@@ -71,18 +102,25 @@ const OperatorNotifications = () => {
         if (!notifications.find(n => n._id === id)?.read) {
           setUnreadCount(Math.max(0, unreadCount - 1))
         }
+        if (notifications.length === 1 && page > 1) {
+          setPage(page - 1)
+        } else {
+          fetchNotifications()
+        }
       }
     } catch (error) {
       console.error('Error deleting notification:', error)
     }
   }
 
-  const filteredNotifications = notifications.filter(notification => {
-    const matchesSearch = notification.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         notification.message?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = filterType === 'all' || notification.type === filterType
-    return matchesSearch && matchesType
-  })
+  const filteredNotifications = hasLocalFilters
+    ? notifications.filter(notification => {
+        const matchesSearch = notification.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                              notification.message?.toLowerCase().includes(searchTerm.toLowerCase())
+        const matchesType = filterType === 'all' || notification.type === filterType
+        return matchesSearch && matchesType
+      })
+    : notifications
 
   const getNotificationIcon = (type) => {
     const icons = {
@@ -149,6 +187,7 @@ const OperatorNotifications = () => {
               <p>You're all caught up!</p>
             </div>
           ) : (
+            <>
             <div className="notifications-list enhanced">
               {filteredNotifications.map(notification => (
                 <div 
@@ -187,9 +226,21 @@ const OperatorNotifications = () => {
                 </div>
               ))}
             </div>
+            <Pagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="notifications"
+              disabled={loading || hasLocalFilters}
+            />
+            </>
           )}
-      </>
-  )
-}
+        </>
+      )
+    }
+
 
 export default OperatorNotifications

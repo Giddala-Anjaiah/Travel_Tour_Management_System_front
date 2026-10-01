@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { DollarSign, Search, CheckCircle, Clock, Eye, Printer, Sparkles, Shield, Receipt, CalendarIcon, AlertCircle, Download } from 'lucide-react'
 import CustomerLayout from './CustomerLayout'
-import { api, formatCurrency, formatDate } from '../../api'
+import { api, formatCurrency, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import jsPDF from 'jspdf'
 import '../Dashboard.css'
 
@@ -13,26 +14,72 @@ const InvoicesBookingHistory = () => {
   const [invoices, setInvoices] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [stats, setStats] = useState(null)
+
+  // The route filters server-side on `search` only. Status is not supported, so
+  // when it is active we load the full set and filter the rows locally.
+  const hasLocalFilters = filterStatus !== 'all'
+
+  const fetchInvoices = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      const data = await api('/customer/invoices', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
+        }
+      })
+      const rows = data.invoices || []
+      setInvoices(rows)
+      const next = readPagination(data, rows.length)
+      setMeta(next)
+      if (data.stats) setStats(data.stats)
+      if (!hasLocalFilters && next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to load invoices')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const load = async () => {
-      try {
-        const data = await api('/customer/invoices')
-        setInvoices(data.invoices || [])
-      } catch (err) {
-        setError(err.message || 'Failed to load invoices')
-      } finally {
-        setLoading(false)
-      }
-    }
-    load()
-  }, [])
+    Promise.resolve().then(() => fetchInvoices())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchInvoices({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
+  // `search` runs server-side (invoiceNo/customer/package); only the unsupported
+  // status filter is resolved locally.
   const filteredInvoices = invoices.filter(invoice => {
-    const matchesSearch = (invoice.invoiceNo || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (invoice.package || '').toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = filterStatus === 'all' || invoice.status === filterStatus
-    return matchesSearch && matchesStatus
+    return matchesStatus
   })
 
   const getStatusIcon = (status) => {
@@ -97,7 +144,8 @@ const InvoicesBookingHistory = () => {
     }
   }
 
-  const totalBilled = invoices.reduce((sum, i) => sum + (i.amount || 0), 0)
+  const totalBilled = stats?.totalAmount ?? invoices.reduce((sum, i) => sum + (i.amount || 0), 0)
+  const totalCount = stats?.total ?? meta.total
   const paidCount = invoices.filter(i => i.status === 'paid').length
   const pendingCount = invoices.filter(i => i.status === 'pending' || i.status === 'overdue').length
 
@@ -120,7 +168,7 @@ const InvoicesBookingHistory = () => {
         <div className="header-stats">
           <div className="stat-badge">
             <Sparkles className="h-4 w-4" />
-            <span>{invoices.length} invoices</span>
+            <span>{totalCount} invoices</span>
           </div>
           <div className="stat-badge">
             <Shield className="h-4 w-4" />
@@ -136,7 +184,7 @@ const InvoicesBookingHistory = () => {
           <Receipt className="stat-icon" />
           <div className="stat-content">
             <h3>Total Invoices</h3>
-            <p className="stat-number">{invoices.length}</p>
+            <p className="stat-number">{totalCount}</p>
           </div>
         </div>
         <div className="stat-card enhanced">
@@ -250,6 +298,17 @@ const InvoicesBookingHistory = () => {
           ))
         )}
       </div>
+
+      <Pagination
+        page={meta.page}
+        totalPages={meta.totalPages}
+        total={hasLocalFilters ? filteredInvoices.length : totalCount}
+        limit={meta.limit}
+        onPageChange={handlePageChange}
+        onLimitChange={handleLimitChange}
+        itemLabel="invoices"
+        disabled={loading || hasLocalFilters}
+      />
 
       {showInvoiceModal && selectedInvoice && (
         <div className="modal-overlay">

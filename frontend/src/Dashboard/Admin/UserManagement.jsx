@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Users, Search, Plus, Pencil as Edit, Trash2, Download, UserCheck, UserX, Mail, Phone } from 'lucide-react'
-import { api, downloadCsv, formValues, formatDate } from '../../api'
+import { api, downloadCsv, fetchAllPages, formValues, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
 
 const UserManagement = () => {
@@ -13,12 +14,29 @@ const UserManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [stats, setStats] = useState(null)
 
-  const fetchUsers = async () => {
+  // The route filters server-side on `search` only. Role/status are not
+  // supported server-side, so when either is active we ask for the full set
+  // and filter the current rows locally instead of paging a partial match.
+  const hasLocalFilters = filterRole !== 'all' || filterStatus !== 'all'
+
+  const fetchUsers = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
       setError('')
-      const data = await api('/admin/users')
-      setUsers((data.users || []).map((user) => ({
+      const data = await api('/admin/users', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
+        }
+      })
+      const mapped = (data.users || []).map((user) => ({
         id: user._id,
         name: user.fullName,
         email: user.email,
@@ -27,7 +45,10 @@ const UserManagement = () => {
         status: user.status || 'active',
         joinDate: formatDate(user.createdAt),
         lastLogin: user.lastLogin ? formatDate(user.lastLogin) : 'Never'
-      })))
+      }))
+      setUsers(mapped)
+      setMeta(readPagination(data, mapped.length))
+      if (data.stats) setStats(data.stats)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -37,21 +58,61 @@ const UserManagement = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchUsers())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
 
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesRole = filterRole === 'all' || user.role === filterRole
-    const matchesStatus = filterStatus === 'all' || user.status === filterStatus
-    return matchesSearch && matchesRole && matchesStatus
-  })
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchUsers({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterRole, filterStatus])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
+  const handleExport = async () => {
+    const rows = await fetchAllPages('/admin/users', {
+      key: 'users',
+      params: { search: searchTerm, role: filterRole, status: filterStatus }
+    })
+    const mapped = rows.map((user) => ({
+      name: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      status: user.status || 'active',
+      joinDate: formatDate(user.createdAt),
+      lastLogin: user.lastLogin ? formatDate(user.lastLogin) : 'Never'
+    }))
+    downloadCsv('users.csv', ['Name', 'Email', 'Phone', 'Role', 'Status', 'Join Date', 'Last Login'], mapped.map((u) => [u.name, u.email, u.phone, u.role, u.status, u.joinDate, u.lastLogin]))
+  }
+
+  const visibleUsers = hasLocalFilters
+    ? users.filter((user) =>
+        (filterRole === 'all' || user.role === filterRole) &&
+        (filterStatus === 'all' || user.status === filterStatus))
+    : users
+
+  const totalUsers = stats?.total ?? meta.total
+  const activeUsers = stats?.active ?? users.filter((u) => u.status === 'active').length
+  const inactiveUsers = stats?.inactive ?? users.filter((u) => u.status === 'inactive').length
 
   const handleDeleteUser = async (userId) => {
     if (!window.confirm('Are you sure you want to delete this user?')) return
     try {
       await api(`/admin/users/${userId}`, { method: 'DELETE' })
-      setUsers(users.filter((user) => user.id !== userId))
+      fetchUsers()
     } catch (err) {
       alert(err.message)
     }
@@ -102,7 +163,7 @@ const UserManagement = () => {
       actions={
         <>
           <button
-            onClick={() => downloadCsv('users.csv', ['Name', 'Email', 'Phone', 'Role', 'Status', 'Join Date', 'Last Login'], filteredUsers.map((u) => [u.name, u.email, u.phone, u.role, u.status, u.joinDate, u.lastLogin]))}
+            onClick={handleExport}
             className="action-btn"
           >
             <Download className="h-4 w-4" />
@@ -142,27 +203,27 @@ const UserManagement = () => {
           <Users className="stat-icon" />
           <div className="stat-content">
             <h3>Total Users</h3>
-            <p className="stat-number">{users.length}</p>
+            <p className="stat-number">{totalUsers}</p>
           </div>
         </div>
         <div className="stat-card">
           <UserCheck className="stat-icon" />
           <div className="stat-content">
             <h3>Active Users</h3>
-            <p className="stat-number">{users.filter((u) => u.status === 'active').length}</p>
+            <p className="stat-number">{activeUsers}</p>
           </div>
         </div>
         <div className="stat-card">
           <UserX className="stat-icon" />
           <div className="stat-content">
             <h3>Inactive Users</h3>
-            <p className="stat-number">{users.filter((u) => u.status === 'inactive').length}</p>
+            <p className="stat-number">{inactiveUsers}</p>
           </div>
         </div>
       </div>
 
       <div className="section-card full-width">
-        <h3>Users List ({filteredUsers.length})</h3>
+        <h3>Users List ({hasLocalFilters ? visibleUsers.length : meta.total})</h3>
         {loading ? (
           <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading users...</div>
         ) : (
@@ -181,11 +242,11 @@ const UserManagement = () => {
                 </tr>
               </thead>
               <tbody>
-                {filteredUsers.length === 0 ? (
+                {visibleUsers.length === 0 ? (
                   <tr>
                     <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No users found</td>
                   </tr>
-                ) : filteredUsers.map((user) => (
+                ) : visibleUsers.map((user) => (
                   <tr key={user.id}>
                     <td className="user-name-cell">
                       <div className="user-avatar">{user.name.charAt(0)}</div>
@@ -210,6 +271,16 @@ const UserManagement = () => {
                 ))}
               </tbody>
             </table>
+            <Pagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="users"
+              disabled={loading || hasLocalFilters}
+            />
           </div>
         )}
       </div>

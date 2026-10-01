@@ -839,6 +839,97 @@ function requireHotelPartner(req, res, next) {
   next();
 }
 
+const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 100;
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Case-insensitive OR search across the given fields. Returns null when there is
+// nothing to search for, so callers can merge it into an existing filter safely.
+function searchFilter(fields, term) {
+  const needle = String(term ?? '').trim();
+  if (!needle) return null;
+  const rx = new RegExp(escapeRegExp(needle), 'i');
+  return { $or: fields.map(field => ({ [field]: rx })) };
+}
+
+function getPagination(query = {}, { defaultLimit = DEFAULT_PAGE_SIZE } = {}) {
+  const rawLimit = query.limit;
+  const rawPage = query.page;
+
+  let limit;
+  if (rawLimit === undefined || rawLimit === null || rawLimit === '') {
+    limit = defaultLimit;
+  } else if (String(rawLimit).trim().toLowerCase() === 'all') {
+    limit = 0;
+  } else {
+    const parsedLimit = parseInt(rawLimit, 10);
+    if (Number.isNaN(parsedLimit)) limit = defaultLimit;
+    else if (parsedLimit <= 0) limit = 0;
+    else limit = Math.min(parsedLimit, MAX_PAGE_SIZE);
+  }
+  if (limit < 0) limit = 0;
+
+  const parsedPage = parseInt(rawPage, 10);
+  const page = Number.isNaN(parsedPage) || parsedPage < 1 ? 1 : parsedPage;
+
+  const skip = limit > 0 ? (page - 1) * limit : 0;
+  return { page, limit, skip };
+}
+
+async function findPage(Model, filter = {}, options = {}) {
+  const {
+    query = {},
+    sort,
+    select,
+    populate,
+    defaultLimit = DEFAULT_PAGE_SIZE,
+    defaultSort = null
+  } = options;
+
+  const { page, limit, skip } = getPagination(query, { defaultLimit });
+
+  let cursor = Model.find(filter);
+  const activeSort = sort || defaultSort;
+  if (activeSort) cursor = cursor.sort(activeSort);
+  if (select) cursor = cursor.select(select);
+  if (populate) cursor = cursor.populate(populate);
+  if (limit > 0) cursor = cursor.skip(skip).limit(limit);
+  cursor = cursor.lean();
+
+  const [docs, total] = await Promise.all([
+    cursor,
+    Model.countDocuments(filter)
+  ]);
+
+  const totalPages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+  return {
+    docs,
+    total,
+    page,
+    limit,
+    totalPages,
+    hasNext: limit > 0 ? page * limit < total : false,
+    hasPrev: page > 1
+  };
+}
+
+function pagedResponse(res, key, { docs, total, page, limit, totalPages, hasNext, hasPrev }, extra = {}) {
+  const pagination = {
+    page,
+    limit,
+    total,
+    totalPages,
+    hasNext,
+    hasPrev,
+    count: docs.length
+  };
+  if (limit === 0) pagination.all = true;
+  return res.status(200).json({ [key]: docs, pagination, ...extra });
+}
+
 async function requireOperatorOwnership(req, res, next) {
   const resourceId = req.params.id || req.params.packageId || req.params.bookingId;
   const resourceType = req.path.includes('packages') ? 'Package' : 
@@ -1316,12 +1407,19 @@ app.post('/api/reset-password', async (req, res) => {
 });
 
 // Get All Users Route (for debugging)
-app.get('/api/users', async (req, res) => {
+app.get('/api/users', authenticate, requireAdmin, async (req, res) => {
   try {
-    const users = await User.find({}).select('-password');
-    console.log('Total users in database:', users.length);
-    console.log('Users:', JSON.stringify(users, null, 2));
-    res.status(200).json({ count: users.length, users });
+    const filter = {};
+    const search = searchFilter(['fullName', 'email'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(User, filter, {
+      query: req.query,
+      select: '-password',
+      defaultSort: { createdAt: -1 }
+    });
+    console.log('Total users in database:', total);
+    console.log('Users:', JSON.stringify(docs, null, 2));
+    pagedResponse(res, 'users', { docs, total, page, limit, totalPages, hasNext, hasPrev }, { count: total });
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).json({ message: 'Server error fetching users' });
@@ -1333,8 +1431,35 @@ app.use('/api/admin', authenticate, requireAdmin);
 // Admin User Management Routes
 app.get('/api/admin/users', async (req, res) => {
   try {
-    const users = await User.find({}).select('-password');
-    res.status(200).json({ users });
+    const filter = {};
+    const search = searchFilter(['fullName', 'email'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(User, filter, {
+      query: req.query,
+      select: '-password',
+      defaultSort: { createdAt: -1 }
+    });
+    const [byCustomer, byOperator, byHotel, byAdmin, active, inactive] = await Promise.all([
+      User.countDocuments({ ...filter, role: 'customer' }),
+      User.countDocuments({ ...filter, role: 'tour_operator' }),
+      User.countDocuments({ ...filter, role: 'hotel_partner' }),
+      User.countDocuments({ ...filter, role: 'admin' }),
+      User.countDocuments({ ...filter, status: 'active' }),
+      User.countDocuments({ ...filter, status: 'inactive' })
+    ]);
+    pagedResponse(res, 'users', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        byRole: {
+          customer: byCustomer,
+          tour_operator: byOperator,
+          hotel_partner: byHotel,
+          admin: byAdmin
+        },
+        active,
+        inactive
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching users' });
   }
@@ -1385,8 +1510,20 @@ app.delete('/api/admin/users/:id', async (req, res) => {
 // Package Management Routes
 app.get('/api/admin/packages', async (req, res) => {
   try {
-    const packages = await Package.find({});
-    res.status(200).json({ packages });
+    const filter = {};
+    const search = searchFilter(['name', 'destination', 'category'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Package, filter, {
+      query: req.query,
+      defaultSort: { createdAt: -1 }
+    });
+    const [published, draft] = await Promise.all([
+      Package.countDocuments({ ...filter, publishedStatus: 'published' }),
+      Package.countDocuments({ ...filter, publishedStatus: 'draft' })
+    ]);
+    pagedResponse(res, 'packages', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: { total, published, draft }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching packages' });
   }
@@ -1432,8 +1569,16 @@ app.delete('/api/admin/packages/:id', async (req, res) => {
 // Itinerary Management Routes
 app.get('/api/admin/itineraries', async (req, res) => {
   try {
-    const itineraries = await Itinerary.find({});
-    res.status(200).json({ itineraries });
+    const filter = {};
+    const search = searchFilter(['name', 'packageName'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Itinerary, filter, {
+      query: req.query,
+      defaultSort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'itineraries', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: { total }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching itineraries' });
   }
@@ -1483,8 +1628,14 @@ app.delete('/api/admin/itineraries/:id', async (req, res) => {
 // Hotel Management Routes
 app.get('/api/admin/hotels', async (req, res) => {
   try {
-    const hotels = await Hotel.find({});
-    res.status(200).json({ hotels });
+    const filter = {};
+    const search = searchFilter(['name', 'location', 'partner'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Hotel, filter, {
+      query: req.query,
+      defaultSort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'hotels', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching hotels' });
   }
@@ -1525,8 +1676,18 @@ app.delete('/api/admin/hotels/:id', async (req, res) => {
 // Room Management Routes
 app.get('/api/admin/rooms', async (req, res) => {
   try {
-    const rooms = await Room.find({});
-    res.status(200).json({ rooms });
+    const filter = {};
+    const search = searchFilter(['hotel', 'type'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Room, filter, {
+      query: req.query,
+      defaultSort: { createdAt: -1 }
+    });
+    const available = await Room.countDocuments({ ...filter, status: 'active' });
+    const maintenance = await Room.countDocuments({ ...filter, status: 'inactive' });
+    pagedResponse(res, 'rooms', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: { total, available, occupied: Math.max(0, total - available - maintenance), maintenance }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching rooms' });
   }
@@ -1567,8 +1728,37 @@ app.delete('/api/admin/rooms/:id', async (req, res) => {
 // Booking Management Routes
 app.get('/api/admin/bookings', async (req, res) => {
   try {
-    const bookings = await Booking.find({});
-    res.status(200).json({ bookings });
+    const filter = {};
+    const search = searchFilter(['bookingId', 'customer', 'package', 'email'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Booking, filter, {
+      query: req.query,
+      defaultSort: { bookingDate: -1 }
+    });
+    const byStatusAgg = await Booking.aggregate([
+      { $match: filter },
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
+    const byPaymentAgg = await Booking.aggregate([
+      { $match: filter },
+      { $group: { _id: '$paymentStatus', count: { $sum: 1 } } }
+    ]);
+    const revenueAgg = await Booking.aggregate([
+      { $match: { ...filter, paymentStatus: 'paid' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const byStatus = {};
+    for (const row of byStatusAgg) byStatus[row._id || 'unknown'] = row.count;
+    const byPaymentStatus = {};
+    for (const row of byPaymentAgg) byPaymentStatus[row._id || 'unknown'] = row.count;
+    pagedResponse(res, 'bookings', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        byStatus,
+        byPaymentStatus,
+        totalRevenue: revenueAgg[0]?.total || 0
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching bookings' });
   }
@@ -1635,8 +1825,32 @@ app.delete('/api/admin/bookings/:id', async (req, res) => {
 // Invoice Management Routes
 app.get('/api/admin/invoices', async (req, res) => {
   try {
-    const invoices = await Invoice.find({});
-    res.status(200).json({ invoices });
+    const filter = {};
+    const search = searchFilter(['invoiceNo', 'customer', 'email'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Invoice, filter, {
+      query: req.query,
+      defaultSort: { date: -1 }
+    });
+    const [amountAgg, byStatusAgg] = await Promise.all([
+      Invoice.aggregate([
+        { $match: filter },
+        { $group: { _id: null, totalAmount: { $sum: '$amount' } } }
+      ]),
+      Invoice.aggregate([
+        { $match: filter },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ])
+    ]);
+    const byStatus = {};
+    for (const row of byStatusAgg) byStatus[row._id || 'unknown'] = row.count;
+    pagedResponse(res, 'invoices', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        totalAmount: amountAgg[0]?.totalAmount || 0,
+        byStatus
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching invoices' });
   }
@@ -1684,8 +1898,25 @@ app.delete('/api/admin/invoices/:id', async (req, res) => {
 // Review Management Routes
 app.get('/api/admin/reviews', async (req, res) => {
   try {
-    const reviews = await Review.find({});
-    res.status(200).json({ reviews });
+    const filter = {};
+    const search = searchFilter(['customer', 'comment', 'package'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Review, filter, {
+      query: req.query,
+      defaultSort: { date: -1 }
+    });
+    const ratingAgg = await Review.aggregate([
+      { $match: filter },
+      { $group: { _id: null, averageRating: { $avg: '$rating' } } }
+    ]);
+    pagedResponse(res, 'reviews', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        averageRating: ratingAgg[0]?.averageRating
+          ? Math.round(ratingAgg[0].averageRating * 10) / 10
+          : 0
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching reviews' });
   }
@@ -1752,8 +1983,14 @@ app.delete('/api/admin/reviews/:id', async (req, res) => {
 // Coupon Management Routes
 app.get('/api/admin/coupons', async (req, res) => {
   try {
-    const coupons = await Coupon.find({});
-    res.status(200).json({ coupons });
+    const filter = {};
+    const search = searchFilter(['code', 'type'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Coupon, filter, {
+      query: req.query,
+      defaultSort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'coupons', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching coupons' });
   }
@@ -1983,22 +2220,21 @@ app.get('/api/admin/reports/summary', async (req, res) => {
 // Admin Notification Routes
 app.get('/api/admin/notifications', async (req, res) => {
   try {
-    const limit = parseInt(req.query.limit) || 200;
     const olderThan = parseInt(req.query.olderThan);
     const filter = olderThan ? { createdAt: { $lt: new Date(Date.now() - olderThan * 24 * 60 * 60 * 1000) } } : {};
-    const notifications = await Notification.find(filter)
-      .populate('userId', 'fullName email role')
-      .sort({ createdAt: -1 })
-      .limit(limit);
-    const total = await Notification.countDocuments(filter);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Notification, filter, {
+      query: req.query,
+      populate: { path: 'userId', select: 'fullName email role' },
+      sort: { createdAt: -1 },
+      defaultLimit: 200
+    });
     const unread = await Notification.countDocuments({ ...filter, read: false });
     const recipientIds = await Notification.distinct('userId', filter);
     const byType = {};
     for (const t of ['booking', 'payment', 'review', 'system', 'offer', 'availability']) {
       byType[t] = await Notification.countDocuments({ ...filter, type: t });
     }
-    res.status(200).json({
-      notifications,
+    pagedResponse(res, 'notifications', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
       stats: { total, unread, recipients: recipientIds.length, byType }
     });
   } catch (error) {
@@ -2207,8 +2443,14 @@ app.put('/api/operator/profile', async (req, res) => {
 // Operator Package Routes
 app.get('/api/operator/packages', async (req, res) => {
   try {
-    const packages = await Package.find({}).sort({ createdAt: -1 });
-    res.status(200).json({ packages });
+    const filter = {};
+    const search = searchFilter(['name', 'destination', 'category'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Package, filter, {
+      query: req.query,
+      sort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'packages', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching packages' });
   }
@@ -2274,8 +2516,14 @@ app.delete('/api/operator/packages/:id', async (req, res) => {
 // Operator Itinerary Routes
 app.get('/api/operator/itineraries', async (req, res) => {
   try {
-    const itineraries = await Itinerary.find({ operatorId: req.user.userId }).sort({ createdAt: -1 });
-    res.status(200).json({ itineraries });
+    const filter = { operatorId: req.user.userId };
+    const search = searchFilter(['name', 'packageName'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Itinerary, filter, {
+      query: req.query,
+      sort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'itineraries', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching itineraries' });
   }
@@ -2383,8 +2631,12 @@ app.put('/api/operator/pricing/:id', async (req, res) => {
 // Operator Availability Routes
 app.get('/api/operator/availability/package/:packageId', async (req, res) => {
   try {
-    const availability = await Availability.find({ packageId: req.params.packageId, operatorId: req.user.userId });
-    res.status(200).json({ availability });
+    const filter = { packageId: req.params.packageId, operatorId: req.user.userId };
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Availability, filter, {
+      query: req.query,
+      defaultSort: { startDate: -1 }
+    });
+    pagedResponse(res, 'availability', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching availability' });
   }
@@ -2440,8 +2692,32 @@ app.delete('/api/operator/availability/:id', async (req, res) => {
 // Operator Booking Routes
 app.get('/api/operator/bookings', async (req, res) => {
   try {
-    const bookings = await Booking.find({ operatorId: req.user.userId }).sort({ bookingDate: -1 });
-    res.status(200).json({ bookings });
+    const filter = { operatorId: req.user.userId };
+    const search = searchFilter(['bookingId', 'customer', 'package', 'email'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Booking, filter, {
+      query: req.query,
+      sort: { bookingDate: -1 }
+    });
+    const [byStatusAgg, revenueAgg] = await Promise.all([
+      Booking.aggregate([
+        { $match: filter },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      Booking.aggregate([
+        { $match: filter },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ])
+    ]);
+    const byStatus = {};
+    for (const row of byStatusAgg) byStatus[row._id || 'unknown'] = row.count;
+    pagedResponse(res, 'bookings', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        byStatus,
+        totalRevenue: revenueAgg[0]?.total || 0
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching bookings' });
   }
@@ -2497,22 +2773,59 @@ app.put('/api/operator/bookings/:id', async (req, res) => {
 // Operator Customer Routes
 app.get('/api/operator/customers', async (req, res) => {
   try {
-    const bookings = await Booking.find({ operatorId: req.user.userId });
-    const customerIds = [...new Set(bookings.map(b => b.customerId))];
-    const customers = await User.find({ _id: { $in: customerIds } }).select('-password');
-    
-    const customersWithStats = await Promise.all(customers.map(async (customer) => {
-      const customerBookings = bookings.filter(b => b.customerId.toString() === customer._id.toString());
-      const totalSpent = customerBookings.reduce((sum, b) => sum + (b.paidAmount || 0), 0);
-      return {
-        ...customer.toObject(),
-        totalBookings: customerBookings.length,
-        totalSpent,
-        lastBooking: customerBookings.sort((a, b) => new Date(b.bookingDate) - new Date(a.bookingDate))[0]?.bookingDate
-      };
-    }));
-    
-    res.status(200).json({ customers: customersWithStats });
+    const operatorId = new mongoose.Types.ObjectId(req.user.userId);
+    const { page, limit, skip } = getPagination(req.query);
+    const pageStages = [{ $sort: { fullName: 1 } }];
+    if (limit > 0) {
+      pageStages.push({ $skip: skip }, { $limit: limit });
+    }
+    const [facet] = await User.aggregate([
+      {
+        $lookup: {
+          from: 'bookings',
+          let: {},
+          pipeline: [
+            { $match: { operatorId, customerId: { $ne: null } } },
+            { $group: { _id: '$customerId' } }
+          ],
+          as: '__customerIds'
+        }
+      },
+      { $addFields: { __customerIds: { $map: { input: '$__customerIds', as: 'c', in: '$$c._id' } } } },
+      { $match: { _id: { $in: '$__customerIds' } } },
+      {
+        $lookup: {
+          from: 'bookings',
+          let: { cid: '$_id' },
+          pipeline: [
+            { $match: { $expr: { $and: [ { $eq: ['$customerId', '$$cid'] }, { $eq: ['$operatorId', operatorId] } ] } } },
+            { $project: { _id: 0, bookingDate: 1, paidAmount: 1 } }
+          ],
+          as: '__bookings'
+        }
+      },
+      {
+        $addFields: {
+          totalBookings: { $size: '$__bookings' },
+          totalSpent: { $sum: '$__bookings.paidAmount' },
+          lastBooking: { $max: '$__bookings.bookingDate' }
+        }
+      },
+      { $project: { password: '$$REMOVE', __customerIds: '$$REMOVE', __bookings: '$$REMOVE' } },
+      { $facet: { data: pageStages, total: [{ $count: 'count' }] } }
+    ]);
+    const docs = facet?.data || [];
+    const total = facet?.total?.[0]?.count || 0;
+    const totalPages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+    pagedResponse(res, 'customers', {
+      docs,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: limit > 0 ? page * limit < total : false,
+      hasPrev: page > 1
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching customers' });
   }
@@ -2543,8 +2856,25 @@ app.get('/api/operator/customers/:id', async (req, res) => {
 // Operator Review Routes
 app.get('/api/operator/reviews', async (req, res) => {
   try {
-    const reviews = await Review.find({ operatorId: req.user.userId }).sort({ date: -1 });
-    res.status(200).json({ reviews });
+    const filter = { operatorId: req.user.userId };
+    const search = searchFilter(['customer', 'comment', 'package'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Review, filter, {
+      query: req.query,
+      sort: { date: -1 }
+    });
+    const ratingAgg = await Review.aggregate([
+      { $match: filter },
+      { $group: { _id: null, averageRating: { $avg: '$rating' } } }
+    ]);
+    pagedResponse(res, 'reviews', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        averageRating: ratingAgg[0]?.averageRating
+          ? Math.round(ratingAgg[0].averageRating * 10) / 10
+          : 0
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching reviews' });
   }
@@ -2652,11 +2982,14 @@ app.get('/api/operator/revenue', async (req, res) => {
 // Operator Notification Routes
 app.get('/api/operator/notifications', async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user.userId })
-      .sort({ createdAt: -1 })
-      .limit(50);
+    const filter = { userId: req.user.userId };
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Notification, filter, {
+      query: req.query,
+      sort: { createdAt: -1 },
+      defaultLimit: 50
+    });
     const unreadCount = await Notification.countDocuments({ userId: req.user.userId, read: false });
-    res.status(200).json({ notifications, unreadCount });
+    pagedResponse(res, 'notifications', { docs, total, page, limit, totalPages, hasNext, hasPrev }, { unreadCount });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching notifications' });
   }
@@ -2709,7 +3042,7 @@ app.delete('/api/operator/notifications/:id', async (req, res) => {
 // Public Package Routes (no auth required)
 app.get('/api/packages', async (req, res) => {
   try {
-    const { publishedOnly, category, search, limit, page } = req.query;
+    const { publishedOnly, category, search } = req.query;
     const filter = {};
     if (publishedOnly === 'true') {
       filter.publishedStatus = 'published';
@@ -2718,13 +3051,14 @@ app.get('/api/packages', async (req, res) => {
       filter.category = category;
     }
     if (search) {
-      filter.name = new RegExp(search, 'i');
+      const rx = new RegExp(escapeRegExp(search), 'i');
+      filter.$or = [{ name: rx }, { destination: rx }, { category: rx }];
     }
-    let query = Package.find(filter).sort({ createdAt: -1 });
-    if (limit) query = query.limit(Number(limit));
-    if (page && limit) query = query.skip((Number(page) - 1) * Number(limit));
-    const packages = await query.exec();
-    res.status(200).json({ packages });
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Package, filter, {
+      query: req.query,
+      sort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'packages', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     console.error('Error fetching packages:', error);
     res.status(500).json({ message: 'Error fetching packages' });
@@ -2752,19 +3086,23 @@ app.get('/api/public/hotels', async (req, res) => {
       filter.location = location;
     }
     if (search) {
-      filter.name = new RegExp(search, 'i');
+      const rx = new RegExp(escapeRegExp(search), 'i');
+      filter.$or = [{ name: rx }, { location: rx }, { partner: rx }];
     }
-    const hotels = await Hotel.find(filter).sort({ createdAt: -1 });
-    const hotelsWithMinPrice = await Promise.all(hotels.map(async (hotel) => {
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Hotel, filter, {
+      query: req.query,
+      sort: { createdAt: -1 }
+    });
+    const hotelsWithMinPrice = await Promise.all(docs.map(async (hotel) => {
       const rooms = await Room.find({ hotel: hotel.name });
       const minPrice = rooms.length > 0 ? Math.min(...rooms.map(r => r.price)) : 0;
       return {
-        ...hotel.toObject(),
+        ...hotel,
         minPrice,
         rooms
       };
     }));
-    res.status(200).json({ hotels: hotelsWithMinPrice });
+    pagedResponse(res, 'hotels', { docs: hotelsWithMinPrice, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching hotels' });
   }
@@ -2787,8 +3125,14 @@ app.get('/api/public/hotels/:id', async (req, res) => {
 // Public Destination Routes (aggregated destinations from packages)
 app.get('/api/public/destinations', async (req, res) => {
   try {
-    const destinations = await Package.aggregate([
+    const { page, limit, skip } = getPagination(req.query, { defaultLimit: 20 });
+    const pageStages = [{ $sort: { count: -1 } }];
+    if (limit > 0) {
+      pageStages.push({ $skip: skip }, { $limit: limit });
+    }
+    const [facet] = await Package.aggregate([
       { $match: { publishedStatus: 'published' } },
+      { $sort: { rating: -1 } },
       {
         $group: {
           _id: '$destination',
@@ -2799,10 +3143,26 @@ app.get('/api/public/destinations', async (req, res) => {
           rating: { $avg: '$rating' }
         }
       },
-      { $sort: { count: -1 } },
-      { $limit: 20 }
+      {
+        $project: {
+          packageCount: '$count',
+          packages: { $slice: ['$packages', 5] }
+        }
+      },
+      { $facet: { data: pageStages, total: [{ $count: 'count' }] } }
     ]);
-    res.status(200).json({ destinations });
+    const docs = facet?.data || [];
+    const total = facet?.total?.[0]?.count || 0;
+    const totalPages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+    pagedResponse(res, 'destinations', {
+      docs,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: limit > 0 ? page * limit < total : false,
+      hasPrev: page > 1
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching destinations' });
   }
@@ -2866,15 +3226,20 @@ app.put('/api/customer/profile', async (req, res) => {
 // --- Packages (customer view of published packages) ---
 app.get('/api/customer/packages', async (req, res) => {
   try {
-    const { category, search, bestseller, limit } = req.query;
+    const { category, search, bestseller } = req.query;
     const filter = { publishedStatus: 'published' };
     if (category && category !== 'all') filter.category = category;
-    if (search) filter.name = new RegExp(search, 'i');
+    if (search) {
+      const rx = new RegExp(escapeRegExp(search), 'i');
+      filter.$or = [{ name: rx }, { destination: rx }, { category: rx }];
+    }
     if (bestseller === 'true') filter.rating = { $gte: 4 };
-    let query = Package.find(filter).sort({ createdAt: -1 });
-    if (limit) query = query.limit(Number(limit));
-    const packages = await query.exec();
-    res.status(200).json({ packages });
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Package, filter, {
+      query: req.query,
+      sort: { createdAt: -1 },
+      defaultLimit: 50
+    });
+    pagedResponse(res, 'packages', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching packages' });
   }
@@ -2883,10 +3248,24 @@ app.get('/api/customer/packages', async (req, res) => {
 // --- Bookings ---
 app.get('/api/customer/bookings', async (req, res) => {
   try {
-    const bookings = await Booking.find({ customerId: req.user.userId })
-      .populate('packageId', 'name destination image price')
-      .sort({ bookingDate: -1 });
-    res.status(200).json({ bookings });
+    const filter = { customerId: req.user.userId };
+    const search = searchFilter(['bookingId', 'package', 'customer', 'email'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Booking, filter, {
+      query: req.query,
+      populate: { path: 'packageId', select: 'name destination image price' },
+      sort: { bookingDate: -1 }
+    });
+    const spentAgg = await Booking.aggregate([
+      { $match: filter },
+      { $group: { _id: null, totalSpent: { $sum: { $ifNull: ['$paidAmount', 0] } } } }
+    ]);
+    pagedResponse(res, 'bookings', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        totalSpent: spentAgg[0]?.totalSpent || 0
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching bookings' });
   }
@@ -3091,13 +3470,20 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
 // --- Itineraries (customer's own itineraries from their bookings) ---
 app.get('/api/customer/itineraries', async (req, res) => {
   try {
-    const bookings = await Booking.find({ customerId: req.user.userId })
-      .populate({
+    const filter = { customerId: req.user.userId };
+    const search = searchFilter(['package', 'bookingId'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs: bookings, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Booking, filter, {
+      query: req.query,
+      populate: {
         path: 'packageId',
         select: 'name destination image price rating'
-      });
+      },
+      sort: { bookingDate: -1 }
+    });
     const itineraries = bookings.filter(b => b.packageId).map(b => ({
       _id: b._id,
+      packageId: b.packageId?._id || b.packageId || null,
       packageName: b.package || b.packageId?.name || '',
       destination: b.packageId?.destination || '',
       image: b.packageId?.image || '',
@@ -3121,7 +3507,7 @@ app.get('/api/customer/itineraries', async (req, res) => {
         highlights: itinerary?.highlights || []
       };
     }));
-    res.status(200).json({ itineraries: itinerariesWithDetails });
+    pagedResponse(res, 'itineraries', { docs: itinerariesWithDetails, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     console.error('Error fetching itineraries:', error);
     res.status(500).json({ message: 'Error fetching itineraries' });
@@ -3131,15 +3517,28 @@ app.get('/api/customer/itineraries', async (req, res) => {
 // --- Invoices ---
 app.get('/api/customer/invoices', async (req, res) => {
   try {
-    const invoices = await Invoice.find({ email: req.user.email })
-      .sort({ date: -1 });
-    if (invoices.length === 0) {
+    const filter = { email: req.user.email };
+    const existingTotal = await Invoice.countDocuments(filter);
+    if (existingTotal === 0) {
       const bookings = await Booking.find({ customerId: req.user.userId, paymentStatus: 'paid' });
-      const generated = await Promise.all(bookings.map(b => createPaidInvoice(b)));
-      const allInvoices = generated.filter(i => i !== null);
-      return res.status(200).json({ invoices: allInvoices });
+      await Promise.all(bookings.map(b => createPaidInvoice(b)));
     }
-    res.status(200).json({ invoices });
+    const search = searchFilter(['invoiceNo', 'customer', 'package'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Invoice, filter, {
+      query: req.query,
+      sort: { date: -1 }
+    });
+    const amountAgg = await Invoice.aggregate([
+      { $match: filter },
+      { $group: { _id: null, totalAmount: { $sum: '$amount' } } }
+    ]);
+    pagedResponse(res, 'invoices', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        totalAmount: amountAgg[0]?.totalAmount || 0
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching invoices' });
   }
@@ -3160,10 +3559,15 @@ app.get('/api/customer/invoices/:id', async (req, res) => {
 // --- Reviews ---
 app.get('/api/customer/reviews', async (req, res) => {
   try {
-    const reviews = await Review.find({ customerId: req.user.userId })
-      .populate('packageId', 'name destination image')
-      .sort({ date: -1 });
-    res.status(200).json({ reviews });
+    const filter = { customerId: req.user.userId };
+    const search = searchFilter(['customer', 'comment', 'package'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Review, filter, {
+      query: req.query,
+      populate: { path: 'packageId', select: 'name destination image' },
+      sort: { date: -1 }
+    });
+    pagedResponse(res, 'reviews', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching reviews' });
   }
@@ -3228,9 +3632,14 @@ app.delete('/api/customer/reviews/:id', async (req, res) => {
 // --- Wishlist ---
 app.get('/api/customer/wishlist', async (req, res) => {
   try {
-    const items = await Wishlist.find({ userId: req.user.userId })
-      .populate('packageId', 'name destination image price rating category')
-      .sort({ addedAt: -1 });
+    const filter = { userId: req.user.userId };
+    const search = searchFilter(['packageName', 'destination', 'category'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs: items, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Wishlist, filter, {
+      query: req.query,
+      populate: { path: 'packageId', select: 'name destination image price rating category' },
+      sort: { addedAt: -1 }
+    });
     const wishlist = items.map(item => {
       const pkg = item.packageId || {};
       return {
@@ -3245,7 +3654,9 @@ app.get('/api/customer/wishlist', async (req, res) => {
         addedAt: item.addedAt
       };
     });
-    res.status(200).json({ wishlist });
+    pagedResponse(res, 'wishlist', { docs: wishlist, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: { total }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching wishlist' });
   }
@@ -3297,10 +3708,15 @@ app.delete('/api/customer/wishlist/:id', async (req, res) => {
 // --- Notifications ---
 app.get('/api/customer/notifications', async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user.userId })
-      .sort({ createdAt: -1 })
-      .limit(50);
-    res.status(200).json({ notifications });
+    const filter = { userId: req.user.userId };
+    const search = searchFilter(['title', 'message', 'type'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Notification, filter, {
+      query: req.query,
+      sort: { createdAt: -1 },
+      defaultLimit: 20
+    });
+    pagedResponse(res, 'notifications', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching notifications' });
   }
@@ -3562,8 +3978,30 @@ app.get('/api/hotel/rooms', async (req, res) => {
   try {
     const { hotelName } = req.query;
     const filter = hotelName ? { hotel: hotelName } : {};
-    const rooms = await Room.find(filter).sort({ createdAt: -1 });
-    res.status(200).json({ rooms });
+    const search = searchFilter(['hotel', 'type'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Room, filter, {
+      query: req.query,
+      sort: { createdAt: -1 }
+    });
+    const [units, activeUnits, bookedUnits] = await Promise.all([
+      Room.aggregate([{ $match: filter }, { $group: { _id: null, total: { $sum: '$total' }, available: { $sum: '$available' }, booked: { $sum: '$booked' } } }]),
+      Room.countDocuments({ ...filter, status: 'active' }),
+      Room.countDocuments({ ...filter, status: 'inactive' })
+    ]);
+    // The dashboard cards count room units, so unit totals lead the stats and
+    // the raw record counts are kept alongside for the type/status breakdowns.
+    const sums = units[0] || { total: 0, available: 0, booked: 0 };
+    pagedResponse(res, 'rooms', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total: sums.total,
+        available: sums.available,
+        occupied: sums.booked,
+        maintenance: bookedUnits,
+        roomTypes: total,
+        activeRoomTypes: activeUnits
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching rooms' });
   }
@@ -3606,8 +4044,13 @@ app.get('/api/hotel/pricing', async (req, res) => {
   try {
     const { hotelName } = req.query;
     const filter = hotelName ? { hotel: hotelName } : {};
-    const rooms = await Room.find(filter).sort({ createdAt: -1 });
-    res.status(200).json({ rooms });
+    const search = searchFilter(['hotel', 'type'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Room, filter, {
+      query: req.query,
+      sort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'rooms', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching pricing' });
   }
@@ -3631,8 +4074,13 @@ app.get('/api/hotel/availability', async (req, res) => {
   try {
     const { hotelName } = req.query;
     const filter = hotelName ? { hotel: hotelName } : {};
-    const rooms = await Room.find(filter).sort({ createdAt: -1 });
-    res.status(200).json({ rooms });
+    const search = searchFilter(['hotel', 'type'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Room, filter, {
+      query: req.query,
+      sort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'rooms', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching availability' });
   }
@@ -3657,8 +4105,31 @@ app.get('/api/hotel/bookings', async (req, res) => {
   try {
     const { hotelName } = req.query;
     const filter = hotelName ? { hotelName } : { hotelName: { $exists: true, $ne: '' } };
-    const bookings = await Booking.find(filter).sort({ bookingDate: -1 });
-    res.status(200).json({ bookings });
+    const search = searchFilter(['bookingId', 'guestName', 'guestEmail', 'guestPhone', 'roomType', 'hotelName', 'notes'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Booking, filter, {
+      query: req.query,
+      sort: { bookingDate: -1 }
+    });
+    const [byStatusAgg, revenueAgg] = await Promise.all([
+      Booking.aggregate([
+        { $match: filter },
+        { $group: { _id: '$status', count: { $sum: 1 } } }
+      ]),
+      Booking.aggregate([
+        { $match: { ...filter, paymentStatus: 'paid' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } }
+      ])
+    ]);
+    const byStatus = {};
+    for (const row of byStatusAgg) byStatus[row._id || 'unknown'] = row.count;
+    pagedResponse(res, 'bookings', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: {
+        total,
+        byStatus,
+        totalRevenue: revenueAgg[0]?.total || 0
+      }
+    });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching bookings' });
   }
@@ -3791,30 +4262,66 @@ app.get('/api/hotel/guests', async (req, res) => {
   try {
     const { hotelName } = req.query;
     const filter = hotelName ? { hotelName } : { hotelName: { $exists: true, $ne: '' } };
-    const bookings = await Booking.find(filter);
-    const guestMap = {};
-    bookings.forEach(b => {
-      const key = b.guestEmail || b.guestPhone || b.guestName;
-      if (!key) return;
-      if (!guestMap[key]) {
-        guestMap[key] = {
-          _id: b._id,
-          name: b.guestName || '',
-          email: b.guestEmail || '',
-          phone: b.guestPhone || '',
-          totalStays: 0,
-          totalSpent: 0,
-          lastStay: new Date()
-        };
-      }
-      guestMap[key].totalStays += 1;
-      guestMap[key].totalSpent += (b.paidAmount || 0);
-      if (b.bookingDate && (new Date(b.bookingDate) > new Date(guestMap[key].lastStay))) {
-        guestMap[key].lastStay = b.bookingDate;
-      }
+    const search = searchFilter(['guestName', 'guestEmail', 'guestPhone'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { page, limit, skip } = getPagination(req.query);
+    const pageStages = [{ $sort: { totalSpent: -1 } }];
+    if (limit > 0) {
+      pageStages.push({ $skip: skip }, { $limit: limit });
+    }
+    const [facet] = await Booking.aggregate([
+      { $match: filter },
+      {
+        $addFields: {
+          __guestKey: {
+            $cond: [
+              { $ne: [{ $ifNull: ['$guestEmail', ''] }, ''] },
+              '$guestEmail',
+              { $cond: [{ $ne: [{ $ifNull: ['$guestPhone', ''] }, ''] }, '$guestPhone', '$guestName'] }
+            ]
+          }
+        }
+      },
+      { $match: { __guestKey: { $nin: [null, ''] } } },
+      {
+        $group: {
+          _id: '$__guestKey',
+          bookingId: { $first: '$_id' },
+          name: { $first: { $ifNull: ['$guestName', ''] } },
+          email: { $first: { $ifNull: ['$guestEmail', ''] } },
+          phone: { $first: { $ifNull: ['$guestPhone', ''] } },
+          totalStays: { $sum: 1 },
+          totalSpent: { $sum: { $ifNull: ['$paidAmount', 0] } },
+          lastStay: { $max: '$bookingDate' }
+        }
+      },
+      {
+        $project: {
+          _id: '$bookingId',
+          name: 1,
+          email: 1,
+          phone: 1,
+          totalStays: 1,
+          totalSpent: 1,
+          lastStay: 1
+        }
+      },
+      { $facet: { data: pageStages, total: [{ $count: 'count' }] } }
+    ]);
+    const docs = facet?.data || [];
+    const total = facet?.total?.[0]?.count || 0;
+    const totalPages = limit > 0 ? Math.max(1, Math.ceil(total / limit)) : 1;
+    pagedResponse(res, 'guests', {
+      docs,
+      total,
+      page,
+      limit,
+      totalPages,
+      hasNext: limit > 0 ? page * limit < total : false,
+      hasPrev: page > 1
+    }, {
+      stats: { totalGuests: total }
     });
-    const guests = Object.values(guestMap).sort((a, b) => b.totalSpent - a.totalSpent);
-    res.status(200).json({ guests });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching guests' });
   }
@@ -3826,12 +4333,37 @@ app.get('/api/hotel/reviews', async (req, res) => {
     const { hotelName, packageId, operatorId } = req.query;
     const filter = {};
     if (packageId) filter.packageId = packageId;
-    if (operatorId) filter.$or = [{ operatorId }, { customerId: req.user.userId }];
-    const reviews = await Review.find(filter)
-      .populate('packageId', 'name destination image')
-      .sort({ date: -1 });
-    res.status(200).json({ reviews });
+
+    if (operatorId) {
+      // Operator view: reviews of that operator's packages plus their own.
+      filter.$or = [{ operatorId }, { customerId: req.user.userId }];
+    } else if (hotelName) {
+      // Hotel partner view: reviews only for packages this hotel has bookings
+      // for. Reviews are attached to packages, so this is the only link a
+      // hotel has to them - scoping on it stops the route leaking every
+      // review in the database.
+      const packageIds = await Booking.find({ hotelName })
+        .select('packageId')
+        .lean()
+        .then((rows) => [...new Set(rows.map((row) => String(row.packageId)).filter(Boolean))]);
+      if (packageIds.length === 0) return pagedResponse(res, 'reviews', { docs: [], total: 0, page: 1, limit: getPagination(req.query).limit, totalPages: 1, hasNext: false, hasPrev: false });
+      filter.packageId = { $in: packageIds };
+    } else {
+      // No hotel context supplied: fall back to the partner's own reviews
+      // rather than returning the full collection.
+      filter.customerId = req.user.userId;
+    }
+
+    const search = searchFilter(['customer', 'comment', 'package'], req.query.search);
+    if (search) filter.$and = [{ $or: search.$or }];
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Review, filter, {
+      query: req.query,
+      populate: { path: 'packageId', select: 'name destination image' },
+      sort: { date: -1 }
+    });
+    pagedResponse(res, 'reviews', { docs, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
+    console.error('Error fetching hotel reviews:', error);
     res.status(500).json({ message: 'Error fetching reviews' });
   }
 });
@@ -3933,11 +4465,16 @@ app.get('/api/hotel/revenue', async (req, res) => {
 // --- Notifications ---
 app.get('/api/hotel/notifications', async (req, res) => {
   try {
-    const notifications = await Notification.find({ userId: req.user.userId })
-      .sort({ createdAt: -1 })
-      .limit(50);
+    const filter = { userId: req.user.userId };
+    const search = searchFilter(['title', 'message', 'type'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Notification, filter, {
+      query: req.query,
+      sort: { createdAt: -1 },
+      defaultLimit: 20
+    });
     const unreadCount = await Notification.countDocuments({ userId: req.user.userId, read: false });
-    res.status(200).json({ notifications, unreadCount });
+    pagedResponse(res, 'notifications', { docs, total, page, limit, totalPages, hasNext, hasPrev }, { unreadCount });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching notifications' });
   }

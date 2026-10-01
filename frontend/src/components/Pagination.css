@@ -1,0 +1,152 @@
+/* ============================================
+   PAGINATION
+   Shared by every dashboard list view. Uses the
+   same tokens as Dashboard.css so it inherits the
+   light/dark theme automatically.
+   ============================================ */
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid var(--border-color);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+.pagination-summary {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.pagination-summary strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.pagination-limit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.pagination-select {
+  height: 34px;
+  padding: 0 1.75rem 0 0.65rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background-color: var(--card-bg);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2 4l4 4 4-4' fill='none' stroke='%2394a3b8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem center;
+  background-size: 0.7rem;
+  appearance: none;
+  -webkit-appearance: none;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pagination-select:hover:not(:disabled) { border-color: var(--primary); }
+.pagination-select:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.pagination-select:focus-visible,
+.pagination-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.pagination-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.pagination-btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0 0.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-color);
+  border-radius: 0.5rem;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.pagination-icon { width: 1rem; height: 1rem; }
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(79, 70, 229, 0.06);
+}
+
+.pagination-btn:active:not(:disabled) { transform: scale(0.96); }
+
+.pagination-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.pagination-btn--active,
+.pagination-btn--active:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+  box-shadow: 0 4px 10px -4px rgba(79, 70, 229, 0.6);
+}
+
+.pagination-gap {
+  min-width: 20px;
+  text-align: center;
+  color: var(--text-tertiary);
+  user-select: none;
+}
+
+/* Compact variant for card grids and side panels */
+.pagination--compact {
+  justify-content: center;
+  margin-top: 1rem;
+  padding-top: 0.9rem;
+  font-size: 0.8125rem;
+}
+
+.pagination--compact .pagination-btn {
+  min-width: 32px;
+  height: 32px;
+}
+
+/* Stacked on small screens */
+@media (max-width: 640px) {
+  .pagination {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+
+  .pagination-summary {
+    justify-content: space-between;
+  }
+
+  .pagination-controls {
+    justify-content: center;
+  }
+}

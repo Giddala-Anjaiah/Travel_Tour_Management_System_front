@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Save, TrendingUp, TrendingDown, DollarSign, X } from 'lucide-react'
 import HotelLayout from './HotelLayout'
-import { api, formatCurrency } from '../../api'
+import { api, fetchAllPages, formatCurrency, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const HotelPricingPage = () => {
@@ -14,23 +15,51 @@ const HotelPricingPage = () => {
   const [bulkMode, setBulkMode] = useState(null)
   const [bulkPercent, setBulkPercent] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
 
-  const load = async () => {
+  // This page has no filter controls, so `/hotel/pricing` is always paged.
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
       setLoading(true)
+      setError('')
       const profile = await api('/hotel/profile').catch(() => ({}))
       const name = profile?.profile?.hotelName || ''
       setHotelName(name)
-      if (!name) { setRooms([]); return }
-      const data = await api(`/hotel/pricing?hotelName=${encodeURIComponent(name)}`)
-      setRooms(data.rooms || [])
+      if (!name) { setRooms([]); setMeta(readPagination({}, 0)); return }
+      const data = await api('/hotel/pricing', {
+        params: { hotelName: name, page: nextPage, limit: nextLimit }
+      })
+      const rows = data.rooms || []
+      setRooms(rows)
       setEdits({})
+      const next = readPagination(data, rows.length)
+      setMeta(next)
+      if (next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
     } catch (err) { setError(err.message) } finally { setLoading(false) }
   }
 
   useEffect(() => {
     Promise.resolve().then(() => load())
-  }, [refreshKey])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit, refreshKey])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const setPrice = (id, price) => setEdits(prev => ({ ...prev, [id]: { ...prev[id], price: Number(price) } }))
   const dirty = (r) => edits[r._id]?.price !== undefined && edits[r._id].price !== r.price
@@ -49,7 +78,11 @@ const HotelPricingPage = () => {
   const applyBulk = async () => {
     const pct = Number(bulkPercent)
     if (!pct || isNaN(pct)) return alert('Enter a valid percentage')
-    const updates = rooms
+    // The bulk adjustment covers the whole hotel, not just the rendered page.
+    const allRooms = hotelName
+      ? await fetchAllPages('/hotel/pricing', { key: 'rooms', params: { hotelName } })
+      : rooms
+    const updates = allRooms
       .filter(r => bulkMode === 'all' || r.type === bulkMode)
       .map(r => {
         const newPrice = Math.max(0, Math.round(r.price * (1 + pct / 100)))
@@ -74,7 +107,7 @@ const HotelPricingPage = () => {
     <HotelLayout active="pricing" title="Pricing">
       <div className="stats-grid" style={{ marginBottom: '1rem' }}>
         <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Avg Price/Night</h3><p className="stat-number">{formatCurrency(avgPrice)}</p></div></div>
-        <div className="stat-card"><div className="stat-content"><h3>Room Types</h3><p className="stat-number">{rooms.length}</p></div></div>
+        <div className="stat-card"><div className="stat-content"><h3>Room Types</h3><p className="stat-number">{meta.total}</p></div></div>
         <div className="stat-card"><div className="stat-content"><h3>Full Revenue/Night</h3><p className="stat-number">{formatCurrency(totalRevenuePotential)}</p></div></div>
         <div className="stat-card"><div className="stat-content"><h3>Unsaved Changes</h3><p className="stat-number" style={{ color: dirtyCount ? '#fbbf24' : 'inherit' }}>{dirtyCount}</p></div></div>
       </div>
@@ -132,6 +165,17 @@ const HotelPricingPage = () => {
             </table>
           </div>
         )}
+
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="rooms"
+          disabled={loading}
+        />
       </div>
 
       {bulkMode && (

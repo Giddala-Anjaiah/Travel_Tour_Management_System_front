@@ -1,61 +1,26 @@
 import { useEffect, useState } from 'react'
 import { History, Search, Download, User, Settings, Package, Ticket, Tag, Calendar, FileText, Star, Building, Bed } from 'lucide-react'
-import { api, downloadCsv, formatDate } from '../../api'
+import { api, downloadCsv, fetchAllPages, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
 
-const AuditLogs = () => {
-  const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterEntity, setFilterEntity] = useState('all')
-  const [filterAction, setFilterAction] = useState('all')
-  const [filterRole, setFilterRole] = useState('all')
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+const mapLog = (log) => ({
+  id: log._id,
+  timestamp: formatDate(log.timestamp),
+  userName: log.userId?.fullName || 'Unknown',
+  userEmail: log.userId?.email || '',
+  userRole: log.userId?.role || log.userRole,
+  action: log.action,
+  entityType: log.entityType,
+  entityName: log.entityName || '',
+  changes: log.details?.changes || [],
+  ip: log.details?.ip || ''
+})
 
-  const load = async () => {
-    try {
-      setError('')
-      setLoading(true)
-      const data = await api('/admin/audit-logs?limit=200')
-      setLogs((data.logs || []).map((log) => ({
-        id: log._id,
-        timestamp: formatDate(log.timestamp),
-        userName: log.userId?.fullName || 'Unknown',
-        userEmail: log.userId?.email || '',
-        userRole: log.userId?.role || log.userRole,
-        action: log.action,
-        entityType: log.entityType,
-        entityName: log.entityName || '',
-        changes: log.details?.changes || [],
-        ip: log.details?.ip || ''
-      })))
-    } catch (err) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
+const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
 
-  useEffect(() => {
-    Promise.resolve().then(() => load())
-  }, [])
-
-  const entityIcons = {
-    user: User, package: Package, hotel: Building, room: Bed,
-    booking: Ticket, invoice: FileText, review: Star, coupon: Tag,
-    itinerary: Calendar, settings: Settings, notification: History
-  }
-
-  const actionLabels = {
-    create: 'Created', update: 'Updated', delete: 'Deleted',
-    status_change: 'Status Changed', login: 'Logged In',
-    export: 'Exported', settings_update: 'Settings Updated'
-  }
-
-  const filteredLogs = logs.filter((log) => {
-    const matchesSearch = log.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+const matchesFilters = (log, { searchTerm, filterEntity, filterAction, filterRole, dateFrom, dateTo }) => {
+    const matchesSearch = searchTerm === '' || log.userName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.userEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.entityName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       log.action.toLowerCase().includes(searchTerm.toLowerCase())
@@ -70,13 +35,109 @@ const AuditLogs = () => {
       matchesDate = matchesDate && new Date(log.timestamp.replace(/-/g, '/')) <= new Date(dateTo.replace(/-/g, '/'))
     }
     return matchesSearch && matchesEntity && matchesAction && matchesRole && matchesDate
-  })
+}
 
-  const handleExport = () => {
+const AuditLogs = () => {
+  const [logs, setLogs] = useState([])
+  const [filterOptions, setFilterOptions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterEntity, setFilterEntity] = useState('all')
+  const [filterAction, setFilterAction] = useState('all')
+  const [filterRole, setFilterRole] = useState('all')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState(emptyMeta)
+
+  // No admin audit-log handler exists server-side, so every filter here
+  // (including the search box) falls back to the full set plus local matching.
+  const hasLocalFilters = searchTerm !== '' || filterEntity !== 'all' || filterAction !== 'all' ||
+    filterRole !== 'all' || dateFrom !== '' || dateTo !== ''
+
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setError('')
+      setLoading(true)
+      const data = await api('/admin/audit-logs', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit
+        }
+      })
+      const mapped = (data.logs || []).map(mapLog)
+      setLogs(mapped)
+      setMeta(readPagination(data, mapped.length))
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    Promise.resolve().then(() => load())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  // The entity/action/role dropdowns must not be limited to the current page.
+  useEffect(() => {
+    Promise.resolve().then(async () => {
+      try {
+        const data = await api('/admin/audit-logs', { params: { limit: 'all' } })
+        setFilterOptions((data.logs || []).map(mapLog))
+      } catch (err) {
+        setError(err.message)
+      }
+    })
+  }, [])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      if (page === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterEntity, filterAction, filterRole, dateFrom, dateTo])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
+  const entityIcons = {
+    user: User, package: Package, hotel: Building, room: Bed,
+    booking: Ticket, invoice: FileText, review: Star, coupon: Tag,
+    itinerary: Calendar, settings: Settings, notification: History
+  }
+
+  const actionLabels = {
+    create: 'Created', update: 'Updated', delete: 'Deleted',
+    status_change: 'Status Changed', login: 'Logged In',
+    export: 'Exported', settings_update: 'Settings Updated'
+  }
+
+  const filters = { searchTerm, filterEntity, filterAction, filterRole, dateFrom, dateTo }
+  const filteredLogs = hasLocalFilters ? logs.filter((log) => matchesFilters(log, filters)) : logs
+
+  const handleExport = async () => {
+    const rows = await fetchAllPages('/admin/audit-logs', { key: 'logs' })
+    const exported = rows.map(mapLog).filter((log) => matchesFilters(log, filters))
     downloadCsv(
       'audit-logs.csv',
       ['Date', 'User', 'Email', 'Role', 'Action', 'Entity', 'Entity Name', 'Changes', 'IP'],
-      filteredLogs.map((log) => [
+      exported.map((log) => [
         log.timestamp, log.userName, log.userEmail, log.userRole,
         actionLabels[log.action] || log.action, log.entityType,
         log.entityName, log.changes.join(', '), log.ip
@@ -84,9 +145,9 @@ const AuditLogs = () => {
     )
   }
 
-  const entityTypes = [...new Set(logs.map(l => l.entityType))]
-  const actions = [...new Set(logs.map(l => l.action))]
-  const roles = [...new Set(logs.map(l => l.userRole))]
+  const entityTypes = [...new Set(filterOptions.map(l => l.entityType))]
+  const actions = [...new Set(filterOptions.map(l => l.action))]
+  const roles = [...new Set(filterOptions.map(l => l.userRole))]
 
   return (
     <AdminLayout
@@ -126,7 +187,7 @@ const AuditLogs = () => {
         <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading audit logs...</div>
       ) : (
         <div className="section-card full-width">
-          <h3>Audit Log Entries ({filteredLogs.length})</h3>
+          <h3>Audit Log Entries ({hasLocalFilters ? filteredLogs.length : meta.total})</h3>
           <div className="table-container">
             <table className="data-table">
               <thead>
@@ -177,6 +238,16 @@ const AuditLogs = () => {
                 })}
               </tbody>
             </table>
+            <Pagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="audit log entries"
+              disabled={loading || hasLocalFilters}
+            />
           </div>
         </div>
       )}

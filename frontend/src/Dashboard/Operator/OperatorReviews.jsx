@@ -1,6 +1,7 @@
-import { API_BASE } from '../../api'
+import { API_BASE, api, readPagination } from '../../api'
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
+import Pagination from '../../components/Pagination'
 import { Star, Search, MessageSquare, Send, Award } from 'lucide-react'
 import '../Dashboard.css'
 
@@ -11,19 +12,29 @@ const OperatorReviews = () => {
   const [filterRating, setFilterRating] = useState('all')
   const [selectedReview, setSelectedReview] = useState(null)
   const [responseText, setResponseText] = useState('')
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [stats, setStats] = useState(null)
 
-  const fetchReviews = async () => {
+  const hasLocalFilters = filterRating !== 'all'
+
+  const fetchReviews = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(API_BASE + '/operator/reviews', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const data = await api('/operator/reviews', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
         }
       })
-      const data = await response.json()
       if (data.reviews) {
         setReviews(data.reviews)
       }
+      setMeta(readPagination(data, data.reviews?.length || 0))
+      if (data.stats) setStats(data.stats)
     } catch (error) {
       console.error('Error fetching reviews:', error)
     } finally {
@@ -33,9 +44,30 @@ const OperatorReviews = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchReviews())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchReviews({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterRating])
 
   usePolling(fetchReviews, 15000)
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const handleResponse = async (reviewId) => {
     if (!responseText.trim()) {
@@ -66,12 +98,9 @@ const OperatorReviews = () => {
     }
   }
 
-  const filteredReviews = reviews.filter(review => {
-    const matchesSearch = review.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         review.package.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesRating = filterRating === 'all' || review.rating === parseInt(filterRating)
-    return matchesSearch && matchesRating
-  })
+  const filteredReviews = hasLocalFilters
+    ? reviews.filter(review => review.rating === parseInt(filterRating))
+    : reviews
 
   const renderStars = (rating) => {
     return Array(5).fill(0).map((_, i) => (
@@ -80,8 +109,8 @@ const OperatorReviews = () => {
   }
 
   const ratingStats = {
-    total: reviews.length,
-    average: reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : 0,
+    total: stats?.total ?? reviews.length,
+    average: stats?.averageRating ?? (reviews.length > 0 ? (reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1) : 0),
     distribution: [5, 4, 3, 2, 1].map(star => ({
       star,
       count: reviews.filter(r => r.rating === star).length
@@ -152,6 +181,7 @@ const OperatorReviews = () => {
               <p>Reviews will appear here when customers review your packages</p>
             </div>
           ) : (
+            <>
             <div className="reviews-list enhanced">
               {filteredReviews.map(review => (
                 <div key={review._id} className="review-card enhanced">
@@ -194,6 +224,17 @@ const OperatorReviews = () => {
                 </div>
               ))}
             </div>
+            <Pagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="reviews"
+              disabled={loading || hasLocalFilters}
+            />
+            </>
           )}
       {selectedReview && (
         <div className="modal-overlay">

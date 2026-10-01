@@ -4,7 +4,8 @@ import {
   CreditCard, CheckCircle, AlertCircle, Download, X
 } from 'lucide-react'
 import HotelLayout from './HotelLayout'
-import { api, formatCurrency, formatDate } from '../../api'
+import { api, formatCurrency, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
 const STATUSES = ['pending', 'confirmed', 'checked_in', 'checked_out', 'cancelled']
@@ -34,34 +35,77 @@ const HotelBookingsPage = () => {
   const [form, setForm] = useState(emptyForm())
   const [saving, setSaving] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [statsData, setStatsData] = useState(null)
+
+  // `/hotel/bookings` filters server-side on `search` (booking id / guest name,
+  // email, phone) only. Status and payment are not supported, so when either is
+  // active we load the full set and filter the rows locally.
+  const hasLocalFilters = filterStatus !== 'all' || filterPayment !== 'all'
+
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setLoading(true)
+      setError('')
+      const data = await api('/hotel/bookings', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search
+        }
+      })
+      const rows = data.bookings || []
+      setBookings(rows)
+      const next = readPagination(data, rows.length)
+      setMeta(next)
+      if (data.stats) setStatsData(data.stats)
+      if (!hasLocalFilters && next.totalPages > 0 && nextPage > next.totalPages) {
+        setLoading(true)
+        setPage(next.totalPages)
+      }
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        setLoading(true)
-        const data = await api('/hotel/bookings')
-        if (!cancelled) setBookings(data.bookings || [])
-      } catch (err) {
-        if (!cancelled) setError(err.message)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [refreshKey])
+    Promise.resolve().then(() => load())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit, refreshKey])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      load({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, filterStatus, filterPayment])
+
+  // Refetches the CURRENT page with the current filters.
   const refresh = () => setRefreshKey(k => k + 1)
 
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
   const filtered = bookings.filter(b => {
-    const matchSearch = !search ||
-      (b.guestName || '').toLowerCase().includes(search.toLowerCase()) ||
-      (b.bookingId || '').toLowerCase().includes(search.toLowerCase()) ||
-      (b.roomType || '').toLowerCase().includes(search.toLowerCase())
     const matchStatus = filterStatus === 'all' || b.status === filterStatus
     const matchPay = filterPayment === 'all' || b.paymentStatus === filterPayment
-    return matchSearch && matchStatus && matchPay
+    return matchStatus && matchPay
   })
 
   const openCreate = () => { setForm(emptyForm()); setEditing(null); setShowForm(true) }
@@ -119,7 +163,13 @@ const HotelBookingsPage = () => {
     if (!confirm(`Delete booking ${b.bookingId} for ${b.guestName}?`)) return
     try {
       await api(`/hotel/bookings/${b._id}`, { method: 'DELETE' })
-      refresh()
+      // Deleting the only row on a page steps back one page instead of showing nothing.
+      if (page > 1 && !hasLocalFilters && filtered.length <= 1) {
+        setLoading(true)
+        setPage(page - 1)
+      } else {
+        refresh()
+      }
     } catch (err) { alert(err.message) }
   }
 
@@ -155,12 +205,20 @@ const HotelBookingsPage = () => {
     URL.revokeObjectURL(url)
   }
 
-  const stats = {
+  // The route aggregates status counts and revenue over the whole scoped filter.
+  const localStats = {
     total: bookings.length,
     confirmed: bookings.filter(b => b.status === 'confirmed').length,
     checkedIn: bookings.filter(b => b.status === 'checked_in').length,
     pending: bookings.filter(b => b.status === 'pending').length,
     revenue: bookings.filter(b => b.paymentStatus === 'paid').reduce((s, b) => s + (b.paidAmount || 0), 0)
+  }
+  const stats = {
+    total: statsData?.total ?? localStats.total,
+    confirmed: statsData?.byStatus?.confirmed ?? localStats.confirmed,
+    checkedIn: statsData?.byStatus?.checked_in ?? localStats.checkedIn,
+    pending: statsData?.byStatus?.pending ?? localStats.pending,
+    revenue: statsData?.totalRevenue ?? localStats.revenue
   }
 
   return (
@@ -174,7 +232,7 @@ const HotelBookingsPage = () => {
 
       <div className="section-card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-          <h3 style={{ margin: 0 }}>All Bookings ({filtered.length})</h3>
+          <h3 style={{ margin: 0 }}>All Bookings ({hasLocalFilters ? filtered.length : meta.total})</h3>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button className="btn-secondary" onClick={exportCsv} disabled={!filtered.length}><Download size={14} /> Export CSV</button>
             <button className="btn-primary" onClick={openCreate}><Plus size={14} /> New Booking</button>
@@ -261,6 +319,17 @@ const HotelBookingsPage = () => {
             </table>
           </div>
         )}
+
+        <Pagination
+          page={meta.page}
+          totalPages={meta.totalPages}
+          total={hasLocalFilters ? filtered.length : meta.total}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="bookings"
+          disabled={loading || hasLocalFilters}
+        />
       </div>
 
       {showForm && (

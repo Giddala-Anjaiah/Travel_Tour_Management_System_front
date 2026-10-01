@@ -1,7 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Calendar, Building, Plus, Pencil as Edit, Trash2, Search, Download, MapPin, Clock, Users, Star } from 'lucide-react'
-import { api, downloadCsv, formValues } from '../../api'
+import { api, downloadCsv, fetchAllPages, formValues, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
+
+const mapItinerary = (it) => ({
+  id: it._id, name: it.name, package: it.packageName || '', days: it.days, hotels: it.hotels || 0, status: it.status || 'active'
+})
+
+const mapHotel = (hotel) => ({
+  id: hotel._id, name: hotel.name, location: hotel.location, rooms: hotel.rooms, rating: hotel.rating || 0, partner: hotel.partner, status: hotel.status || 'active'
+})
+
+const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
 
 const ItineraryManagement = () => {
   const [itineraries, setItineraries] = useState([])
@@ -14,21 +25,36 @@ const ItineraryManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedItem, setSelectedItem] = useState(null)
+  // Each tab owns its own page/limit/meta so switching tabs never shares a page.
+  const [itineraryPage, setItineraryPage] = useState(1)
+  const [itineraryLimit, setItineraryLimit] = useState(10)
+  const [itineraryMeta, setItineraryMeta] = useState(emptyMeta)
+  const [itineraryStats, setItineraryStats] = useState(null)
+  const [hotelPage, setHotelPage] = useState(1)
+  const [hotelLimit, setHotelLimit] = useState(10)
+  const [hotelMeta, setHotelMeta] = useState(emptyMeta)
 
-  const load = async () => {
+  // Both routes only filter server-side on `search`; there are no extra
+  // selects on this page, so the server page is rendered as-is.
+  const load = async (overrides = {}) => {
+    const nextItineraryPage = overrides.itineraryPage ?? itineraryPage
+    const nextItineraryLimit = overrides.itineraryLimit ?? itineraryLimit
+    const nextHotelPage = overrides.hotelPage ?? hotelPage
+    const nextHotelLimit = overrides.hotelLimit ?? hotelLimit
     try {
       setError('')
       const [itineraryData, hotelData, packageData] = await Promise.all([
-        api('/admin/itineraries'),
-        api('/admin/hotels'),
-        api('/admin/packages')
+        api('/admin/itineraries', { params: { page: nextItineraryPage, limit: nextItineraryLimit, search: searchTerm } }),
+        api('/admin/hotels', { params: { page: nextHotelPage, limit: nextHotelLimit, search: searchTerm } }),
+        api('/admin/packages', { params: { limit: 'all' } })
       ])
-      setItineraries((itineraryData.itineraries || []).map((it) => ({
-        id: it._id, name: it.name, package: it.packageName || '', days: it.days, hotels: it.hotels || 0, status: it.status || 'active'
-      })))
-      setHotels((hotelData.hotels || []).map((hotel) => ({
-        id: hotel._id, name: hotel.name, location: hotel.location, rooms: hotel.rooms, rating: hotel.rating || 0, partner: hotel.partner, status: hotel.status || 'active'
-      })))
+      const mappedItineraries = (itineraryData.itineraries || []).map(mapItinerary)
+      setItineraries(mappedItineraries)
+      setItineraryMeta(readPagination(itineraryData, mappedItineraries.length))
+      if (itineraryData.stats) setItineraryStats(itineraryData.stats)
+      const mappedHotels = (hotelData.hotels || []).map(mapHotel)
+      setHotels(mappedHotels)
+      setHotelMeta(readPagination(hotelData, mappedHotels.length))
       setPackages(packageData.packages || [])
     } catch (err) {
       setError(err.message)
@@ -39,24 +65,58 @@ const ItineraryManagement = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => load())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itineraryPage, itineraryLimit, hotelPage, hotelLimit])
 
-  const filteredItineraries = itineraries.filter((item) =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.package || '').toLowerCase().includes(searchTerm.toLowerCase())
-  )
-  const filteredHotels = hotels.filter((item) =>
-    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    item.location.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setItineraryPage(1)
+      setHotelPage(1)
+      if (itineraryPage === 1 && hotelPage === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm])
+
+  const handleItineraryPageChange = (nextPage) => {
+    setItineraryPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleItineraryLimitChange = (nextLimit) => {
+    setItineraryLimit(nextLimit)
+    setItineraryPage(1)
+    setLoading(true)
+  }
+
+  const handleHotelPageChange = (nextPage) => {
+    setHotelPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleHotelLimitChange = (nextLimit) => {
+    setHotelLimit(nextLimit)
+    setHotelPage(1)
+    setLoading(true)
+  }
 
   const handleDelete = async (id, type) => {
     if (!window.confirm(`Delete this ${type}?`)) return
     const endpoint = type === 'itinerary' ? 'itineraries' : 'hotels'
+    const visible = type === 'itinerary' ? itineraries : hotels
+    const currentPage = type === 'itinerary' ? itineraryPage : hotelPage
     try {
       await api(`/admin/${endpoint}/${id}`, { method: 'DELETE' })
-      if (type === 'itinerary') setItineraries(itineraries.filter((item) => item.id !== id))
-      else setHotels(hotels.filter((item) => item.id !== id))
+      if (visible.length <= 1 && currentPage > 1) {
+        if (type === 'itinerary') {
+          setItineraryPage(currentPage - 1)
+        } else {
+          setHotelPage(currentPage - 1)
+        }
+        setLoading(true)
+      } else {
+        load()
+      }
     } catch (err) {
       alert(err.message)
     }
@@ -69,8 +129,7 @@ const ItineraryManagement = () => {
     const endpoint = type === 'itinerary' ? 'itineraries' : 'hotels'
     try {
       await api(`/admin/${endpoint}/${id}`, { method: 'PUT', body: JSON.stringify({ status }) })
-      if (type === 'itinerary') setItineraries(itineraries.map((entry) => entry.id === id ? { ...entry, status } : entry))
-      else setHotels(hotels.map((entry) => entry.id === id ? { ...entry, status } : entry))
+      load()
     } catch (err) {
       alert(err.message)
     }
@@ -98,6 +157,18 @@ const ItineraryManagement = () => {
     }
   }
 
+  const handleExport = async () => {
+    if (activeTab === 'itineraries') {
+      const rows = await fetchAllPages('/admin/itineraries', { key: 'itineraries', params: { search: searchTerm } })
+      const mapped = rows.map(mapItinerary)
+      downloadCsv('itineraries.csv', ['Name', 'Package', 'Days', 'Hotels', 'Status'], mapped.map((i) => [i.name, i.package, i.days, i.hotels, i.status]))
+    } else {
+      const rows = await fetchAllPages('/admin/hotels', { key: 'hotels', params: { search: searchTerm } })
+      const mapped = rows.map(mapHotel)
+      downloadCsv('hotels.csv', ['Name', 'Location', 'Rooms', 'Rating', 'Partner', 'Status'], mapped.map((h) => [h.name, h.location, h.rooms, h.rating, h.partner, h.status]))
+    }
+  }
+
   const avgRating = hotels.length ? (hotels.reduce((sum, hotel) => sum + hotel.rating, 0) / hotels.length).toFixed(1) : '0.0'
   const editingItinerary = selectedItem?.type === 'itinerary'
   const showItineraryForm = showAddModal ? activeTab === 'itineraries' : editingItinerary
@@ -108,10 +179,7 @@ const ItineraryManagement = () => {
       title="Itinerary & Hotel Management"
       actions={
         <>
-          <button className="action-btn" onClick={() => {
-            if (activeTab === 'itineraries') downloadCsv('itineraries.csv', ['Name', 'Package', 'Days', 'Hotels', 'Status'], filteredItineraries.map((i) => [i.name, i.package, i.days, i.hotels, i.status]))
-            else downloadCsv('hotels.csv', ['Name', 'Location', 'Rooms', 'Rating', 'Partner', 'Status'], filteredHotels.map((h) => [h.name, h.location, h.rooms, h.rating, h.partner, h.status]))
-          }}><Download className="h-4 w-4" /> Export</button>
+          <button className="action-btn" onClick={handleExport}><Download className="h-4 w-4" /> Export</button>
           <button className="action-btn" onClick={() => { setSelectedItem(null); setShowAddModal(true) }}>
             <Plus className="h-4 w-4" /> Add {activeTab === 'itineraries' ? 'Itinerary' : 'Hotel'}
           </button>
@@ -133,18 +201,18 @@ const ItineraryManagement = () => {
       {activeTab === 'itineraries' && (
         <>
           <div className="stats-grid">
-            <div className="stat-card"><Calendar className="stat-icon" /><div className="stat-content"><h3>Total Itineraries</h3><p className="stat-number">{itineraries.length}</p></div></div>
+            <div className="stat-card"><Calendar className="stat-icon" /><div className="stat-content"><h3>Total Itineraries</h3><p className="stat-number">{itineraryStats?.total ?? itineraryMeta.total}</p></div></div>
             <div className="stat-card"><Clock className="stat-icon" /><div className="stat-content"><h3>Total Days</h3><p className="stat-number">{itineraries.reduce((sum, i) => sum + i.days, 0)}</p></div></div>
-            <div className="stat-card"><Building className="stat-icon" /><div className="stat-content"><h3>Listed Hotels</h3><p className="stat-number">{hotels.length}</p></div></div>
+            <div className="stat-card"><Building className="stat-icon" /><div className="stat-content"><h3>Listed Hotels</h3><p className="stat-number">{hotelMeta.total}</p></div></div>
           </div>
           <div className="section-card full-width">
-            <h3>Itineraries ({filteredItineraries.length})</h3>
+            <h3>Itineraries ({itineraryMeta.total})</h3>
             {loading ? <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div> : (
               <div className="table-container">
                 <table className="data-table">
                   <thead><tr><th>Name</th><th>Package</th><th>Duration</th><th>Hotels</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
-                    {filteredItineraries.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>No itineraries found</td></tr> : filteredItineraries.map((item) => (
+                    {itineraries.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>No itineraries found</td></tr> : itineraries.map((item) => (
                       <tr key={item.id}>
                         <td>{item.name}</td><td>{item.package}</td><td>{item.days} Days</td><td>{item.hotels} Hotels</td>
                         <td><span className={`status-badge ${item.status}`}>{item.status}</span></td>
@@ -159,6 +227,16 @@ const ItineraryManagement = () => {
                     ))}
                   </tbody>
                 </table>
+                <Pagination
+                  page={itineraryMeta.page}
+                  totalPages={itineraryMeta.totalPages}
+                  total={itineraryMeta.total}
+                  limit={itineraryMeta.limit}
+                  onPageChange={handleItineraryPageChange}
+                  onLimitChange={handleItineraryLimitChange}
+                  itemLabel="itineraries"
+                  disabled={loading}
+                />
               </div>
             )}
           </div>
@@ -168,14 +246,14 @@ const ItineraryManagement = () => {
       {activeTab === 'hotels' && (
         <>
           <div className="stats-grid">
-            <div className="stat-card"><Building className="stat-icon" /><div className="stat-content"><h3>Total Hotels</h3><p className="stat-number">{hotels.length}</p></div></div>
+            <div className="stat-card"><Building className="stat-icon" /><div className="stat-content"><h3>Total Hotels</h3><p className="stat-number">{hotelMeta.total}</p></div></div>
             <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Total Rooms</h3><p className="stat-number">{hotels.reduce((sum, h) => sum + h.rooms, 0)}</p></div></div>
             <div className="stat-card"><Star className="stat-icon" /><div className="stat-content"><h3>Avg Rating</h3><p className="stat-number">{avgRating}</p></div></div>
           </div>
           <div className="section-card full-width">
-            <h3>Hotels ({filteredHotels.length})</h3>
+            <h3>Hotels ({hotelMeta.total})</h3>
             <div className="hotels-grid">
-              {filteredHotels.length === 0 ? <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No hotels found</div> : filteredHotels.map((hotel) => (
+              {hotels.length === 0 ? <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No hotels found</div> : hotels.map((hotel) => (
                 <div key={hotel.id} className="hotel-card">
                   <div className="hotel-header"><h4>{hotel.name}</h4><span className={`status-badge ${hotel.status}`}>{hotel.status}</span></div>
                   <p className="hotel-location"><MapPin className="h-4 w-4" />{hotel.location}</p>
@@ -192,6 +270,16 @@ const ItineraryManagement = () => {
                 </div>
               ))}
             </div>
+            <Pagination
+              page={hotelMeta.page}
+              totalPages={hotelMeta.totalPages}
+              total={hotelMeta.total}
+              limit={hotelMeta.limit}
+              onPageChange={handleHotelPageChange}
+              onLimitChange={handleHotelLimitChange}
+              itemLabel="hotels"
+              disabled={loading}
+            />
           </div>
         </>
       )}

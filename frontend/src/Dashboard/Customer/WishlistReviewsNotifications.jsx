@@ -1,14 +1,25 @@
-import { useState, useEffect } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { Heart, Star, Bell, Search, Trash2, Check, Calendar, Sparkles, Shield, Award, Clock, CheckCircle, AlertCircle, Star as StarIcon, Bell as BellIcon, MapPin as MapIcon, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
-import { api } from '../../api'
+import { api, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
+
+const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
 
 const WishlistReviewsNotifications = () => {
   const [activeTab, setActiveTab] = useState('wishlist')
   const [searchTerm, setSearchTerm] = useState('')
   const [showReviewModal, setShowReviewModal] = useState(false)
+
+  // Each tab pages independently — switching tabs never shares or resets
+  // another tab's position in its own list.
+  const [pages, setPages] = useState({ wishlist: 1, reviews: 1, notifications: 1 })
+  const [limits, setLimits] = useState({ wishlist: 10, reviews: 10, notifications: 10 })
+  const [metas, setMetas] = useState({ wishlist: emptyMeta, reviews: emptyMeta, notifications: emptyMeta })
+  const [wishlistStats, setWishlistStats] = useState(null)
+  const [wishlistSynced, setWishlistSynced] = useState(false)
 
   const switchTab = (tab) => {
     setActiveTab(tab)
@@ -22,57 +33,67 @@ const WishlistReviewsNotifications = () => {
   const [reviewForm, setReviewForm] = useState({ packageId: '', packageName: '', rating: 5, comment: '' })
   const [saving, setSaving] = useState(false)
   const [packages, setPackages] = useState([])
+  const localWishlistRef = useRef([])
 
   const loadPackages = async () => {
     try {
-      const data = await api('/packages')
+      const data = await api('/packages', { params: { limit: 'all' } })
       setPackages(data.packages || [])
     } catch (err) {
       console.error('Failed to load packages', err)
     }
   }
 
-  const loadWishlist = async () => {
+  const loadWishlist = async (page = pages.wishlist, limit = limits.wishlist) => {
     try {
-      const data = await api('/customer/wishlist')
+      const data = await api('/customer/wishlist', { params: { page, limit, search: searchTerm } })
       const backendWishlist = data.wishlist || []
+      const next = readPagination(data, backendWishlist.length)
+      setMetas(prev => ({ ...prev, wishlist: next }))
+      if (data.stats) setWishlistStats(data.stats)
       let merged = [...backendWishlist]
-      try {
-        const localWishlist = JSON.parse(localStorage.getItem('customerWishlist') || '[]')
-        const backendPackageIds = (backendWishlist.map(item => item.packageId) || []).filter(Boolean)
-        for (const localItem of localWishlist) {
-          if (!backendPackageIds.includes(localItem._id)) {
-            try {
-              await api('/customer/wishlist', {
-                method: 'POST',
-                body: JSON.stringify({ packageId: localItem._id })
-              })
-              const pkg = packages.find(p => p._id === localItem._id)
-              merged.push({
-                _id: localItem._id,
-                packageId: localItem._id,
-                packageName: pkg?.name || localItem.name || '',
-                destination: pkg?.destination || '',
-                image: pkg?.image || '',
-                price: pkg?.price || localItem.price || 0,
-                rating: pkg?.rating || 0,
-                category: pkg?.category || 'tour',
-                addedAt: new Date().toISOString()
-              })
-            } catch (syncErr) {
-              console.error('Failed to sync local wishlist item', syncErr)
+      // Legacy localStorage favourites are pushed to the server once, on the first
+      // page only, so paging never re-posts them.
+      if (!wishlistSynced && page === 1) {
+        setWishlistSynced(true)
+        try {
+          const localWishlist = JSON.parse(localStorage.getItem('customerWishlist') || '[]')
+          const backendPackageIds = (backendWishlist.map(item => item.packageId) || []).filter(Boolean)
+          for (const localItem of localWishlist) {
+            if (!backendPackageIds.includes(localItem._id)) {
+              try {
+                await api('/customer/wishlist', {
+                  method: 'POST',
+                  body: JSON.stringify({ packageId: localItem._id })
+                })
+                const pkg = packages.find(p => p._id === localItem._id)
+                merged.push({
+                  _id: localItem._id,
+                  packageId: localItem._id,
+                  packageName: pkg?.name || localItem.name || '',
+                  destination: pkg?.destination || '',
+                  image: pkg?.image || '',
+                  price: pkg?.price || localItem.price || 0,
+                  rating: pkg?.rating || 0,
+                  category: pkg?.category || 'tour',
+                  addedAt: new Date().toISOString()
+                })
+              } catch (syncErr) {
+                console.error('Failed to sync local wishlist item', syncErr)
+              }
             }
           }
+        } catch (parseErr) {
+          console.error('Failed to parse local wishlist', parseErr)
         }
-      } catch (parseErr) {
-        console.error('Failed to parse local wishlist', parseErr)
       }
       setWishlist(merged)
-      localStorage.setItem('customerWishlist', JSON.stringify(merged.map(item => ({
+      localWishlistRef.current = merged.map(item => ({
         _id: item.packageId || item._id,
         name: item.packageName,
         price: item.price
-      }))))
+      }))
+      localStorage.setItem('customerWishlist', JSON.stringify(localWishlistRef.current))
     } catch (err) {
       console.error('Failed to load wishlist', err)
     }
@@ -84,63 +105,74 @@ const WishlistReviewsNotifications = () => {
         method: 'POST',
         body: JSON.stringify({ packageId })
       })
-      const pkg = packages.find(p => p._id === packageId)
-      const newItem = {
-        _id: packageId,
-        packageId,
-        packageName: pkg?.name || '',
-        destination: pkg?.destination || '',
-        image: pkg?.image || '',
-        price: pkg?.price || 0,
-        rating: pkg?.rating || 0,
-        category: pkg?.category || 'tour',
-        addedAt: new Date().toISOString()
-      }
-      setWishlist(prev => [newItem, ...prev])
       alert('Added to wishlist!')
+      await loadWishlist()
     } catch (err) {
       alert(err.message || 'Failed to add to wishlist')
     }
   }
 
-  const loadReviews = async () => {
+  const loadReviews = async (page = pages.reviews, limit = limits.reviews) => {
     try {
-      const data = await api('/customer/reviews')
-      setReviews(data.reviews || [])
+      const data = await api('/customer/reviews', { params: { page, limit, search: searchTerm } })
+      const rows = data.reviews || []
+      setReviews(rows)
+      setMetas(prev => ({ ...prev, reviews: readPagination(data, rows.length) }))
     } catch (err) {
       console.error('Failed to load reviews', err)
     }
   }
 
-  const loadNotifications = async () => {
+  const loadNotifications = async (page = pages.notifications, limit = limits.notifications) => {
     try {
-      const data = await api('/customer/notifications')
-      setNotifications(data.notifications || [])
+      const data = await api('/customer/notifications', { params: { page, limit, search: searchTerm } })
+      const rows = data.notifications || []
+      setNotifications(rows)
+      setMetas(prev => ({ ...prev, notifications: readPagination(data, rows.length) }))
     } catch (err) {
       console.error('Failed to load notifications', err)
     }
   }
 
+  // Every tab supports `search` server-side, so the shared search box refetches
+  // all three tabs at their own current page whenever it (or a page) changes.
   useEffect(() => {
-    const loadAll = async () => {
+    Promise.resolve().then(() => {
       setLoading(true)
       setError('')
-      try {
-        await Promise.all([loadWishlist(), loadReviews(), loadNotifications(), loadPackages()])
-      } catch (err) {
-        setError(err.message || 'Failed to load data')
-      } finally {
-        setLoading(false)
-      }
+      return Promise.all([loadWishlist(), loadReviews(), loadNotifications(), loadPackages()])
+    })
+      .catch((err) => setError(err.message || 'Failed to load data'))
+      .finally(() => setLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pages, limits, searchTerm, activeTab])
+
+  const handlePageChange = (tab) => (nextPage) => {
+    setPages(prev => ({ ...prev, [tab]: nextPage }))
+    setLoading(true)
+  }
+
+  const handleLimitChange = (tab) => (nextLimit) => {
+    setLimits(prev => ({ ...prev, [tab]: nextLimit }))
+    setPages(prev => ({ ...prev, [tab]: 1 }))
+    setLoading(true)
+  }
+
+  // Deleting the only row on a page steps back one page instead of showing nothing.
+  const stepBackAfterDelete = (tab, rows) => {
+    if (pages[tab] > 1 && rows.length <= 1) {
+      setLoading(true)
+      setPages(prev => ({ ...prev, [tab]: prev[tab] - 1 }))
+      return true
     }
-    loadAll()
-  }, [])
+    return false
+  }
 
   const removeFromWishlist = async (id) => {
     if (!window.confirm('Remove this item from wishlist?')) return
     try {
       await api(`/customer/wishlist/${id}`, { method: 'DELETE' })
-      setWishlist(prev => prev.filter(item => item._id !== id))
+      if (!stepBackAfterDelete('wishlist', wishlist)) await loadWishlist()
     } catch (err) {
       alert(err.message || 'Failed to remove from wishlist')
     }
@@ -158,8 +190,8 @@ const WishlistReviewsNotifications = () => {
         method: 'POST',
         body: JSON.stringify(reviewForm)
       })
-      setReviews(prev => [data.review, ...prev])
-      await loadNotifications()
+      void data
+      await Promise.all([loadReviews(), loadNotifications()])
       setShowReviewModal(false)
       setReviewForm({ packageId: '', packageName: '', rating: 5, comment: '' })
       alert('Review submitted successfully!')
@@ -174,7 +206,7 @@ const WishlistReviewsNotifications = () => {
     if (!window.confirm('Delete this review?')) return
     try {
       await api(`/customer/reviews/${id}`, { method: 'DELETE' })
-      setReviews(prev => prev.filter(r => r._id !== id))
+      if (!stepBackAfterDelete('reviews', reviews)) await loadReviews()
     } catch (err) {
       alert(err.message || 'Failed to delete review')
     }
@@ -183,7 +215,7 @@ const WishlistReviewsNotifications = () => {
   const markAsRead = async (id) => {
     try {
       await api(`/customer/notifications/${id}/read`, { method: 'PUT' })
-      setNotifications(prev => prev.map(n => n._id === id ? { ...n, read: true } : n))
+      await loadNotifications()
     } catch (err) {
       alert(err.message || 'Failed to mark as read')
     }
@@ -192,7 +224,7 @@ const WishlistReviewsNotifications = () => {
   const markAllAsRead = async () => {
     try {
       await api('/customer/notifications/read-all', { method: 'PUT' })
-      setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+      await loadNotifications()
     } catch (err) {
       alert(err.message || 'Failed to mark all as read')
     }
@@ -202,7 +234,7 @@ const WishlistReviewsNotifications = () => {
     if (!window.confirm('Delete this notification?')) return
     try {
       await api(`/customer/notifications/${id}`, { method: 'DELETE' })
-      setNotifications(prev => prev.filter(n => n._id !== id))
+      if (!stepBackAfterDelete('notifications', notifications)) await loadNotifications()
     } catch (err) {
       alert(err.message || 'Failed to delete notification')
     }
@@ -236,19 +268,13 @@ const WishlistReviewsNotifications = () => {
     return colors[type] || '#64748b'
   }
 
-  const filteredWishlist = wishlist.filter(item =>
-    (item.packageName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (item.destination || '').toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // `search` is applied server-side on every one of these tabs.
+  const filteredWishlist = wishlist
+  const filteredReviews = reviews
+  const filteredNotifications = notifications
 
-  const filteredReviews = reviews.filter(review =>
-    (review.package || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (review.comment || '').toLowerCase().includes(searchTerm.toLowerCase())
-  )
-
-  const filteredNotifications = notifications.filter(notif =>
-    (notif.message || '').toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  const wishlistTotal = wishlistStats?.total ?? metas.wishlist.total
+  const unreadCount = notifications.filter(n => !n.read).length
 
   if (loading) {
     return (
@@ -269,11 +295,11 @@ const WishlistReviewsNotifications = () => {
         <div className="header-stats">
           <div className="stat-badge">
             <Sparkles className="h-4 w-4" />
-            <span>{wishlist.length} saved</span>
+            <span>{wishlistTotal} saved</span>
           </div>
           <div className="stat-badge">
             <BellIcon className="h-4 w-4" />
-            <span>{notifications.filter(n => !n.read).length} new</span>
+            <span>{unreadCount} new</span>
           </div>
         </div>
       }
@@ -285,19 +311,19 @@ const WishlistReviewsNotifications = () => {
           className={`tab-btn ${activeTab === 'wishlist' ? 'active' : ''}`}
           onClick={() => switchTab('wishlist')}
         >
-          <Heart className="h-4 w-4" /> Wishlist ({wishlist.length})
+          <Heart className="h-4 w-4" /> Wishlist ({wishlistTotal})
         </button>
         <button
           className={`tab-btn ${activeTab === 'reviews' ? 'active' : ''}`}
           onClick={() => switchTab('reviews')}
         >
-          <Star className="h-4 w-4" /> Reviews ({reviews.length})
+          <Star className="h-4 w-4" /> Reviews ({metas.reviews.total})
         </button>
         <button
           className={`tab-btn ${activeTab === 'notifications' ? 'active' : ''}`}
           onClick={() => switchTab('notifications')}
         >
-          <Bell className="h-4 w-4" /> Notifications ({notifications.filter(n => !n.read).length} new)
+          <Bell className="h-4 w-4" /> Notifications ({unreadCount} new)
         </button>
       </div>
 
@@ -397,9 +423,19 @@ const WishlistReviewsNotifications = () => {
                   </div>
                 </div>
               )
-             })
-          )}
+})
+           )}
         </div>
+        <Pagination
+          page={metas.wishlist.page}
+          totalPages={metas.wishlist.totalPages}
+          total={metas.wishlist.total}
+          limit={metas.wishlist.limit}
+          onPageChange={handlePageChange('wishlist')}
+          onLimitChange={handleLimitChange('wishlist')}
+          itemLabel="saved packages"
+          disabled={loading}
+        />
         </>
       )}
 
@@ -442,9 +478,19 @@ const WishlistReviewsNotifications = () => {
                     </div>
                   </div>
                 </div>
-              ))
-            )}
+))
+             )}
           </div>
+          <Pagination
+            page={metas.reviews.page}
+            totalPages={metas.reviews.totalPages}
+            total={metas.reviews.total}
+            limit={metas.reviews.limit}
+            onPageChange={handlePageChange('reviews')}
+            onLimitChange={handleLimitChange('reviews')}
+            itemLabel="reviews"
+            disabled={loading}
+          />
         </div>
       )}
 
@@ -489,6 +535,16 @@ const WishlistReviewsNotifications = () => {
               ))
             )}
           </div>
+          <Pagination
+            page={metas.notifications.page}
+            totalPages={metas.notifications.totalPages}
+            total={metas.notifications.total}
+            limit={metas.notifications.limit}
+            onPageChange={handlePageChange('notifications')}
+            onLimitChange={handleLimitChange('notifications')}
+            itemLabel="notifications"
+            disabled={loading}
+          />
         </div>
       )}
 

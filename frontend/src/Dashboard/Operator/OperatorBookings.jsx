@@ -1,6 +1,7 @@
-import { API_BASE } from '../../api'
+import { API_BASE, api, readPagination } from '../../api'
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
+import Pagination from '../../components/Pagination'
 import { Clock, Search, CheckCircle, XCircle, AlertCircle, Calendar, Users, DollarSign, Eye } from 'lucide-react'
 import '../Dashboard.css'
 
@@ -10,19 +11,27 @@ const OperatorBookings = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
 
-  const fetchBookings = async () => {
+  const hasLocalFilters = filterStatus !== 'all'
+
+  const fetchBookings = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
     try {
-      const token = localStorage.getItem('token')
-      const response = await fetch(API_BASE + '/operator/bookings', {
-        headers: {
-          'Authorization': `Bearer ${token}`
+      const data = await api('/operator/bookings', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
         }
       })
-      const data = await response.json()
       if (data.bookings) {
         setBookings(data.bookings)
       }
+      setMeta(readPagination(data, data.bookings?.length || 0))
     } catch (error) {
       console.error('Error fetching bookings:', error)
     } finally {
@@ -32,9 +41,30 @@ const OperatorBookings = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchBookings())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchBookings({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus])
 
   usePolling(fetchBookings, 15000)
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
 
   const handleStatusUpdate = async (bookingId, newStatus) => {
     try {
@@ -59,12 +89,9 @@ const OperatorBookings = () => {
     }
   }
 
-  const filteredBookings = bookings.filter(booking => {
-    const matchesSearch = booking.customer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         booking.package.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = filterStatus === 'all' || booking.status === filterStatus
-    return matchesSearch && matchesStatus
-  })
+  const filteredBookings = hasLocalFilters
+    ? bookings.filter(booking => booking.status === filterStatus)
+    : bookings
 
   const getStatusBadge = (status) => {
     const badges = {
@@ -127,6 +154,7 @@ const OperatorBookings = () => {
               <p>Bookings will appear here when customers book your packages</p>
             </div>
           ) : (
+            <>
             <div className="bookings-table enhanced">
               <div className="table-header">
                 <span>Customer</span>
@@ -183,8 +211,19 @@ const OperatorBookings = () => {
                 </div>
               ))}
             </div>
+            <Pagination
+              page={meta.page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="bookings"
+              disabled={loading || hasLocalFilters}
+            />
+            </>
           )}
-      {selectedBooking && (
+        {selectedBooking && (
         <div className="modal-overlay">
           <div className="modal">
             <div className="modal-header">

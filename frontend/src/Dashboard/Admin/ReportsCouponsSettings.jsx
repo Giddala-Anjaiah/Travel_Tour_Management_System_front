@@ -1,9 +1,30 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { PieChart, Settings, Plus, Pencil as Edit, Trash2, Search, Download, Users, MapPin, Tag, Bell, Shield, Ticket } from 'lucide-react'
-import { api, downloadCsv, formValues, formatCurrency, formatDate } from '../../api'
+import { api, downloadCsv, formValues, formatCurrency, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
 import ChartBar from './ChartBar'
+
+const mapCoupon = (coupon) => ({
+  id: coupon._id,
+  code: coupon.code,
+  discount: coupon.discount,
+  type: coupon.type,
+  minPurchase: coupon.minPurchase,
+  maxDiscount: coupon.maxDiscount || coupon.discount,
+  status: coupon.status,
+  expiry: formatDate(coupon.expiry),
+  usage: coupon.usage || 0,
+  maxUsage: coupon.maxUsage
+})
+
+const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
+const defaultTabPaging = {
+  reports: { page: 1, limit: 10 },
+  coupons: { page: 1, limit: 10 },
+  settings: { page: 1, limit: 10 }
+}
 
 const ReportsCouponsSettings = () => {
   const location = useLocation()
@@ -37,6 +58,9 @@ const ReportsCouponsSettings = () => {
   const [selectedCoupon, setSelectedCoupon] = useState(null)
   const [error, setError] = useState('')
   const [saveMessage, setSaveMessage] = useState('')
+  // Each tab owns its own page/limit so switching tabs never shares a page.
+  const [tabPaging, setTabPaging] = useState(defaultTabPaging)
+  const [couponMeta, setCouponMeta] = useState(emptyMeta)
 
   useEffect(() => {
     Promise.resolve().then(() => setActiveTab(tabFromRoute()))
@@ -48,27 +72,31 @@ const ReportsCouponsSettings = () => {
     else navigate('/admin/reports')
   }
 
-  const load = async () => {
+  // /admin/coupons honours `search` but not the status select, so an active
+  // status filter pulls the whole set and filters it locally.
+  const hasLocalFilters = filterStatus !== 'all'
+  const couponPaging = tabPaging.coupons
+
+  const load = async (overrides = {}) => {
+    const nextCouponPage = overrides.couponPage ?? couponPaging.page
+    const nextCouponLimit = overrides.couponLimit ?? couponPaging.limit
     try {
       setError('')
       const [couponData, analyticsData, summaryData, settingsData] = await Promise.all([
-        api('/admin/coupons'),
-        api('/admin/analytics?range=month'),
-        api('/admin/reports/summary?range=month'),
+        api('/admin/coupons', {
+          params: {
+            page: hasLocalFilters ? undefined : nextCouponPage,
+            limit: hasLocalFilters ? 'all' : nextCouponLimit,
+            search: searchTerm
+          }
+        }),
+        api('/admin/analytics', { params: { range: 'month' } }),
+        api('/admin/reports/summary', { params: { range: 'month' } }),
         api('/admin/settings')
       ])
-      setCoupons((couponData.coupons || []).map((coupon) => ({
-        id: coupon._id,
-        code: coupon.code,
-        discount: coupon.discount,
-        type: coupon.type,
-        minPurchase: coupon.minPurchase,
-        maxDiscount: coupon.maxDiscount || coupon.discount,
-        status: coupon.status,
-        expiry: formatDate(coupon.expiry),
-        usage: coupon.usage || 0,
-        maxUsage: coupon.maxUsage
-      })))
+      const mapped = (couponData.coupons || []).map(mapCoupon)
+      setCoupons(mapped)
+      setCouponMeta(readPagination(couponData, mapped.length))
       setAnalytics(analyticsData)
       setReportSummary(summaryData)
       if (settingsData.settings) {
@@ -81,18 +109,39 @@ const ReportsCouponsSettings = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => load())
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabPaging.coupons.page, tabPaging.coupons.limit])
 
-  const filteredCoupons = coupons.filter((coupon) =>
-    coupon.code.toLowerCase().includes(searchTerm.toLowerCase()) &&
-    (filterStatus === 'all' || coupon.status === filterStatus)
-  )
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTabPaging((current) => ({ ...current, coupons: { ...current.coupons, page: 1 } }))
+      if (couponPaging.page === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus])
+
+  const handleCouponPageChange = (nextPage) => {
+    setTabPaging((current) => ({ ...current, coupons: { ...current.coupons, page: nextPage } }))
+  }
+
+  const handleCouponLimitChange = (nextLimit) => {
+    setTabPaging((current) => ({ ...current, coupons: { ...current.coupons, limit: nextLimit, page: 1 } }))
+  }
+
+  const filteredCoupons = hasLocalFilters
+    ? coupons.filter((coupon) => filterStatus === 'all' || coupon.status === filterStatus)
+    : coupons
 
   const handleDeleteCoupon = async (id) => {
     if (!window.confirm('Delete this coupon?')) return
     try {
       await api(`/admin/coupons/${id}`, { method: 'DELETE' })
-      setCoupons(coupons.filter((coupon) => coupon.id !== id))
+      if (filteredCoupons.length <= 1 && couponPaging.page > 1) {
+        setTabPaging((current) => ({ ...current, coupons: { ...current.coupons, page: current.coupons.page - 1 } }))
+      } else {
+        load()
+      }
     } catch (err) {
       alert(err.message)
     }
@@ -103,7 +152,7 @@ const ReportsCouponsSettings = () => {
     const status = coupon.status === 'active' ? 'inactive' : 'active'
     try {
       await api(`/admin/coupons/${id}`, { method: 'PUT', body: JSON.stringify({ status }) })
-      setCoupons(coupons.map((item) => item.id === id ? { ...item, status } : item))
+      load()
     } catch (err) {
       alert(err.message)
     }
@@ -283,12 +332,12 @@ const ReportsCouponsSettings = () => {
             <button className="action-btn" onClick={() => { setSelectedCoupon(null); setShowAddCouponModal(true) }}><Plus className="h-4 w-4" /> Add Coupon</button>
           </div>
           <div className="stats-grid">
-            <div className="stat-card"><Tag className="stat-icon" /><div className="stat-content"><h3>Total Coupons</h3><p className="stat-number">{coupons.length}</p></div></div>
+            <div className="stat-card"><Tag className="stat-icon" /><div className="stat-content"><h3>Total Coupons</h3><p className="stat-number">{couponMeta.total}</p></div></div>
             <div className="stat-card"><Tag className="stat-icon" /><div className="stat-content"><h3>Active Coupons</h3><p className="stat-number">{coupons.filter((c) => c.status === 'active').length}</p></div></div>
             <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Total Usage</h3><p className="stat-number">{coupons.reduce((sum, c) => sum + c.usage, 0)}</p></div></div>
           </div>
           <div className="section-card full-width">
-            <h3>Coupons ({filteredCoupons.length})</h3>
+            <h3>Coupons ({hasLocalFilters ? filteredCoupons.length : couponMeta.total})</h3>
             <div className="coupons-grid">
               {filteredCoupons.length === 0 && <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No coupons found</div>}
               {filteredCoupons.map((coupon) => (
@@ -314,6 +363,16 @@ const ReportsCouponsSettings = () => {
                 </div>
               ))}
             </div>
+            <Pagination
+              page={couponMeta.page}
+              totalPages={couponMeta.totalPages}
+              total={couponMeta.total}
+              limit={couponMeta.limit}
+              onPageChange={handleCouponPageChange}
+              onLimitChange={handleCouponLimitChange}
+              itemLabel="coupons"
+              disabled={hasLocalFilters}
+            />
           </div>
         </>
       )}
