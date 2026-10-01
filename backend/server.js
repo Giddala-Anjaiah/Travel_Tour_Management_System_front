@@ -1052,10 +1052,46 @@ passport.use(new GoogleStrategy(
   }
 ));
 
-app.get(
-  '/api/auth/google',
-  passport.authenticate('google', { scope: ['profile', 'email'], session: false })
-);
+// The OAuth callback redirects with the JWT in the query string, so the
+// frontend origin that starts the flow must be resolved against an allowlist.
+// Anything else is replaced with the primary FRONTEND_URL, otherwise a crafted
+// `state` could send the token to an attacker's site.
+const trustedFrontendOrigins = () => {
+  const configured = [process.env.FRONTEND_URL, ...(process.env.FRONTEND_URLS || '').split(',')];
+  return configured
+    .map((value) => (value || '').trim())
+    .filter(Boolean)
+    .map((value) => {
+      try {
+        return new URL(value).origin;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+};
+
+const resolveFrontendOrigin = (candidate) => {
+  const trusted = trustedFrontendOrigins();
+  const fallback = trusted[0] || 'http://localhost:5173';
+  if (!candidate) return fallback;
+  try {
+    const { origin } = new URL(String(candidate));
+    return trusted.includes(origin) ? origin : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+app.get('/api/auth/google', (req, res, next) => {
+  passport.authenticate('google', {
+    scope: ['profile', 'email'],
+    session: false,
+    // Carry the resolved frontend origin through Google so the callback can
+    // return the visitor to the host they signed in from.
+    state: resolveFrontendOrigin(req.query.state)
+  })(req, res, next);
+});
 
 app.get(
   '/api/auth/google/callback',
@@ -1066,11 +1102,9 @@ app.get(
       jwtSecret,
       { expiresIn: '24h' }
     );
-    // Use state param (frontend origin) passed during auth start, fall back to FRONTEND_URL
-    let frontend = req.query.state ? decodeURIComponent(req.query.state) : (process.env.FRONTEND_URL || 'http://localhost:5173')
-    if (!frontend || frontend.includes('onrender.com') || frontend.includes('localhost:5000')) {
-      frontend = process.env.FRONTEND_URL || 'http://localhost:5173'
-    }
+    // The state carries the frontend origin from the start of the flow; it is
+    // allowlist-checked so the token is never redirected to an untrusted host.
+    const frontend = resolveFrontendOrigin(req.query.state);
     res.redirect(`${frontend}/login?token=${token}&role=${req.user.role}`);
   }
 );
