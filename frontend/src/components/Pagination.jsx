@@ -89,12 +89,13 @@ const Pagination = ({
 
           <button
             type="button"
-            className="pagination-btn"
+            className="pagination-btn pagination-btn--nav"
             onClick={() => onPageChange(currentPage - 1)}
             disabled={disabled || currentPage === 1}
             aria-label="Previous page"
           >
             <ChevronLeft className="pagination-icon" aria-hidden="true" />
+            <span className="pagination-btn-text">Previous</span>
           </button>
 
           {pageNumbers(currentPage, totalPages).map((value, index) =>
@@ -118,11 +119,12 @@ const Pagination = ({
 
           <button
             type="button"
-            className="pagination-btn"
+            className="pagination-btn pagination-btn--nav"
             onClick={() => onPageChange(currentPage + 1)}
             disabled={disabled || currentPage === totalPages}
             aria-label="Next page"
           >
+            <span className="pagination-btn-text">Next</span>
             <ChevronRight className="pagination-icon" aria-hidden="true" />
           </button>
 
