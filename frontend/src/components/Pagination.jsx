@@ -36,7 +36,12 @@ const Pagination = ({
   itemLabel = 'records',
   disabled = false
 }) => {
-  const currentPage = Math.min(Math.max(Number(page) || 1, 1), Math.max(totalPages, 1))
+  // The requested page drives the display. It is not clamped down to
+  // totalPages, otherwise clicking Next on a stale/short response would look
+  // like nothing happened; the parent refetch corrects the range on arrival.
+  const currentPage = Math.max(Number(page) || 1, 1)
+  const isFirstPage = currentPage <= 1
+  const isLastPage = totalPages > 0 && currentPage >= totalPages
   const showControls = totalPages > 1 || Boolean(onLimitChange)
   if (!showControls) return null
 
@@ -83,7 +88,7 @@ const Pagination = ({
             type="button"
             className="pagination-btn pagination-btn--edge"
             onClick={() => onPageChange(1)}
-            disabled={disabled || currentPage === 1}
+            disabled={disabled || isFirstPage}
             aria-label="First page"
           >
             <ChevronsLeft className="pagination-icon" aria-hidden="true" />
@@ -93,7 +98,7 @@ const Pagination = ({
             type="button"
             className="pagination-btn pagination-btn--nav"
             onClick={() => onPageChange(currentPage - 1)}
-            disabled={disabled || currentPage === 1}
+            disabled={disabled || isFirstPage}
             aria-label="Previous page"
           >
             <ChevronLeft className="pagination-icon" aria-hidden="true" />
@@ -123,7 +128,7 @@ const Pagination = ({
             type="button"
             className="pagination-btn pagination-btn--nav"
             onClick={() => onPageChange(currentPage + 1)}
-            disabled={disabled || currentPage === totalPages}
+            disabled={disabled || isLastPage}
             aria-label="Next page"
           >
             <span className="pagination-btn-text">Next</span>
@@ -134,7 +139,7 @@ const Pagination = ({
             type="button"
             className="pagination-btn pagination-btn--edge"
             onClick={() => onPageChange(totalPages)}
-            disabled={disabled || currentPage === totalPages}
+            disabled={disabled || isLastPage}
             aria-label="Last page"
           >
             <ChevronsRight className="pagination-icon" aria-hidden="true" />

@@ -93,26 +93,30 @@
 
 .pagination-icon { width: 1rem; height: 1rem; }
 
-/* Previous / Next: icon + label, with a pressed state on activation */
+/* Previous / Next: solid fill so the label always has full contrast in both
+   themes, with a pressed state on activation. */
 .pagination-btn--nav {
   gap: 0.35rem;
-  padding: 0 0.85rem;
+  padding: 0 0.9rem;
   border-color: var(--primary);
-  color: var(--primary);
-  background: rgba(79, 70, 229, 0.06);
+  color: #fff;
+  background: var(--primary);
 }
 
 .pagination-btn--nav:hover:not(:disabled) {
-  background: var(--primary);
+  background: var(--primary-dark);
+  border-color: var(--primary-dark);
   color: #fff;
   box-shadow: 0 4px 10px -4px rgba(79, 70, 229, 0.6);
 }
 
 .pagination-btn--nav:disabled {
+  /* Kept legible: a muted fill and border rather than a faded-out label. */
   border-color: var(--border-color);
-  color: var(--text-tertiary);
-  background: transparent;
-  opacity: 0.5;
+  color: var(--text-secondary);
+  background: var(--card-bg);
+  opacity: 1;
+  cursor: not-allowed;
 }
 
 .pagination-btn--nav:active:not(:disabled) {
@@ -121,8 +125,9 @@
 
 .pagination-btn-text {
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1;
+  color: inherit;
 }
 
 .pagination-btn:hover:not(:disabled) {
@@ -134,7 +139,8 @@
 .pagination-btn:active:not(:disabled) { transform: scale(0.96); }
 
 .pagination-btn:disabled {
-  opacity: 0.45;
+  color: var(--text-secondary);
+  opacity: 1;
   cursor: not-allowed;
 }
 
