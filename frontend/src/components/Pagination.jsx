@@ -42,7 +42,9 @@ const Pagination = ({
   const currentPage = Math.max(Number(page) || 1, 1)
   const isFirstPage = currentPage <= 1
   const isLastPage = totalPages > 0 && currentPage >= totalPages
-  const showControls = totalPages > 1 || Boolean(onLimitChange)
+  // Show the bar whenever there is something to page or a page size to change,
+  // so Previous/Next are never missing just because the list fits on one page.
+  const showControls = total > 0 || Boolean(onLimitChange)
   if (!showControls) return null
 
   const firstRow = limit > 0 ? (currentPage - 1) * limit + 1 : 0
@@ -80,10 +82,10 @@ const Pagination = ({
         ) : null}
       </div>
 
-      {/* Page controls only appear when there is more than one page. Rendering
-          them on a single-page list left Previous/Next permanently disabled,
-          which read as broken controls rather than as "nothing to page". */}
-      {total > 0 && totalPages > 1 ? (
+      {/* Controls stay visible on a single page too. They are disabled at the
+          edges and keep full opacity there, so a disabled button still reads as
+          a button rather than as missing. */}
+      {total > 0 ? (
         <div className="pagination-controls">
           <button
             type="button"
