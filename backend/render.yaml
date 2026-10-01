@@ -4,6 +4,10 @@ services:
     region: oregon
     plan: free
     runtime: nodejs
+    # The service lives in backend/, not at the repo root. Without this,
+    # `npm install`/`npm start` run against the root package.json, which has
+    # no start script.
+    rootDir: backend
     buildCommand: npm install
     startCommand: npm start
     envVars:
