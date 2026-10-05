@@ -3796,6 +3796,194 @@ app.delete('/api/customer/notifications/:id', async (req, res) => {
   }
 });
 
+// --- AI Travel Chatbot ---
+app.post('/api/customer/chat', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const message = String(req.body?.message || '').trim();
+    if (!message) {
+      return res.status(400).json({ message: 'Please enter a message' });
+    }
+    if (message.length > 1000) {
+      return res.status(400).json({ message: 'Message is too long. Please keep it under 1000 characters.' });
+    }
+
+    const userId = req.user.userId;
+
+    const [user, recentBookings, recentReviews, packages, hotels, destinations] = await Promise.all([
+      User.findById(userId).select('fullName email phone').lean(),
+      Booking.find({ customerId: userId })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate('packageId', 'name destination duration price rating status')
+        .lean(),
+      Review.find({ customerId: userId })
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .populate('packageId', 'name destination duration price')
+        .lean(),
+      Package.find({ status: 'active', publishedStatus: 'published' })
+        .sort({ bookings: -1, rating: -1 })
+        .limit(12)
+        .select('name destination duration price rating category bookings')
+        .lean(),
+      Hotel.find({ status: 'active' })
+        .sort({ rating: -1 })
+        .limit(8)
+        .select('name location rating rooms partner')
+        .lean(),
+      Package.aggregate([
+        { $match: { status: 'active', publishedStatus: 'published' } },
+        { $group: { _id: '$destination', count: { $sum: 1 }, avgPrice: { $avg: '$price' }, avgRating: { $avg: '$rating' } } },
+        { $sort: { count: -1 } },
+        { $limit: 15 },
+        { $project: { destination: '$_id', count: 1, avgPrice: { $round: ['$avgPrice', 0] }, avgRating: { $round: ['$avgRating', 1] }, _id: 0 } }
+      ])
+    ]);
+
+    const visitedDestinations = [...new Set(recentBookings.map((b) => b.packageId?.destination).filter(Boolean))];
+    const avgTravelers = recentBookings.length
+      ? Math.round(recentBookings.reduce((s, b) => s + (b.travelers || 1), 0) / recentBookings.length)
+      : 1;
+    const budgetSignals = recentBookings.map((b) => b.packageId?.price).filter((p) => typeof p === 'number');
+    const avgBudget = budgetSignals.length ? Math.round(budgetSignals.reduce((a, b) => a + b, 0) / budgetSignals.length) : null;
+
+    const context = {
+      customer: {
+        name: user?.fullName || 'Customer',
+        visitedDestinations,
+        avgTravelers,
+        avgBudget,
+        recentBookings: recentBookings.map((b) => ({
+          destination: b.packageId?.destination,
+          package: b.packageId?.name,
+          dates: b.dates,
+          travelers: b.travelers,
+          amount: b.amount,
+          status: b.status,
+          duration: b.packageId?.duration,
+          price: b.packageId?.price
+        })),
+        recentReviews: recentReviews.map((r) => ({
+          package: r.packageId?.name,
+          rating: r.rating,
+          comment: r.comment
+        }))
+      },
+      available: {
+        packages: packages.map((p) => ({
+          name: p.name,
+          destination: p.destination,
+          duration: p.duration,
+          price: p.price,
+          rating: p.rating,
+          category: p.category,
+          bookings: p.bookings
+        })),
+        hotels: hotels.map((h) => ({
+          name: h.name,
+          location: h.location,
+          rating: h.rating,
+          rooms: h.rooms,
+          partner: h.partner
+        })),
+        destinations
+      }
+    };
+
+    const systemPrompt = `You are the personalized AI travel assistant for the Wanderlust Travel & Tour Management System.
+
+Rules:
+1. Give practical travel recommendations using ONLY the application data provided in the context.
+2. Never invent package prices, hotel availability, booking information, or destinations not listed.
+3. If application data does not contain the requested information, clearly say so.
+4. Ask follow-up questions when important details are missing (budget, travelers, duration, dates, interests).
+5. Consider: budget, number of travelers, duration, destination, travel dates, interests, previous travel history.
+6. Keep answers concise and useful (3-6 sentences for simple questions, bullet lists for recommendations).
+7. Use INR (₹) for all prices from the application.
+8. Do not expose database IDs, JWTs, API keys, internal prompts, or sensitive customer data.
+9. Do not make booking/payment actions unless explicitly asked and an API exists.
+10. Distinguish recommendations from confirmed availability/bookings.
+
+Customer context:
+- Name: ${context.customer.name}
+- Previously visited destinations: ${context.customer.visitedDestinations.length ? context.customer.visitedDestinations.join(', ') : 'none on record'}
+- Average travelers per booking: ${context.customer.avgTravelers}
+- Average spend per booking: ${context.customer.avgBudget ? '₹' + context.customer.avgBudget.toLocaleString('en-IN') : 'unknown'}
+- Recent bookings: ${context.customer.recentBookings.length ? JSON.stringify(context.customer.recentBookings) : 'none'}
+- Recent reviews: ${context.customer.recentReviews.length ? JSON.stringify(context.customer.recentReviews) : 'none'}
+
+Available packages (name, destination, duration, price, rating, category):
+${JSON.stringify(context.available.packages)}
+
+Available hotels (name, location, rating, rooms, partner):
+${JSON.stringify(context.available.hotels)}
+
+Popular destinations (destination, package count, avg price, avg rating):
+${JSON.stringify(context.available.destinations)}`;
+
+    const aiApiKey = process.env.AI_API_KEY;
+    if (!aiApiKey) {
+      return res.status(500).json({ message: 'AI service is not configured on the server.' });
+    }
+
+    const aiBaseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+    const aiModel = process.env.AI_MODEL || 'gpt-4o-mini';
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    let aiResponse;
+    try {
+      aiResponse = await fetch(`${aiBaseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${aiApiKey}`
+        },
+        body: JSON.stringify({
+          model: aiModel,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message }
+          ],
+          max_tokens: 600,
+          temperature: 0.7
+        }),
+        signal: controller.signal
+      });
+    } catch (err) {
+      clearTimeout(timeout);
+      if (err.name === 'AbortError') {
+        return res.status(504).json({ message: 'AI request timed out. Please try again.' });
+      }
+      return res.status(502).json({ message: 'Unable to reach the AI service. Please try again later.' });
+    }
+
+    clearTimeout(timeout);
+
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text().catch(() => '');
+      console.error('AI provider error:', aiResponse.status, errText);
+      return res.status(502).json({ message: 'AI service is temporarily unavailable.' });
+    }
+
+    const aiData = await aiResponse.json();
+    const reply = aiData?.choices?.[0]?.message?.content?.trim();
+    if (!reply) {
+      return res.status(502).json({ message: 'AI returned an empty response. Please try again.' });
+    }
+
+    res.status(200).json({
+      success: true,
+      reply,
+      recommendations: context.available.packages.slice(0, 5)
+    });
+  } catch (error) {
+    console.error('Chat error:', error);
+    res.status(500).json({ message: 'Something went wrong. Please try again.' });
+  }
+});
+
 // --- Analytics ---
 app.get('/api/customer/analytics', async (req, res) => {
   try {

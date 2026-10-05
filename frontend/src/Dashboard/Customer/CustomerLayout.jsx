@@ -1,6 +1,7 @@
 import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import '../Dashboard.css'
+import Chatbot from '../../components/Chatbot'
 
 const navItems = [
   { to: '/customer/dashboard', match: 'dashboard', label: 'Dashboard', icon: BarChart3 },
@@ -79,6 +80,7 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
         </header>
         <div className="dashboard-content">{children}</div>
       </main>
+      <Chatbot />
     </div>
   )
 }
