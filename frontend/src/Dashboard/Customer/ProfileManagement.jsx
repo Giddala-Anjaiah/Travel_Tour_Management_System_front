@@ -3,7 +3,6 @@ import { User, Mail, Save, Camera, Sparkles, Award, CheckCircle, Lock, Shield, C
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../../api'
 import '../Dashboard.css'
-import Chatbot from '../../components/Chatbot'
 
 const ProfileManagement = () => {
   const navigate = useNavigate()
@@ -294,7 +293,6 @@ const ProfileManagement = () => {
           </div>
         </div>
       </main>
-      <Chatbot />
     </div>
   )
 }
