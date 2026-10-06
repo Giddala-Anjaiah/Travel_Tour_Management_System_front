@@ -3838,9 +3838,10 @@ app.get('/api/customer/coupons/available', async (req, res) => {
     };
 
     if (bookingType === 'package') {
+      const pkgObjId = mongoose.Types.ObjectId.isValid(packageId) ? new mongoose.Types.ObjectId(packageId) : null;
       filter.$or = [
         { applicableTo: 'both' },
-        { applicableTo: 'package', packageIds: { $in: [packageId] } }
+        { applicableTo: 'package', packageIds: pkgObjId ? { $in: [pkgObjId] } : { $in: [] } }
       ];
     } else {
       filter.applicableTo = { $in: ['both', 'hotel'] };
