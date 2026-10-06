@@ -2213,6 +2213,9 @@ app.post('/api/admin/coupons', async (req, res) => {
     if (!['package', 'hotel', 'both'].includes(applicableTo)) {
       return res.status(400).json({ message: 'Invalid applicableTo value' });
     }
+    if (applicableTo === 'package' && packageIds.length === 0) {
+      return res.status(400).json({ message: 'Select at least one package for package-only coupons' });
+    }
 
     const existing = await Coupon.findOne({ code });
     if (existing) return res.status(400).json({ message: 'Coupon code already exists' });
@@ -2268,6 +2271,9 @@ app.put('/api/admin/coupons/:id', async (req, res) => {
     }
     if (updates.applicableTo && !['package', 'hotel', 'both'].includes(updates.applicableTo)) {
       return res.status(400).json({ message: 'Invalid applicableTo value' });
+    }
+    if (updates.applicableTo === 'package' && (!updates.packageIds || !Array.isArray(updates.packageIds) || updates.packageIds.length === 0)) {
+      return res.status(400).json({ message: 'Select at least one package for package-only coupons' });
     }
     if (updates.packageIds !== undefined && !Array.isArray(updates.packageIds)) {
       return res.status(400).json({ message: 'packageIds must be an array' });

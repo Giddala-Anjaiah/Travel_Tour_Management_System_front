@@ -70,6 +70,7 @@ const ReportsCouponsSettings = () => {
   })
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
+  const [packages, setPackages] = useState([])
   const [showAddCouponModal, setShowAddCouponModal] = useState(false)
   const [showEditCouponModal, setShowEditCouponModal] = useState(false)
   const [selectedCoupon, setSelectedCoupon] = useState(null)
@@ -82,6 +83,18 @@ const ReportsCouponsSettings = () => {
   useEffect(() => {
     Promise.resolve().then(() => setActiveTab(tabFromRoute()))
   }, [tabFromRoute])
+
+  useEffect(() => {
+    const loadPackages = async () => {
+      try {
+        const data = await api('/packages', { params: { limit: 'all' } })
+        setPackages(data.packages || [])
+      } catch {
+        // packages dropdown will be empty if fetch fails
+      }
+    }
+    loadPackages()
+  }, [])
 
   const openTab = (tab) => {
     if (tab === 'settings') navigate('/admin/settings')
@@ -175,21 +188,33 @@ const ReportsCouponsSettings = () => {
     }
   }
 
-  const couponPayload = (values) => ({
-    code: values.code.toUpperCase(),
-    description: values.description || '',
-    type: values.type,
-    discount: Number(values.discount),
-    minPurchase: Number(values.minPurchase),
-    maxDiscount: values.maxDiscount ? Number(values.maxDiscount) : Number(values.discount),
-    applicableTo: values.applicableTo || 'both',
-    packageIds: values.packageIds ? values.packageIds.split(',').map((id) => id.trim()).filter(Boolean) : [],
-    startDate: values.startDate || new Date().toISOString().split('T')[0],
-    expiry: values.expiry,
-    maxUsage: Number(values.maxUsage),
-    perUserLimit: Number(values.perUserLimit ?? 1),
-    status: values.status || 'active'
-  })
+  const couponPayload = (values) => {
+    let packageIds = values.packageIds
+    if (packageIds) {
+      if (Array.isArray(packageIds)) {
+        packageIds = packageIds.map((id) => String(id).trim()).filter(Boolean)
+      } else {
+        packageIds = String(packageIds).split(',').map((id) => id.trim()).filter(Boolean)
+      }
+    } else {
+      packageIds = []
+    }
+    return {
+      code: values.code.toUpperCase(),
+      description: values.description || '',
+      type: values.type,
+      discount: Number(values.discount),
+      minPurchase: Number(values.minPurchase),
+      maxDiscount: values.maxDiscount ? Number(values.maxDiscount) : Number(values.discount),
+      applicableTo: values.applicableTo || 'both',
+      packageIds,
+      startDate: values.startDate || new Date().toISOString().split('T')[0],
+      expiry: values.expiry,
+      maxUsage: Number(values.maxUsage),
+      perUserLimit: Number(values.perUserLimit ?? 1),
+      status: values.status || 'active'
+    }
+  }
 
   const handleAddCoupon = async (e) => {
     e.preventDefault()
@@ -206,6 +231,16 @@ const ReportsCouponsSettings = () => {
     e.preventDefault()
     const values = formValues(e.target)
     try {
+      let packageIds = values.packageIds
+      if (packageIds) {
+        if (Array.isArray(packageIds)) {
+          packageIds = packageIds.map((id) => String(id).trim()).filter(Boolean)
+        } else {
+          packageIds = String(packageIds).split(',').map((id) => id.trim()).filter(Boolean)
+        }
+      } else {
+        packageIds = []
+      }
       const payload = {
         code: values.code.toUpperCase(),
         description: values.description || '',
@@ -214,7 +249,7 @@ const ReportsCouponsSettings = () => {
         minPurchase: Number(values.minPurchase),
         maxDiscount: values.maxDiscount ? Number(values.maxDiscount) : Number(values.discount),
         applicableTo: values.applicableTo || 'both',
-        packageIds: values.packageIds ? values.packageIds.split(',').map((id) => id.trim()).filter(Boolean) : [],
+        packageIds,
         startDate: values.startDate,
         expiry: values.expiry,
         maxUsage: Number(values.maxUsage),
@@ -507,7 +542,15 @@ const ReportsCouponsSettings = () => {
                       <option value="hotel">Hotel</option>
                     </select>
                   </div>
-                  <div className="form-group"><label>Package IDs (comma separated)</label><input name="packageIds" defaultValue={selectedCoupon?.packageIds?.join(', ')} placeholder="For package-only coupons" /></div>
+                  <div className="form-group">
+                    <label>Packages</label>
+                    <select name="packageIds" multiple defaultValue={selectedCoupon?.packageIds || []} style={{ minHeight: '120px' }}>
+                      {packages.map(pkg => (
+                        <option key={pkg._id} value={pkg._id}>{pkg.name}</option>
+                      ))}
+                    </select>
+                    <small>Hold Ctrl/Cmd to select multiple</small>
+                  </div>
                 </div>
                 <div className="form-row">
                   <div className="form-group"><label>Start Date</label><input name="startDate" type="date" defaultValue={selectedCoupon?.startDate} /></div>
