@@ -40,6 +40,8 @@ const BookingsPayments = () => {
   const [couponSuccess, setCouponSuccess] = useState('')
   const [discountAmount, setDiscountAmount] = useState(0)
   const [finalAmount, setFinalAmount] = useState(0)
+  const [availableCoupons, setAvailableCoupons] = useState([])
+  const [couponsLoading, setCouponsLoading] = useState(false)
   const [searchParams] = useSearchParams()
   const location = useLocation()
   const [page, setPage] = useState(1)
@@ -122,7 +124,7 @@ const BookingsPayments = () => {
     const packageId = searchParams.get('packageId')
     const statePackage = location.state?.package
     const stateHotel = location.state?.hotel
-    Promise.resolve().then(() => {
+    const handleCoupons = async () => {
       if (statePackage) {
         setBookingType('package')
         setForm(prev => ({
@@ -132,6 +134,7 @@ const BookingsPayments = () => {
           amount: Number(statePackage.price) || 0
         }))
         setShowBookingModal(true)
+        await fetchAvailableCoupons('package', statePackage._id || statePackage.id || '')
       } else if (stateHotel) {
         setBookingType('hotel')
         setForm(prev => ({
@@ -141,6 +144,7 @@ const BookingsPayments = () => {
           amount: Number(stateHotel.minPrice || stateHotel.maxPrice) || 0
         }))
         setShowBookingModal(true)
+        await fetchAvailableCoupons('hotel', '', stateHotel._id || stateHotel.id || '')
       } else if (packageId) {
         const pkg = packages.find(p => (p._id || p.id) === packageId)
         if (pkg) {
@@ -152,9 +156,11 @@ const BookingsPayments = () => {
             amount: Number(pkg.price) || 0
           }))
           setShowBookingModal(true)
+          await fetchAvailableCoupons('package', pkg._id || pkg.id || '')
         }
       }
-    })
+    }
+    Promise.resolve().then(handleCoupons)
   }, [searchParams, location.state, packages])
 
   // `search` runs server-side (bookingId/customer/package/email); only the
@@ -275,6 +281,26 @@ const BookingsPayments = () => {
     setCouponSuccess('')
     setDiscountAmount(0)
     setFinalAmount(0)
+  }
+
+  const fetchAvailableCoupons = async (type, pkgId, hotelId) => {
+    if (type !== 'package') {
+      setAvailableCoupons([])
+      return
+    }
+    setCouponsLoading(true)
+    try {
+      const data = await api('/customer/coupons/available', {
+        params: { bookingType: type, packageId: pkgId, hotelId }
+      })
+      if (data.success) {
+        setAvailableCoupons(data.coupons || [])
+      }
+    } catch {
+      setAvailableCoupons([])
+    } finally {
+      setCouponsLoading(false)
+    }
   }
 
   const openBookingModal = (type) => {
@@ -681,20 +707,49 @@ const BookingsPayments = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
-                <input
-                  type="text"
-                  placeholder="Enter coupon code"
-                  value={couponCode}
-                  onChange={(e) => setCouponCode(e.target.value)}
-                  style={{ flex: 1, padding: '0.5rem 0.75rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem' }}
-                  disabled={!!appliedCoupon || couponLoading}
-                />
-                {!appliedCoupon ? (
-                  <button type="button" onClick={applyCoupon} className="btn-primary" disabled={!couponCode.trim() || couponLoading}>
-                    {couponLoading ? 'Applying...' : 'Apply'}
-                  </button>
+                {bookingType === 'package' && availableCoupons.length > 0 ? (
+                  <>
+                    <select
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value)}
+                      style={{ flex: 1, padding: '0.5rem 0.75rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem' }}
+                      disabled={!!appliedCoupon || couponLoading || couponsLoading}
+                    >
+                      <option value="">Select a coupon</option>
+                      {availableCoupons.map(c => (
+                        <option key={c._id} value={c.code}>
+                          {c.code} - {c.type === 'percentage' ? `${c.discount}%` : `₹${c.discount}`} off
+                          {c.minPurchase && ` (Min ₹${c.minPurchase})`}
+                          {c.maxDiscount && c.type === 'percentage' && ` (Max ₹${c.maxDiscount})`}
+                        </option>
+                      ))}
+                    </select>
+                    {!appliedCoupon ? (
+                      <button type="button" onClick={applyCoupon} className="btn-primary" disabled={!couponCode.trim() || couponLoading}>
+                        {couponLoading ? 'Applying...' : 'Apply'}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={removeCoupon} className="btn-secondary">Remove</button>
+                    )}
+                  </>
                 ) : (
-                  <button type="button" onClick={removeCoupon} className="btn-secondary">Remove</button>
+                  <>
+                    <input
+                      type="text"
+                      placeholder="Enter coupon code"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value)}
+                      style={{ flex: 1, padding: '0.5rem 0.75rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem' }}
+                      disabled={!!appliedCoupon || couponLoading}
+                    />
+                    {!appliedCoupon ? (
+                      <button type="button" onClick={applyCoupon} className="btn-primary" disabled={!couponCode.trim() || couponLoading}>
+                        {couponLoading ? 'Applying...' : 'Apply'}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={removeCoupon} className="btn-secondary">Remove</button>
+                    )}
+                  </>
                 )}
               </div>
               {couponError && <div className="cd-alert warning" style={{ marginBottom: '1rem' }}>{couponError}</div>}

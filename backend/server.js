@@ -3822,6 +3822,50 @@ app.post('/api/customer/coupons/validate', async (req, res) => {
   }
 });
 
+app.get('/api/customer/coupons/available', async (req, res) => {
+  try {
+    const { bookingType, packageId, hotelId } = req.query;
+    if (!bookingType || !['package', 'hotel'].includes(bookingType)) {
+      return res.status(400).json({ success: false, message: 'Invalid booking type' });
+    }
+
+    const now = new Date();
+    const filter = {
+      status: 'active',
+      startDate: { $lte: now },
+      expiry: { $gte: now },
+      $expr: { $lt: ['$usage', '$maxUsage'] }
+    };
+
+    if (bookingType === 'package') {
+      filter.$or = [
+        { applicableTo: 'both' },
+        { applicableTo: 'package', packageIds: { $in: [packageId] } }
+      ];
+    } else {
+      filter.applicableTo = { $in: ['both', 'hotel'] };
+    }
+
+    const coupons = await Coupon.find(filter)
+      .select('code description discount type minPurchase maxDiscount applicableTo perUserLimit')
+      .lean();
+
+    const userId = req.user.userId;
+    const couponsWithUserCheck = await Promise.all(coupons.map(async (coupon) => {
+      const userUsage = await CouponUsage.countDocuments({ couponId: coupon._id, userId });
+      return {
+        ...coupon,
+        canUse: userUsage < (coupon.perUserLimit || 1)
+      };
+    }));
+
+    const available = couponsWithUserCheck.filter(c => c.canUse);
+    res.status(200).json({ success: true, coupons: available });
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error fetching coupons' });
+  }
+});
+
 // --- Itineraries (customer's own itineraries from their bookings) ---
 app.get('/api/customer/itineraries', async (req, res) => {
   try {
