@@ -1,4 +1,4 @@
-import express from 'express';
+﻿import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
@@ -29,7 +29,7 @@ function normalizeCorsOrigin(origin) {
 
 const jwtSecret = process.env.JWT_SECRET || crypto.randomBytes(32).toString('hex');
 if (!process.env.JWT_SECRET) {
-  console.warn('JWT_SECRET not set — using ephemeral fallback. Set this in production environment.');
+  console.warn('JWT_SECRET not set â€” using ephemeral fallback. Set this in production environment.');
 }
 
 app.use(cors({
@@ -366,7 +366,17 @@ const bookingSchema = new mongoose.Schema({
   guests: Number,
   checkInDate: Date,
   checkOutDate: Date,
-  notes: String
+  notes: String,
+  coupon: {
+    code: String,
+    couponId: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' },
+    discountType: String,
+    discountValue: Number,
+    discountAmount: Number
+  },
+  originalAmount: Number,
+  discountAmount: Number,
+  finalAmount: Number
 });
 
 const Booking = mongoose.model('Booking', bookingSchema);
@@ -465,11 +475,14 @@ const couponSchema = new mongoose.Schema({
   code: {
     type: String,
     required: true,
-    unique: true
+    unique: true,
+    uppercase: true
   },
+  description: String,
   discount: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
   },
   type: {
     type: String,
@@ -478,15 +491,25 @@ const couponSchema = new mongoose.Schema({
   },
   minPurchase: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
   },
   maxDiscount: {
-    type: Number
+    type: Number,
+    min: 0
   },
-  status: {
+  applicableTo: {
     type: String,
-    enum: ['active', 'inactive'],
-    default: 'active'
+    enum: ['package', 'hotel', 'both'],
+    default: 'both'
+  },
+  packageIds: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Package'
+  }],
+  startDate: {
+    type: Date,
+    default: Date.now
   },
   expiry: {
     type: Date,
@@ -498,15 +521,75 @@ const couponSchema = new mongoose.Schema({
   },
   maxUsage: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
+  },
+  perUserLimit: {
+    type: Number,
+    default: 1,
+    min: 0
+  },
+  status: {
+    type: String,
+    enum: ['active', 'inactive'],
+    default: 'active'
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   },
   createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
     type: Date,
     default: Date.now
   }
 });
 
+couponSchema.pre('save', function(next) {
+  if (this.isModified('code')) {
+    this.code = String(this.code).toUpperCase().trim()
+  }
+  if (this.isModified('updatedAt')) {
+    this.updatedAt = new Date()
+  }
+  next()
+})
+
 const Coupon = mongoose.model('Coupon', couponSchema);
+
+couponSchema.index({ code: 1 });
+couponSchema.index({ status: 1, expiry: 1 });
+couponSchema.index({ applicableTo: 1 });
+
+const couponUsageSchema = new mongoose.Schema({
+  couponId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Coupon',
+    required: true
+  },
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  bookingId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Booking',
+    required: true
+  },
+  discountAmount: Number,
+  usedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+couponUsageSchema.index({ couponId: 1, userId: 1 }, { unique: true });
+
+const CouponUsage = mongoose.model('CouponUsage', couponUsageSchema);
 
 // Settings Schema
 const settingsSchema = new mongoose.Schema({
@@ -930,6 +1013,72 @@ function pagedResponse(res, key, { docs, total, page, limit, totalPages, hasNext
   return res.status(200).json({ [key]: docs, pagination, ...extra });
 }
 
+async function validateCouponForRequest({ code, bookingType, packageId, hotelId, amount, userId }) {
+  const coupon = await Coupon.findOne({ code: String(code).toUpperCase().trim() });
+  if (!coupon) return { success: false, message: 'Invalid coupon code' };
+
+  const now = new Date();
+  if (coupon.status !== 'active') return { success: false, message: 'Coupon is inactive' };
+  if (now < coupon.startDate) return { success: false, message: 'Coupon is not active yet' };
+  if (now > coupon.expiry) return { success: false, message: 'Coupon has expired' };
+  if (coupon.usage >= coupon.maxUsage) return { success: false, message: 'Coupon usage limit reached' };
+
+  const applicableTo = coupon.applicableTo || 'both';
+  if (bookingType === 'package' && !['package', 'both'].includes(applicableTo)) {
+    return { success: false, message: 'Coupon is not applicable to package bookings' };
+  }
+  if (bookingType === 'hotel' && !['hotel', 'both'].includes(applicableTo)) {
+    return { success: false, message: 'Coupon is not applicable to hotel bookings' };
+  }
+
+  if (applicableTo === 'package' && coupon.packageIds && coupon.packageIds.length > 0 && packageId) {
+    if (!coupon.packageIds.map(id => String(id)).includes(String(packageId))) {
+      return { success: false, message: 'This coupon is not applicable to the selected package' };
+    }
+  }
+
+  const bookingAmount = Number(amount) || 0;
+  if (bookingAmount < coupon.minPurchase) {
+    return { success: false, message: `Minimum booking amount is ₹${coupon.minPurchase.toLocaleString()}` };
+  }
+
+  let discountAmount = 0;
+  if (coupon.type === 'percentage') {
+    discountAmount = (bookingAmount * Number(coupon.discount)) / 100;
+    if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
+      discountAmount = coupon.maxDiscount;
+    }
+  } else {
+    discountAmount = Number(coupon.discount);
+  }
+
+  if (discountAmount >= bookingAmount) {
+    discountAmount = bookingAmount - 1;
+  }
+  const finalAmount = Math.max(0, bookingAmount - discountAmount);
+
+  if (userId) {
+    const userUsage = await CouponUsage.countDocuments({ couponId: coupon._id, userId });
+    if (userUsage >= coupon.perUserLimit) {
+      return { success: false, message: 'You have already used this coupon' };
+    }
+  }
+
+  return {
+    success: true,
+    coupon: {
+      code: coupon.code,
+      discountType: coupon.type,
+      discountValue: coupon.discount,
+      couponId: coupon._id
+    },
+    originalAmount: bookingAmount,
+    discountAmount,
+    finalAmount,
+    message: 'Coupon applied successfully'
+  };
+}
+
 async function requireOperatorOwnership(req, res, next) {
   const resourceId = req.params.id || req.params.packageId || req.params.bookingId;
   const resourceType = req.path.includes('packages') ? 'Package' : 
@@ -1198,7 +1347,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// In-memory OTP store (email → { otp, expiresAt })
+// In-memory OTP store (email â†’ { otp, expiresAt })
 const otpStore = new Map();
 
 // Helper: send email via Brevo (REST API or SMTP)
@@ -1255,7 +1404,7 @@ function cardEmailTemplate(title, message) {
         <div style="color: #94a3b8; font-size: 12px; margin-top: 20px;">This is an automated message. Please do not reply.</div>
       </div>
       <div style="text-align: center; padding: 15px; color: #94a3b8; font-size: 12px;">
-        © ${new Date().getFullYear()} TravelTour. All rights reserved.
+        Â© ${new Date().getFullYear()} TravelTour. All rights reserved.
       </div>
     </div>
   `;
@@ -1318,7 +1467,13 @@ function generateInvoicePDF(invoice, booking) {
       doc.text(`Email: ${invoice.email || 'N/A'}`);
       doc.moveDown();
       doc.text(`Package: ${invoice.package || 'N/A'}`);
+      if (booking.originalAmount && booking.originalAmount !== invoice.amount) {
+        doc.text(`Original Amount: ₹${booking.originalAmount.toLocaleString()}`);
+      }
       doc.text(`Amount: ₹${invoice.amount || 0}`);
+      if (booking.coupon && booking.discountAmount) {
+        doc.text(`Coupon (${booking.coupon.code}): -₹${booking.discountAmount.toLocaleString()}`);
+      }
       doc.text(`Status: ${invoice.status || 'paid'}`);
       doc.text(`Due Date: ${invoice.dueDate ? new Date(invoice.dueDate).toLocaleDateString('en-IN') : 'N/A'}`);
       doc.moveDown();
@@ -1330,7 +1485,7 @@ function generateInvoicePDF(invoice, booking) {
   });
 }
 
-// Forgot Password Route — sends OTP to user email
+// Forgot Password Route â€” sends OTP to user email
 app.post('/api/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
@@ -1358,7 +1513,7 @@ app.post('/api/forgot-password', async (req, res) => {
         <p style="color: #94a3b8; font-size: 12px; text-align: center; margin-top: 25px;">This is an automated message. If you did not request this, please ignore.</p>
       </div>
       <div style="text-align: center; padding: 15px; color: #94a3b8; font-size: 12px;">
-        © ${new Date().getFullYear()} TravelTour. All rights reserved.
+        Â© ${new Date().getFullYear()} TravelTour. All rights reserved.
       </div>
     </div>`;
     const brevoKey = process.env.BREVO_API_KEY;
@@ -1371,13 +1526,13 @@ app.post('/api/forgot-password', async (req, res) => {
         console.error('Email send error:', emailErr.message);
       }
     } else {
-      console.error('[WARN] BREVO_API_KEY not set — OTP is: ' + otp);
+      console.error('[WARN] BREVO_API_KEY not set â€” OTP is: ' + otp);
     }
 
     console.log(`[FORGOT PASSWORD] OTP for ${email}: ${otp}`);
     if (!emailOk) {
       return res.status(200).json({
-        message: 'OTP generated. Email not sent (Brevo misconfigured) — use this test OTP: ' + otp,
+        message: 'OTP generated. Email not sent (Brevo misconfigured) â€” use this test OTP: ' + otp,
       });
     }
     res.status(200).json({ message: 'OTP sent to your email' });
@@ -2018,7 +2173,7 @@ app.delete('/api/admin/reviews/:id', async (req, res) => {
 app.get('/api/admin/coupons', async (req, res) => {
   try {
     const filter = {};
-    const search = searchFilter(['code', 'type'], req.query.search);
+    const search = searchFilter(['code', 'description', 'type'], req.query.search);
     if (search) Object.assign(filter, search);
     const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Coupon, filter, {
       query: req.query,
@@ -2032,27 +2187,117 @@ app.get('/api/admin/coupons', async (req, res) => {
 
 app.post('/api/admin/coupons', async (req, res) => {
   try {
-    const newCoupon = new Coupon(req.body);
+    const body = req.body || {};
+    const code = String(body.code || '').toUpperCase().trim();
+    const type = body.type;
+    const discount = Number(body.discount);
+    const minPurchase = Number(body.minPurchase);
+    const maxUsage = Number(body.maxUsage);
+    const expiry = body.expiry ? new Date(body.expiry) : null;
+    const startDate = body.startDate ? new Date(body.startDate) : new Date();
+    const applicableTo = body.applicableTo || 'both';
+    const packageIds = Array.isArray(body.packageIds) ? body.packageIds : [];
+    const perUserLimit = Number(body.perUserLimit ?? 1);
+
+    if (!code) return res.status(400).json({ message: 'Coupon code is required' });
+    if (!type || !['percentage', 'flat'].includes(type)) return res.status(400).json({ message: 'Invalid discount type' });
+    if (Number.isNaN(discount) || discount <= 0) return res.status(400).json({ message: 'Discount value must be greater than 0' });
+    if (type === 'percentage' && discount > 100) return res.status(400).json({ message: 'Percentage discount cannot exceed 100' });
+    if (Number.isNaN(minPurchase) || minPurchase < 0) return res.status(400).json({ message: 'Minimum booking amount cannot be negative' });
+    const maxDiscount = body.maxDiscount !== undefined ? Number(body.maxDiscount) : undefined;
+    if (maxDiscount !== undefined && (Number.isNaN(maxDiscount) || maxDiscount < 0)) return res.status(400).json({ message: 'Maximum discount cannot be negative' });
+    if (!expiry) return res.status(400).json({ message: 'Expiry date is required' });
+    if (startDate > expiry) return res.status(400).json({ message: 'Start date cannot be after expiry date' });
+    if (Number.isNaN(maxUsage) || maxUsage < 0) return res.status(400).json({ message: 'Usage limit cannot be negative' });
+    if (Number.isNaN(perUserLimit) || perUserLimit < 0) return res.status(400).json({ message: 'Per user limit cannot be negative' });
+    if (!['package', 'hotel', 'both'].includes(applicableTo)) {
+      return res.status(400).json({ message: 'Invalid applicableTo value' });
+    }
+
+    const existing = await Coupon.findOne({ code });
+    if (existing) return res.status(400).json({ message: 'Coupon code already exists' });
+
+    const newCoupon = new Coupon({
+      code,
+      description: body.description || '',
+      discount,
+      type,
+      minPurchase,
+      maxDiscount,
+      applicableTo,
+      packageIds,
+      startDate,
+      expiry,
+      maxUsage,
+      perUserLimit,
+      status: body.status || 'active',
+      createdBy: req.user.userId
+    });
     await newCoupon.save();
     res.status(201).json({ message: 'Coupon created successfully', coupon: newCoupon });
   } catch (error) {
     if (duplicateError(error)) {
       return res.status(400).json({ message: 'Coupon code already exists' });
     }
-    res.status(500).json({ message: 'Error creating coupon' });
+    res.status(500).json({ message: 'Error creating coupon', details: error.message });
   }
 });
 
 app.put('/api/admin/coupons/:id', async (req, res) => {
   try {
-    const updates = pickUpdates(req.body, ['code', 'discount', 'type', 'minPurchase', 'maxDiscount', 'status', 'expiry', 'usage', 'maxUsage']);
+    const updates = pickUpdates(req.body, ['code', 'discount', 'type', 'minPurchase', 'maxDiscount', 'status', 'expiry', 'usage', 'maxUsage', 'description', 'applicableTo', 'packageIds', 'startDate', 'perUserLimit']);
+    if (updates.code) updates.code = String(updates.code).toUpperCase().trim();
+    if (updates.type && !['percentage', 'flat'].includes(updates.type)) return res.status(400).json({ message: 'Invalid discount type' });
+    if (updates.discount !== undefined) {
+      const d = Number(updates.discount);
+      if (Number.isNaN(d) || d <= 0) return res.status(400).json({ message: 'Discount value must be greater than 0' });
+      if (updates.type === 'percentage' && d > 100) return res.status(400).json({ message: 'Percentage discount cannot exceed 100' });
+    }
+    if (updates.minPurchase !== undefined) {
+      const m = Number(updates.minPurchase);
+      if (Number.isNaN(m) || m < 0) return res.status(400).json({ message: 'Minimum booking amount cannot be negative' });
+    }
+    if (updates.maxDiscount !== undefined) {
+      const m = Number(updates.maxDiscount);
+      if (Number.isNaN(m) || m < 0) return res.status(400).json({ message: 'Maximum discount cannot be negative' });
+    }
+    if (updates.expiry) updates.expiry = new Date(updates.expiry);
+    if (updates.startDate) updates.startDate = new Date(updates.startDate);
+    if (updates.startDate && updates.expiry && updates.startDate > updates.expiry) {
+      return res.status(400).json({ message: 'Start date cannot be after expiry date' });
+    }
+    if (updates.applicableTo && !['package', 'hotel', 'both'].includes(updates.applicableTo)) {
+      return res.status(400).json({ message: 'Invalid applicableTo value' });
+    }
+    if (updates.packageIds !== undefined && !Array.isArray(updates.packageIds)) {
+      return res.status(400).json({ message: 'packageIds must be an array' });
+    }
     const coupon = await Coupon.findByIdAndUpdate(req.params.id, updates, { new: true });
     if (!coupon) {
       return res.status(404).json({ message: 'Coupon not found' });
     }
     res.status(200).json({ message: 'Coupon updated successfully', coupon });
   } catch (error) {
-    res.status(500).json({ message: 'Error updating coupon' });
+    if (duplicateError(error)) {
+      return res.status(400).json({ message: 'Coupon code already exists' });
+    }
+    res.status(500).json({ message: 'Error updating coupon', details: error.message });
+  }
+});
+
+app.patch('/api/admin/coupons/:id/status', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ message: 'Status must be active or inactive' });
+    }
+    const coupon = await Coupon.findByIdAndUpdate(req.params.id, { status }, { new: true });
+    if (!coupon) {
+      return res.status(404).json({ message: 'Coupon not found' });
+    }
+    res.status(200).json({ message: 'Coupon status updated', coupon });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating coupon status' });
   }
 });
 
@@ -2102,8 +2347,10 @@ app.get('/api/admin/analytics', async (req, res) => {
     const activeTours = await Package.countDocuments({ status: 'active' });
     const partnerHotels = await Hotel.countDocuments({ status: 'active' });
     const totalBookings = await Booking.countDocuments();
-    const paidBookings = await Booking.find({ paymentStatus: 'paid' });
-    const totalRevenue = paidBookings.reduce((sum, b) => sum + b.amount, 0);
+    const paidBookings = await Booking.find({ paymentStatus: 'paid' }).lean();
+    const totalRevenue = paidBookings.reduce((sum, b) => sum + (b.amount || 0), 0);
+    const totalDiscount = paidBookings.reduce((sum, b) => sum + (b.discountAmount || 0), 0);
+    const grossRevenue = paidBookings.reduce((sum, b) => sum + (b.originalAmount || b.amount || 0), 0);
     const reviews = await Review.find({});
     const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
 
@@ -2131,14 +2378,14 @@ app.get('/api/admin/analytics', async (req, res) => {
       const end = new Date(start);
       end.setMonth(end.getMonth() + 1);
       const monthPaid = await Booking.find({ paymentStatus: 'paid', bookingDate: { $gte: start, $lt: end } });
-      monthlyRevenue.push(monthPaid.reduce((sum, b) => sum + b.amount, 0));
+      monthlyRevenue.push(monthPaid.reduce((sum, b) => sum + (b.amount || 0), 0));
       userGrowth.push(await User.countDocuments({ createdAt: { $lt: end } }));
     }
 
     const rangeBookings = await Booking.countDocuments({ bookingDate: { $gte: since } });
     const rangeUsers = await User.countDocuments({ createdAt: { $gte: since } });
     const rangeRevenue = (await Booking.find({ paymentStatus: 'paid', bookingDate: { $gte: since } }))
-      .reduce((sum, b) => sum + b.amount, 0);
+      .reduce((sum, b) => sum + (b.amount || 0), 0);
 
     res.status(200).json({
       totalUsers,
@@ -2146,6 +2393,8 @@ app.get('/api/admin/analytics', async (req, res) => {
       partnerHotels,
       totalBookings,
       totalRevenue,
+      totalDiscount,
+      grossRevenue,
       avgRating: Number(avgRating.toFixed(1)),
       bookingStats,
       topTours: topTours.map((pkg) => ({
@@ -2156,7 +2405,7 @@ app.get('/api/admin/analytics', async (req, res) => {
       recentActivity: [
         ...recentUsers.map((u) => ({ type: 'user', text: `New user: ${u.fullName} (${u.role})` })),
         ...recentBookings.map((b) => ({ type: 'booking', text: `Booking: ${b.package} by ${b.customer}` })),
-        ...recentReviews.map((r) => ({ type: 'review', text: `Review: ${r.rating}★ for ${r.package}` })),
+        ...recentReviews.map((r) => ({ type: 'review', text: `Review: ${r.rating}â˜… for ${r.package}` })),
         ...recentInvoices.map((inv) => ({ type: 'invoice', text: `Invoice ${inv.invoiceNo} for ${inv.customer}` }))
       ].slice(0, 8),
       monthlyRevenue,
@@ -3307,7 +3556,30 @@ app.get('/api/customer/bookings', async (req, res) => {
 
 app.post('/api/customer/bookings', async (req, res) => {
   try {
-    const { packageId, package: packageName, dates, travelers, amount, email, phone, customer } = req.body;
+    const { packageId, package: packageName, dates, travelers, amount, email, phone, customer, coupon } = req.body;
+    const originalAmount = Number(amount) || 0;
+    let finalAmount = originalAmount;
+    let discountAmount = 0;
+    let couponInfo = null;
+
+    if (coupon && coupon.code) {
+      const bookingType = coupon.bookingType || (packageId ? 'package' : 'hotel');
+      const validation = await validateCouponForRequest({
+        code: coupon.code,
+        bookingType,
+        packageId: coupon.packageId || packageId,
+        hotelId: coupon.hotelId,
+        amount: originalAmount,
+        userId: req.user.userId
+      });
+      if (!validation.success) {
+        return res.status(400).json({ message: validation.message });
+      }
+      discountAmount = validation.discountAmount;
+      finalAmount = validation.finalAmount;
+      couponInfo = validation.coupon;
+    }
+
     const payload = {
       customerId: req.user.userId,
       customer: customer || req.user.userId,
@@ -3315,11 +3587,17 @@ app.post('/api/customer/bookings', async (req, res) => {
       package: packageName || '',
       dates: dates || '',
       travelers: travelers || 1,
-      amount: amount || 0,
+      amount: finalAmount,
+      originalAmount,
+      discountAmount,
+      finalAmount,
       status: 'pending',
       paymentStatus: 'pending',
       bookingId: `BKG-${Date.now().toString().slice(-8)}`
     };
+    if (couponInfo) {
+      payload.coupon = couponInfo;
+    }
     if (packageId) {
       payload.packageId = packageId;
       const pkg = await Package.findById(packageId);
@@ -3338,7 +3616,7 @@ app.post('/api/customer/bookings', async (req, res) => {
       userId: req.user.userId,
       type: 'booking',
       title: 'Booking Confirmed',
-      message: `Your booking for ${payload.package || 'hotel'} (${payload.bookingId}) has been received and is pending confirmation.`,
+      message: `Your booking for ${payload.package || 'hotel'} (${payload.bookingId}) has been received and is pending confirmation. Amount: â‚¹${finalAmount || 0}.`,
       relatedId: newBooking._id,
       read: false
     });
@@ -3346,7 +3624,7 @@ app.post('/api/customer/bookings', async (req, res) => {
       await sendNotificationEmail(
         req.user.email,
         'Booking Confirmation',
-        `Your booking <strong>${payload.bookingId}</strong> for ${payload.package || 'hotel'} has been received and is pending confirmation. Amount: ₹${payload.amount || 0}.`
+        `Your booking <strong>${payload.bookingId}</strong> for ${payload.package || 'hotel'} has been received and is pending confirmation. Amount: â‚¹${finalAmount || 0}.`
       );
     }
     if (payload.operatorId) {
@@ -3355,7 +3633,7 @@ app.post('/api/customer/bookings', async (req, res) => {
         await sendNotificationEmail(
           opUser.email,
           'New Booking Received',
-          `A new booking <strong>${payload.bookingId}</strong> has been placed for your package "${payload.package}". Amount: ₹${payload.amount || 0}.`
+          `A new booking <strong>${payload.bookingId}</strong> has been placed for your package "${payload.package}". Amount: â‚¹${finalAmount || 0}.`
         );
       }
     }
@@ -3448,23 +3726,36 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
-    const paymentAmount = Math.min(amount || 0, booking.amount - (booking.paidAmount || 0));
+    const totalDue = booking.finalAmount || booking.amount;
+    const paymentAmount = Math.min(amount || 0, totalDue - (booking.paidAmount || 0));
     booking.paidAmount = (booking.paidAmount || 0) + paymentAmount;
-    if (booking.paidAmount >= booking.amount) {
+    if (booking.paidAmount >= totalDue) {
       booking.paymentStatus = 'paid';
       booking.status = 'confirmed';
     } else if (booking.paidAmount > 0) {
       booking.paymentStatus = 'partial';
     }
-    booking.timeline.push({ status: booking.paymentStatus, date: new Date(), note: `Payment of ₹${paymentAmount} received` });
+    booking.timeline.push({ status: booking.paymentStatus, date: new Date(), note: `Payment of â‚¹${paymentAmount} received` });
     await booking.save();
     if (booking.paymentStatus === 'paid') {
+      if (booking.coupon && booking.coupon.couponId) {
+        const existingUsage = await CouponUsage.findOne({ couponId: booking.coupon.couponId, userId: booking.customerId || req.user.userId, bookingId: booking._id }).catch(() => null)
+        if (!existingUsage) {
+          await Coupon.findByIdAndUpdate(booking.coupon.couponId, { $inc: { usage: 1 } }).catch(() => {})
+          await CouponUsage.create({
+            couponId: booking.coupon.couponId,
+            userId: booking.customerId || req.user.userId,
+            bookingId: booking._id,
+            discountAmount: booking.coupon.discountAmount || 0
+          }).catch(() => {})
+        }
+      }
       const invoice = await createPaidInvoice(booking);
       await Notification.create({
           userId: req.user.userId,
           type: 'payment',
           title: 'Payment Confirmed',
-          message: `Payment of ₹${paymentAmount} received. Your booking (${booking.bookingId}) is now fully confirmed.`,
+          message: `Payment of â‚¹${paymentAmount} received. Your booking (${booking.bookingId}) is now fully confirmed.`,
           relatedId: booking._id,
           read: false
         });
@@ -3474,7 +3765,7 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
           req.user.email,
           'Payment Confirmation & Invoice',
           'Payment Confirmed!',
-          `Payment of ₹${paymentAmount} received. Your booking <strong>${booking.bookingId}</strong> is now fully confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
+          `Payment of â‚¹${paymentAmount} received. Your booking <strong>${booking.bookingId}</strong> is now fully confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
           [{ name: `invoice_${invoice.invoiceNo || 'invoice'}.pdf`, content: pdfBuffer }]
         ).catch(err => console.error('Invoice email failed:', err.message));
       }
@@ -3483,7 +3774,7 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
         userId: req.user.userId,
         type: 'payment',
         title: 'Partial Payment Received',
-        message: `Payment of ₹${paymentAmount} received. Remaining balance: ₹${booking.amount - booking.paidAmount}.`,
+        message: `Payment of â‚¹${paymentAmount} received. Remaining balance: â‚¹${booking.amount - booking.paidAmount}.`,
         relatedId: booking._id,
         read: false
       });
@@ -3491,13 +3782,37 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
         await sendNotificationEmail(
           req.user.email,
           'Partial Payment Received',
-          `Payment of ₹${paymentAmount} received for booking <strong>${booking.bookingId}</strong>. Remaining balance: ₹${booking.amount - booking.paidAmount}.`
+          `Payment of â‚¹${paymentAmount} received for booking <strong>${booking.bookingId}</strong>. Remaining balance: â‚¹${booking.amount - booking.paidAmount}.`
         );
       }
     }
     res.status(200).json({ message: 'Payment processed', booking });
   } catch (error) {
     res.status(500).json({ message: 'Error processing payment' });
+  }
+});
+
+app.post('/api/customer/coupons/validate', async (req, res) => {
+  try {
+    const { code, bookingType, packageId, hotelId, amount } = req.body || {};
+    if (!code) return res.status(400).json({ success: false, message: 'Coupon code is required' });
+    if (!bookingType || !['package', 'hotel'].includes(bookingType)) {
+      return res.status(400).json({ success: false, message: 'Invalid booking type' });
+    }
+    const result = await validateCouponForRequest({
+      code,
+      bookingType,
+      packageId: bookingType === 'package' ? packageId : undefined,
+      hotelId: bookingType === 'hotel' ? hotelId : undefined,
+      amount: Number(amount) || 0,
+      userId: req.user.userId
+    });
+    if (!result.success && result.message) {
+      return res.status(400).json(result);
+    }
+    res.status(200).json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, message: 'Error validating coupon' });
   }
 });
 
@@ -3899,7 +4214,7 @@ Rules:
 4. Ask follow-up questions when important details are missing (budget, travelers, duration, dates, interests).
 5. Consider: budget, number of travelers, duration, destination, travel dates, interests, previous travel history.
 6. Keep answers concise and useful (3-6 sentences for simple questions, bullet lists for recommendations).
-7. Use INR (₹) for all prices from the application.
+7. Use INR (â‚¹) for all prices from the application.
 8. Do not expose database IDs, JWTs, API keys, internal prompts, or sensitive customer data.
 9. Do not make booking/payment actions unless explicitly asked and an API exists.
 10. Distinguish recommendations from confirmed availability/bookings.
@@ -3908,7 +4223,7 @@ Customer context:
 - Name: ${context.customer.name}
 - Previously visited destinations: ${context.customer.visitedDestinations.length ? context.customer.visitedDestinations.join(', ') : 'none on record'}
 - Average travelers per booking: ${context.customer.avgTravelers}
-- Average spend per booking: ${context.customer.avgBudget ? '₹' + context.customer.avgBudget.toLocaleString('en-IN') : 'unknown'}
+- Average spend per booking: ${context.customer.avgBudget ? 'â‚¹' + context.customer.avgBudget.toLocaleString('en-IN') : 'unknown'}
 - Recent bookings: ${context.customer.recentBookings.length ? JSON.stringify(context.customer.recentBookings) : 'none'}
 - Recent reviews: ${context.customer.recentReviews.length ? JSON.stringify(context.customer.recentReviews) : 'none'}
 
@@ -3921,54 +4236,67 @@ ${JSON.stringify(context.available.hotels)}
 Popular destinations (destination, package count, avg price, avg rating):
 ${JSON.stringify(context.available.destinations)}`;
 
-    const aiApiKey = process.env.AI_API_KEY;
-    if (!aiApiKey) {
+    const geminiApiKey = process.env.GEMINI_API_KEY;
+    if (!geminiApiKey) {
       return res.status(500).json({ message: 'AI service is not configured on the server.' });
     }
 
-    const aiBaseUrl = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
-    const aiModel = process.env.AI_MODEL || 'gpt-4o-mini';
+    const geminiModel = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
 
-    let aiResponse;
+    const contents = [
+      { role: 'user', parts: [{ text: systemPrompt }] },
+      { role: 'user', parts: [{ text: message }] }
+    ];
+
+    let reply;
     try {
-      aiResponse = await fetch(`${aiBaseUrl}/chat/completions`, {
+      const aiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+      const aiResponse = await fetch(aiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${aiApiKey}`
-        },
-        body: JSON.stringify({
-          model: aiModel,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: message }
-          ],
-          max_tokens: 600,
-          temperature: 0.7
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 600, temperature: 0.7 } }),
         signal: controller.signal
       });
+      if (!aiResponse.ok) {
+        const errText = await aiResponse.text().catch(() => '');
+        console.error('Gemini provider error:', aiResponse.status, errText);
+        if (aiResponse.status === 404 && geminiModel !== 'gemini-1.5-flash') {
+          const fallbackUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${encodeURIComponent(geminiApiKey)}`;
+          const fallbackResponse = await fetch(fallbackUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents, generationConfig: { maxOutputTokens: 600, temperature: 0.7 } }),
+            signal: controller.signal
+          });
+          if (fallbackResponse.ok) {
+            const fallbackData = await fallbackResponse.json();
+            reply = fallbackData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          } else {
+            const fallbackText = await fallbackResponse.text().catch(() => '');
+            console.error('Gemini fallback error:', fallbackResponse.status, fallbackText);
+            return res.status(502).json({ message: 'AI service is temporarily unavailable.' });
+          }
+        } else {
+          return res.status(502).json({ message: 'AI service is temporarily unavailable.' });
+        }
+      } else {
+        const aiData = await aiResponse.json();
+        reply = aiData?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+      }
     } catch (err) {
       clearTimeout(timeout);
       if (err.name === 'AbortError') {
         return res.status(504).json({ message: 'AI request timed out. Please try again.' });
       }
+      console.error('Gemini provider error:', err);
       return res.status(502).json({ message: 'Unable to reach the AI service. Please try again later.' });
     }
 
     clearTimeout(timeout);
 
-    if (!aiResponse.ok) {
-      const errText = await aiResponse.text().catch(() => '');
-      console.error('AI provider error:', aiResponse.status, errText);
-      return res.status(502).json({ message: 'AI service is temporarily unavailable.' });
-    }
-
-    const aiData = await aiResponse.json();
-    const reply = aiData?.choices?.[0]?.message?.content?.trim();
     if (!reply) {
       return res.status(502).json({ message: 'AI returned an empty response. Please try again.' });
     }
@@ -4380,7 +4708,7 @@ app.post('/api/hotel/bookings', async (req, res) => {
       await sendNotificationEmail(
         payload.guestEmail,
         'Booking Confirmation',
-        `Your hotel booking <strong>${payload.bookingId}</strong> has been created. Check-in: ${payload.checkInDate || 'TBD'}. Amount: ₹${payload.amount || 0}.`
+        `Your hotel booking <strong>${payload.bookingId}</strong> has been created. Check-in: ${payload.checkInDate || 'TBD'}. Amount: â‚¹${payload.amount || 0}.`
       );
     }
     res.status(201).json({ message: 'Booking created successfully', booking });
@@ -4422,7 +4750,7 @@ app.put('/api/hotel/bookings/:id', async (req, res) => {
         userId: req.user.userId,
         type: 'payment',
         title: 'Guest Checked Out',
-        message: `${booking.guestName || 'Guest'} has checked out. Total: ₹${booking.amount || 0}, Paid: ₹${booking.paidAmount || 0}.`,
+        message: `${booking.guestName || 'Guest'} has checked out. Total: â‚¹${booking.amount || 0}, Paid: â‚¹${booking.paidAmount || 0}.`,
         relatedId: booking._id,
         read: false
       });
@@ -4430,7 +4758,7 @@ app.put('/api/hotel/bookings/:id', async (req, res) => {
         await sendNotificationEmail(
           booking.guestEmail,
           'Check-out Confirmation',
-          `Thank you for staying at ${booking.hotelName || 'our hotel'}. Total: ₹${booking.amount || 0}, Paid: ₹${booking.paidAmount || 0}.`
+          `Thank you for staying at ${booking.hotelName || 'our hotel'}. Total: â‚¹${booking.amount || 0}, Paid: â‚¹${booking.paidAmount || 0}.`
         ).catch(() => {});
       }
     }
@@ -4463,13 +4791,13 @@ app.put('/api/hotel/bookings/:id/pay', async (req, res) => {
     } else if (booking.paidAmount > 0) {
       booking.paymentStatus = 'partial';
     }
-    booking.timeline.push({ status: 'payment', date: new Date(), note: `Payment of ₹${paymentAmount} recorded` });
+    booking.timeline.push({ status: 'payment', date: new Date(), note: `Payment of â‚¹${paymentAmount} recorded` });
     await booking.save();
     await Notification.create({
       userId: req.user.userId,
       type: 'payment',
       title: 'Payment Recorded',
-      message: `Payment of ₹${paymentAmount} recorded for ${booking.guestName || 'guest'} (${booking.bookingId}).`,
+      message: `Payment of â‚¹${paymentAmount} recorded for ${booking.guestName || 'guest'} (${booking.bookingId}).`,
       relatedId: booking._id,
       read: false
     });
@@ -4897,3 +5225,7 @@ app.get('/api/hotel/analytics', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+
+
+

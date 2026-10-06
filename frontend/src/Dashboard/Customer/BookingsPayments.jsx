@@ -33,6 +33,13 @@ const BookingsPayments = () => {
     phone: ''
   })
   const [formError, setFormError] = useState('')
+  const [couponCode, setCouponCode] = useState('')
+  const [appliedCoupon, setAppliedCoupon] = useState(null)
+  const [couponLoading, setCouponLoading] = useState(false)
+  const [couponError, setCouponError] = useState('')
+  const [couponSuccess, setCouponSuccess] = useState('')
+  const [discountAmount, setDiscountAmount] = useState(0)
+  const [finalAmount, setFinalAmount] = useState(0)
   const [searchParams] = useSearchParams()
   const location = useLocation()
   const [page, setPage] = useState(1)
@@ -197,7 +204,8 @@ const BookingsPayments = () => {
     if (!selectedBooking) return
     setPaying(true)
     try {
-      const remaining = (selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)
+      const totalDue = selectedBooking.finalAmount || selectedBooking.amount
+      const remaining = totalDue - (selectedBooking.paidAmount || 0)
       const data = await api(`/customer/bookings/${selectedBooking._id}/pay`, {
         method: 'PUT',
         body: JSON.stringify({ amount: remaining })
@@ -218,8 +226,65 @@ const BookingsPayments = () => {
     return Math.round((paid / total) * 100)
   }
 
+  const applyCoupon = async () => {
+    if (!couponCode.trim() || couponLoading) return
+    setCouponLoading(true)
+    setCouponError('')
+    setCouponSuccess('')
+    try {
+      const payload = {
+        code: couponCode.trim(),
+        bookingType,
+        amount: form.amount
+      }
+      if (bookingType === 'package' && form.packageId) {
+        payload.packageId = form.packageId
+      }
+      if (bookingType === 'hotel' && form.hotelId) {
+        payload.hotelId = form.hotelId
+      }
+      const data = await api('/customer/coupons/validate', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      })
+      if (data.success) {
+        setAppliedCoupon(data.coupon)
+        setDiscountAmount(data.discountAmount)
+        setFinalAmount(data.finalAmount)
+        setCouponSuccess(data.message)
+      } else {
+        setCouponError(data.message)
+        setAppliedCoupon(null)
+        setDiscountAmount(0)
+        setFinalAmount(0)
+      }
+    } catch (err) {
+      setCouponError(err.message || 'Failed to apply coupon')
+      setAppliedCoupon(null)
+      setDiscountAmount(0)
+      setFinalAmount(0)
+    } finally {
+      setCouponLoading(false)
+    }
+  }
+
+  const removeCoupon = () => {
+    setCouponCode('')
+    setAppliedCoupon(null)
+    setCouponError('')
+    setCouponSuccess('')
+    setDiscountAmount(0)
+    setFinalAmount(0)
+  }
+
   const openBookingModal = (type) => {
     setBookingType(type)
+    setCouponCode('')
+    setAppliedCoupon(null)
+    setCouponError('')
+    setCouponSuccess('')
+    setDiscountAmount(0)
+    setFinalAmount(0)
     setForm({
       packageId: '',
       package: '',
@@ -257,6 +322,14 @@ const BookingsPayments = () => {
         payload.hotelId = form.hotelId
         payload.hotelName = form.hotelName
       }
+      if (appliedCoupon) {
+        payload.coupon = {
+          code: appliedCoupon.code,
+          bookingType,
+          packageId: bookingType === 'package' ? form.packageId : undefined,
+          hotelId: bookingType === 'hotel' ? form.hotelId : undefined
+        }
+      }
       const data = await api('/customer/bookings', {
         method: 'POST',
         body: JSON.stringify(payload)
@@ -275,6 +348,12 @@ const BookingsPayments = () => {
         email: '',
         phone: ''
       })
+      setCouponCode('')
+      setAppliedCoupon(null)
+      setCouponError('')
+      setCouponSuccess('')
+      setDiscountAmount(0)
+      setFinalAmount(0)
     } catch (err) {
       setFormError(err.message || 'Failed to create booking')
     } finally {
@@ -424,20 +503,23 @@ const BookingsPayments = () => {
               <div className="payment-progress">
                 <div className="progress-header">
                   <span>Payment Progress</span>
-                  <span>{getPaymentProgress(booking.paidAmount || 0, booking.amount || 0)}%</span>
+                  <span>{getPaymentProgress(booking.paidAmount || 0, booking.finalAmount || booking.amount || 0)}%</span>
                 </div>
                 <div className="progress-bar">
                   <div
                     className="progress-fill"
                     style={{
-                      width: `${getPaymentProgress(booking.paidAmount || 0, booking.amount || 0)}%`,
+                      width: `${getPaymentProgress(booking.paidAmount || 0, booking.finalAmount || booking.amount || 0)}%`,
                       backgroundColor: getPaymentStatusColor(booking.paymentStatus)
                     }}
                   ></div>
                 </div>
                 <div className="payment-amounts">
+                  {booking.coupon && (
+                    <span style={{ color: '#22c55e' }}>Coupon: {booking.coupon.code} (-₹{(booking.discountAmount || 0).toLocaleString()})</span>
+                  )}
                   <span>Paid: ₹{(booking.paidAmount || 0).toLocaleString()}</span>
-                  <span>Total: ₹{(booking.amount || 0).toLocaleString()}</span>
+                  <span>Total: ₹{(booking.finalAmount || booking.amount || 0).toLocaleString()}</span>
                 </div>
               </div>
               <div className="payment-status-badge" style={{ color: getPaymentStatusColor(booking.paymentStatus) }}>
@@ -500,17 +582,35 @@ const BookingsPayments = () => {
                     <span>Package</span>
                     <strong>{selectedBooking.package}</strong>
                   </div>
+                  {selectedBooking.coupon && (
+                    <div className="summary-row">
+                      <span>Coupon</span>
+                      <strong>{selectedBooking.coupon.code}</strong>
+                    </div>
+                  )}
+                  {selectedBooking.originalAmount && selectedBooking.originalAmount !== selectedBooking.amount && (
+                    <div className="summary-row">
+                      <span>Original Amount</span>
+                      <strong>₹{(selectedBooking.originalAmount || 0).toLocaleString()}</strong>
+                    </div>
+                  )}
                   <div className="summary-row">
                     <span>Total Amount</span>
                     <strong>₹{(selectedBooking.amount || 0).toLocaleString()}</strong>
                   </div>
+                  {selectedBooking.discountAmount > 0 && (
+                    <div className="summary-row">
+                      <span>Discount</span>
+                      <strong style={{ color: '#22c55e' }}>-₹{(selectedBooking.discountAmount || 0).toLocaleString()}</strong>
+                    </div>
+                  )}
                   <div className="summary-row">
                     <span>Amount Paid</span>
                     <strong>₹{(selectedBooking.paidAmount || 0).toLocaleString()}</strong>
                   </div>
                   <div className="summary-row highlight">
                     <span>Remaining Amount</span>
-                    <strong>₹{((selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)).toLocaleString()}</strong>
+                    <strong>₹{((selectedBooking.finalAmount || selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)).toLocaleString()}</strong>
                   </div>
                 </div>
               </div>
@@ -535,7 +635,7 @@ const BookingsPayments = () => {
                 </div>
                 <div className="payment-amount-display">
                   <span>Amount to Pay</span>
-                  <strong>₹{((selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)).toLocaleString()}</strong>
+                  <strong>₹{((selectedBooking.finalAmount || selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)).toLocaleString()}</strong>
                 </div>
                 <div className="form-actions">
                   <button type="button" onClick={() => setShowPaymentModal(false)} className="btn-secondary">
@@ -560,15 +660,46 @@ const BookingsPayments = () => {
           <div className="modal">
             <div className="modal-header">
               <h3>{bookingType === 'package' ? 'Book Package' : 'Book Hotel'}</h3>
-              <button onClick={() => setShowBookingModal(false)} className="modal-close">×</button>
+              <button onClick={() => { setShowBookingModal(false); removeCoupon() }} className="modal-close">×</button>
             </div>
             <div className="modal-body">
               {formError && <div className="cd-alert warning" style={{ marginBottom: '1rem' }}>{formError}</div>}
               <div className="booking-summary" style={{ padding: '1rem', background: '#f8fafc', borderRadius: '0.5rem', marginBottom: '1rem', border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 0.5rem 0' }}>{bookingType === 'package' ? form.package : form.hotelName}</h4>
                 <p style={{ margin: 0, color: '#64748b' }}>{bookingType === 'package' ? 'Package Booking' : 'Hotel Booking'}</p>
-                {form.amount > 0 && <p style={{ margin: '0.5rem 0 0 0', fontWeight: 700, color: '#0f172a' }}>₹{form.amount.toLocaleString()}</p>}
+                {form.amount > 0 && (
+                  <div style={{ marginTop: '0.75rem' }}>
+                    <p style={{ margin: '0 0 0.25rem 0', fontWeight: 700, color: '#0f172a' }}>Original Amount: ₹{form.amount.toLocaleString()}</p>
+                    {appliedCoupon && discountAmount > 0 && (
+                      <>
+                        <p style={{ margin: '0 0 0.25rem 0', fontWeight: 600, color: '#22c55e' }}>Discount ({appliedCoupon.code}): -₹{discountAmount.toLocaleString()}</p>
+                        <p style={{ margin: '0 0 0.25rem 0', fontWeight: 700, color: '#0f172a', fontSize: '1.1rem' }}>Final Amount: ₹{finalAmount.toLocaleString()}</p>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="Enter coupon code"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value)}
+                  style={{ flex: 1, padding: '0.5rem 0.75rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem' }}
+                  disabled={!!appliedCoupon || couponLoading}
+                />
+                {!appliedCoupon ? (
+                  <button type="button" onClick={applyCoupon} className="btn-primary" disabled={!couponCode.trim() || couponLoading}>
+                    {couponLoading ? 'Applying...' : 'Apply'}
+                  </button>
+                ) : (
+                  <button type="button" onClick={removeCoupon} className="btn-secondary">Remove</button>
+                )}
+              </div>
+              {couponError && <div className="cd-alert warning" style={{ marginBottom: '1rem' }}>{couponError}</div>}
+              {couponSuccess && <div className="cd-alert info" style={{ marginBottom: '1rem' }}>{couponSuccess}</div>}
+
               <form onSubmit={handleCreateBooking}>
                 <div className="form-group">
                   <label>Full Name</label>
@@ -597,7 +728,7 @@ const BookingsPayments = () => {
                   <input type="number" min="0" value={form.amount} onChange={(e) => setForm({...form, amount: Number(e.target.value)})} required />
                 </div>
                 <div className="form-actions">
-                  <button type="button" onClick={() => setShowBookingModal(false)} className="btn-secondary" disabled={creating}>Cancel</button>
+                  <button type="button" onClick={() => { setShowBookingModal(false); removeCoupon() }} className="btn-secondary" disabled={creating}>Cancel</button>
                   <button type="submit" className="btn-primary enhanced" disabled={creating}>
                     <Zap className="h-4 w-4" /> {creating ? 'Creating...' : 'Confirm Booking'}
                   </button>

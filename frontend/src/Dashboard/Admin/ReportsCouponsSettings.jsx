@@ -6,18 +6,35 @@ import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
 import ChartBar from './ChartBar'
 
-const mapCoupon = (coupon) => ({
-  id: coupon._id,
-  code: coupon.code,
-  discount: coupon.discount,
-  type: coupon.type,
-  minPurchase: coupon.minPurchase,
-  maxDiscount: coupon.maxDiscount || coupon.discount,
-  status: coupon.status,
-  expiry: formatDate(coupon.expiry),
-  usage: coupon.usage || 0,
-  maxUsage: coupon.maxUsage
-})
+const mapCoupon = (coupon) => {
+  const now = new Date()
+  const start = coupon.startDate ? new Date(coupon.startDate) : null
+  const expiry = coupon.expiry ? new Date(coupon.expiry) : null
+  let displayStatus = coupon.status
+  if (coupon.status === 'active') {
+    if (expiry && now > expiry) displayStatus = 'expired'
+    else if (start && now < start) displayStatus = 'upcoming'
+    else if ((coupon.usage || 0) >= (coupon.maxUsage || 0)) displayStatus = 'limit-reached'
+  }
+  return {
+    id: coupon._id,
+    code: coupon.code,
+    description: coupon.description || '',
+    discount: coupon.discount,
+    type: coupon.type,
+    minPurchase: coupon.minPurchase,
+    maxDiscount: coupon.maxDiscount || coupon.discount,
+    applicableTo: coupon.applicableTo || 'both',
+    packageIds: coupon.packageIds || [],
+    startDate: formatDate(coupon.startDate),
+    expiry: formatDate(coupon.expiry),
+    usage: coupon.usage || 0,
+    maxUsage: coupon.maxUsage,
+    perUserLimit: coupon.perUserLimit ?? 1,
+    status: coupon.status,
+    displayStatus
+  }
+}
 
 const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
 const defaultTabPaging = {
@@ -151,7 +168,7 @@ const ReportsCouponsSettings = () => {
     const coupon = coupons.find((item) => item.id === id)
     const status = coupon.status === 'active' ? 'inactive' : 'active'
     try {
-      await api(`/admin/coupons/${id}`, { method: 'PUT', body: JSON.stringify({ status }) })
+      await api(`/admin/coupons/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
       load()
     } catch (err) {
       alert(err.message)
@@ -160,13 +177,18 @@ const ReportsCouponsSettings = () => {
 
   const couponPayload = (values) => ({
     code: values.code.toUpperCase(),
+    description: values.description || '',
     type: values.type,
     discount: Number(values.discount),
     minPurchase: Number(values.minPurchase),
-    maxDiscount: Number(values.maxDiscount || values.discount),
-    maxUsage: Number(values.maxUsage),
+    maxDiscount: values.maxDiscount ? Number(values.maxDiscount) : Number(values.discount),
+    applicableTo: values.applicableTo || 'both',
+    packageIds: values.packageIds ? values.packageIds.split(',').map((id) => id.trim()).filter(Boolean) : [],
+    startDate: values.startDate || new Date().toISOString().split('T')[0],
     expiry: values.expiry,
-    status: 'active'
+    maxUsage: Number(values.maxUsage),
+    perUserLimit: Number(values.perUserLimit ?? 1),
+    status: values.status || 'active'
   })
 
   const handleAddCoupon = async (e) => {
@@ -184,16 +206,23 @@ const ReportsCouponsSettings = () => {
     e.preventDefault()
     const values = formValues(e.target)
     try {
+      const payload = {
+        code: values.code.toUpperCase(),
+        description: values.description || '',
+        type: values.type,
+        discount: Number(values.discount),
+        minPurchase: Number(values.minPurchase),
+        maxDiscount: values.maxDiscount ? Number(values.maxDiscount) : Number(values.discount),
+        applicableTo: values.applicableTo || 'both',
+        packageIds: values.packageIds ? values.packageIds.split(',').map((id) => id.trim()).filter(Boolean) : [],
+        startDate: values.startDate,
+        expiry: values.expiry,
+        maxUsage: Number(values.maxUsage),
+        perUserLimit: Number(values.perUserLimit ?? 1)
+      }
       await api(`/admin/coupons/${selectedCoupon.id}`, {
         method: 'PUT',
-        body: JSON.stringify({
-          code: values.code.toUpperCase(),
-          type: values.type,
-          discount: Number(values.discount),
-          minPurchase: Number(values.minPurchase),
-          maxUsage: Number(values.maxUsage),
-          expiry: values.expiry
-        })
+        body: JSON.stringify(payload)
       })
       setShowEditCouponModal(false)
       load()
@@ -344,12 +373,14 @@ const ReportsCouponsSettings = () => {
                 <div key={coupon.id} className="coupon-card">
                   <div className="coupon-header">
                     <div className="coupon-code"><Tag className="h-4 w-4" />{coupon.code}</div>
-                    <span className={`status-badge ${coupon.status}`}>{coupon.status}</span>
+                    <span className={`status-badge ${coupon.displayStatus}`}>{coupon.displayStatus}</span>
                   </div>
                   <div className="coupon-discount">{coupon.type === 'percentage' ? `${coupon.discount}% OFF` : `₹${coupon.discount} OFF`}</div>
                   <div className="coupon-details">
+                    <p>Applicable: {coupon.applicableTo === 'both' ? 'Packages & Hotels' : coupon.applicableTo === 'package' ? 'Packages only' : 'Hotels only'}</p>
                     <p>Min Purchase: ₹{coupon.minPurchase.toLocaleString()}</p>
-                    <p>Expires: {coupon.expiry}</p>
+                    <p>Start: {coupon.startDate} · Expires: {coupon.expiry}</p>
+                    <p>Per user limit: {coupon.perUserLimit}</p>
                   </div>
                   <div className="coupon-usage">
                     <div className="usage-bar"><div className="usage-fill" style={{ width: `${coupon.maxUsage ? (coupon.usage / coupon.maxUsage) * 100 : 0}%` }}></div></div>
@@ -452,6 +483,7 @@ const ReportsCouponsSettings = () => {
             <div className="modal-body">
               <form className="coupon-form" onSubmit={showAddCouponModal ? handleAddCoupon : handleUpdateCoupon}>
                 <div className="form-group"><label>Coupon Code</label><input name="code" defaultValue={selectedCoupon?.code} required /></div>
+                <div className="form-group"><label>Description</label><textarea name="description" defaultValue={selectedCoupon?.description} rows={2} /></div>
                 <div className="form-row">
                   <div className="form-group">
                     <label>Discount Type</label>
@@ -464,9 +496,27 @@ const ReportsCouponsSettings = () => {
                 </div>
                 <div className="form-row">
                   <div className="form-group"><label>Min Purchase (₹)</label><input name="minPurchase" type="number" defaultValue={selectedCoupon?.minPurchase} required /></div>
-                  <div className="form-group"><label>Max Usage</label><input name="maxUsage" type="number" defaultValue={selectedCoupon?.maxUsage} required /></div>
+                  <div className="form-group"><label>Max Discount (₹)</label><input name="maxDiscount" type="number" defaultValue={selectedCoupon?.maxDiscount || selectedCoupon?.discount} /></div>
                 </div>
-                <div className="form-group"><label>Expiry Date</label><input name="expiry" type="date" defaultValue={selectedCoupon?.expiry} required /></div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Applicable To</label>
+                    <select name="applicableTo" defaultValue={selectedCoupon?.applicableTo || 'both'}>
+                      <option value="both">Both</option>
+                      <option value="package">Package</option>
+                      <option value="hotel">Hotel</option>
+                    </select>
+                  </div>
+                  <div className="form-group"><label>Package IDs (comma separated)</label><input name="packageIds" defaultValue={selectedCoupon?.packageIds?.join(', ')} placeholder="For package-only coupons" /></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label>Start Date</label><input name="startDate" type="date" defaultValue={selectedCoupon?.startDate} /></div>
+                  <div className="form-group"><label>Expiry Date</label><input name="expiry" type="date" defaultValue={selectedCoupon?.expiry} required /></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label>Max Usage</label><input name="maxUsage" type="number" defaultValue={selectedCoupon?.maxUsage} required /></div>
+                  <div className="form-group"><label>Per User Limit</label><input name="perUserLimit" type="number" defaultValue={selectedCoupon?.perUserLimit ?? 1} /></div>
+                </div>
                 <div className="form-actions">
                   <button type="button" className="btn-secondary" onClick={() => { setShowAddCouponModal(false); setShowEditCouponModal(false) }}>Cancel</button>
                   <button type="submit" className="btn-primary">{showAddCouponModal ? 'Add Coupon' : 'Update Coupon'}</button>
