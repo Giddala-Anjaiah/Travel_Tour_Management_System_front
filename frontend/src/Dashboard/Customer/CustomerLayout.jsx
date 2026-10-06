@@ -38,7 +38,7 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
             <Compass className="h-6 w-6" />
           </span>
           <div>
-            <h2>Wanderlust</h2>
+            <h2>My Trips</h2>
             <p className="cp-brand-sub">Customer portal</p>
           </div>
         </div>
