@@ -3833,8 +3833,7 @@ app.get('/api/customer/coupons/available', async (req, res) => {
     const filter = {
       status: 'active',
       startDate: { $lte: now },
-      expiry: { $gte: now },
-      $expr: { $lt: ['$usage', '$maxUsage'] }
+      expiry: { $gte: now }
     };
 
     if (bookingType === 'package') {
@@ -3848,15 +3847,17 @@ app.get('/api/customer/coupons/available', async (req, res) => {
     }
 
     const coupons = await Coupon.find(filter)
-      .select('code description discount type minPurchase maxDiscount applicableTo perUserLimit')
+      .select('code description discount type minPurchase maxDiscount applicableTo perUserLimit usage maxUsage')
       .lean();
 
     const userId = req.user.userId;
     const couponsWithUserCheck = await Promise.all(coupons.map(async (coupon) => {
       const userUsage = await CouponUsage.countDocuments({ couponId: coupon._id, userId });
+      const usageLimitReached = coupon.usage >= coupon.maxUsage;
       return {
         ...coupon,
-        canUse: userUsage < (coupon.perUserLimit || 1)
+        canUse: userUsage < (coupon.perUserLimit || 1) && !usageLimitReached,
+        usageLimitReached
       };
     }));
 
