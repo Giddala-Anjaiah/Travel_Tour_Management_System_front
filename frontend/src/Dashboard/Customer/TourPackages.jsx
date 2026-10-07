@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { MapPin, Users, Star, Heart, Search, ArrowRight, Clock, Sparkles, Check, Zap, Shield, Award } from 'lucide-react'
+import { MapPin, Users, Star, Heart, Search, ArrowRight, Clock, Sparkles, Check, Zap, Shield, Award, Info, AlertTriangle } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
 import { api, readPagination } from '../../api'
@@ -307,6 +307,25 @@ const TourPackages = () => {
                             {inc}
                           </span>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {pkg.cancellationPolicy && pkg.cancellationPolicy.enabled && pkg.cancellationPolicy.rules && pkg.cancellationPolicy.rules.length > 0 && (
+                    <div className="package-cancellation-policy" style={{ marginTop: '1rem', padding: '0.75rem', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: '#92400e' }}>
+                        <AlertTriangle className="h-4 w-4" />
+                        <strong>Cancellation Policy</strong>
+                      </div>
+                      <div style={{ fontSize: '0.85rem', color: '#92400e' }}>
+                        {pkg.cancellationPolicy.rules
+                          .sort((a, b) => b.minDaysBeforeTrip - a.minDaysBeforeTrip)
+                          .map((rule, idx) => (
+                            <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.25rem 0' }}>
+                              <span>{rule.minDaysBeforeTrip}+ days before trip</span>
+                              <strong>{rule.refundPercentage}% refund</strong>
+                            </div>
+                          ))}
                       </div>
                     </div>
                   )}

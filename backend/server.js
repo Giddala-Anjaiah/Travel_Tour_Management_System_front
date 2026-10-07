@@ -135,7 +135,23 @@ const packageSchema = new mongoose.Schema({
   highlights: [String],
   exclusions: [String],
   terms: String,
-  cancellationPolicy: String,
+  cancellationPolicy: {
+    enabled: {
+      type: Boolean,
+      default: false
+    },
+    rules: [{
+      minDaysBeforeTrip: {
+        type: Number,
+        min: 0
+      },
+      refundPercentage: {
+        type: Number,
+        min: 0,
+        max: 100
+      }
+    }]
+  },
   pickupInfo: String,
   startingLocation: String,
   transportType: String,
@@ -367,6 +383,32 @@ const bookingSchema = new mongoose.Schema({
   checkInDate: Date,
   checkOutDate: Date,
   notes: String,
+  cancellationPolicySnapshot: {
+    enabled: Boolean,
+    rules: [{
+      minDaysBeforeTrip: Number,
+      refundPercentage: Number
+    }]
+  },
+  cancellation: {
+    cancelledAt: Date,
+    cancelledBy: String,
+    reason: String,
+    daysBeforeTrip: Number,
+    refundPercentage: Number,
+    refundAmount: Number,
+    cancellationFee: Number
+  },
+  refund: {
+    amount: Number,
+    status: {
+      type: String,
+      enum: ['pending', 'processing', 'completed', 'failed', 'not_applicable'],
+      default: 'pending'
+    },
+    processedAt: Date,
+    transactionId: String
+  },
   coupon: {
     code: String,
     couponId: { type: mongoose.Schema.Types.ObjectId, ref: 'Coupon' },
@@ -1129,6 +1171,63 @@ function duplicateError(error) {
   return error?.code === 11000;
 }
 
+function calculateRefund(booking, cancellationDate = new Date()) {
+  const result = {
+    bookingAmount: 0,
+    daysBeforeTrip: 0,
+    refundPercentage: 0,
+    refundAmount: 0,
+    cancellationFee: 0
+  };
+
+  if (!booking) {
+    return result;
+  }
+
+  const tripDate = booking.checkInDate ? new Date(booking.checkInDate) : 
+                   booking.dates ? new Date(booking.dates) : null;
+  
+  if (!tripDate) {
+    return result;
+  }
+
+  const cancellation = new Date(cancellationDate);
+  const timeDiff = tripDate.getTime() - cancellation.getTime();
+  const daysBeforeTrip = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
+
+  result.daysBeforeTrip = daysBeforeTrip;
+
+  const policySnapshot = booking.cancellationPolicySnapshot;
+  if (!policySnapshot || !policySnapshot.enabled || !policySnapshot.rules || policySnapshot.rules.length === 0) {
+    result.refundPercentage = 0;
+    result.refundAmount = 0;
+    result.cancellationFee = booking.finalAmount || booking.amount || 0;
+    result.bookingAmount = booking.finalAmount || booking.amount || 0;
+    return result;
+  }
+
+  const sortedRules = [...policySnapshot.rules].sort((a, b) => b.minDaysBeforeTrip - a.minDaysBeforeTrip);
+  let applicablePercentage = 0;
+
+  for (const rule of sortedRules) {
+    if (daysBeforeTrip >= rule.minDaysBeforeTrip) {
+      applicablePercentage = rule.refundPercentage;
+      break;
+    }
+  }
+
+  const bookingAmount = booking.finalAmount || booking.amount || 0;
+  const refundAmount = Math.round((bookingAmount * applicablePercentage) / 100);
+  const cancellationFee = bookingAmount - refundAmount;
+
+  result.bookingAmount = bookingAmount;
+  result.refundPercentage = applicablePercentage;
+  result.refundAmount = refundAmount;
+  result.cancellationFee = cancellationFee;
+
+  return result;
+}
+
 async function nextInvoiceNo() {
   const now = new Date();
   const prefix = `INV-${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -1720,7 +1819,7 @@ app.get('/api/admin/packages', async (req, res) => {
 
 app.post('/api/admin/packages', async (req, res) => {
   try {
-     const newPackage = new Package({ ...req.body, operatorId: req.body.operatorId || req.user.userId });
+    const newPackage = new Package({ ...req.body, operatorId: req.body.operatorId || req.user.userId });
     await newPackage.save();
     console.log('Package created with _id:', newPackage._id);
     res.status(201).json({ message: 'Package created successfully', package: newPackage });
@@ -1732,7 +1831,7 @@ app.post('/api/admin/packages', async (req, res) => {
 
 app.put('/api/admin/packages/:id', async (req, res) => {
   try {
-    const updates = pickUpdates(req.body, ['name', 'destination', 'duration', 'price', 'rating', 'bookings', 'status', 'description', 'inclusions', 'image']);
+    const updates = pickUpdates(req.body, ['name', 'destination', 'duration', 'price', 'rating', 'bookings', 'status', 'description', 'inclusions', 'image', 'cancellationPolicy', 'images', 'category', 'shortDescription', 'highlights', 'exclusions', 'terms', 'pickupInfo', 'startingLocation', 'transportType', 'minTravelers', 'maxTravelers', 'publishedStatus']);
     console.log('PUT package id:', req.params.id, 'updates:', updates);
     const pkg = await Package.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
     if (!pkg) {
@@ -3610,6 +3709,15 @@ app.post('/api/customer/bookings', async (req, res) => {
       if (pkg) {
         payload.operatorId = pkg.operatorId;
         payload.package = pkg.name;
+        if (pkg.cancellationPolicy && pkg.cancellationPolicy.enabled && pkg.cancellationPolicy.rules && pkg.cancellationPolicy.rules.length > 0) {
+          payload.cancellationPolicySnapshot = {
+            enabled: pkg.cancellationPolicy.enabled,
+            rules: pkg.cancellationPolicy.rules.map(rule => ({
+              minDaysBeforeTrip: rule.minDaysBeforeTrip,
+              refundPercentage: rule.refundPercentage
+            }))
+          };
+        }
       }
     }
     payload.timeline = [{ status: 'pending', date: new Date(), note: 'Booking created' }];
@@ -3795,6 +3903,117 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
     res.status(200).json({ message: 'Payment processed', booking });
   } catch (error) {
     res.status(500).json({ message: 'Error processing payment' });
+  }
+});
+
+app.post('/api/customer/bookings/:id/cancel', async (req, res) => {
+  try {
+    const { reason, preview } = req.body || {};
+    const booking = await Booking.findOne({ _id: req.params.id, customerId: req.user.userId })
+      .populate('packageId', 'name destination cancellationPolicy');
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    if (booking.status === 'cancelled') {
+      return res.status(400).json({ success: false, message: 'Booking is already cancelled' });
+    }
+
+    if (booking.status === 'completed') {
+      return res.status(400).json({ success: false, message: 'Cannot cancel a completed booking' });
+    }
+
+    const refundCalc = calculateRefund(booking, new Date());
+
+    if (refundCalc.refundAmount < 0) {
+      refundCalc.refundAmount = 0;
+    }
+    if (refundCalc.refundAmount > (booking.paidAmount || 0)) {
+      refundCalc.refundAmount = booking.paidAmount || 0;
+    }
+    refundCalc.cancellationFee = refundCalc.bookingAmount - refundCalc.refundAmount;
+
+    if (preview) {
+      return res.status(200).json({
+        success: true,
+        refund: {
+          bookingAmount: refundCalc.bookingAmount,
+          daysBeforeTrip: refundCalc.daysBeforeTrip,
+          refundPercentage: refundCalc.refundPercentage,
+          refundAmount: refundCalc.refundAmount,
+          cancellationFee: refundCalc.cancellationFee,
+          status: refundCalc.refundAmount > 0 && (booking.paidAmount || 0) > 0 ? 'pending' : 'not_applicable'
+        }
+      });
+    }
+
+    const snapshot = booking.packageId?.cancellationPolicy || booking.cancellationPolicySnapshot;
+    
+    booking.status = 'cancelled';
+    booking.cancellation = {
+      cancelledAt: new Date(),
+      cancelledBy: 'customer',
+      reason: reason || 'Cancelled by customer',
+      daysBeforeTrip: refundCalc.daysBeforeTrip,
+      refundPercentage: refundCalc.refundPercentage,
+      refundAmount: refundCalc.refundAmount,
+      cancellationFee: refundCalc.cancellationFee
+    };
+    booking.refund = {
+      amount: refundCalc.refundAmount,
+      status: refundCalc.refundAmount > 0 && (booking.paidAmount || 0) > 0 ? 'pending' : 'not_applicable',
+      processedAt: null,
+      transactionId: null
+    };
+    booking.timeline.push({ 
+      status: 'cancelled', 
+      date: new Date(), 
+      note: `Booking cancelled by customer. Refund: ${refundCalc.refundPercentage}% (₹${refundCalc.refundAmount.toLocaleString()})` 
+    });
+
+    await booking.save();
+
+    if (booking.packageId) {
+      await Package.findByIdAndUpdate(booking.packageId._id, { $inc: { bookings: -1 } }).catch(() => {});
+    }
+
+    await Notification.create({
+      userId: req.user.userId,
+      type: 'booking',
+      title: 'Booking Cancelled',
+      message: `Your booking ${booking.bookingId} has been cancelled. Refund amount: ₹${refundCalc.refundAmount.toLocaleString()}.`,
+      relatedId: booking._id,
+      read: false
+    });
+    if (req.user.email) {
+      await sendNotificationEmail(
+        req.user.email,
+        'Booking Cancelled',
+        `Your booking <strong>${booking.bookingId}</strong> has been cancelled. Refund amount: ₹${refundCalc.refundAmount.toLocaleString()}. Refund status: ${refundCalc.refundAmount > 0 ? 'Pending' : 'Not applicable'}.`
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Booking cancelled successfully',
+      booking: {
+        id: booking._id,
+        status: booking.status,
+        bookingId: booking.bookingId
+      },
+      refund: {
+        bookingAmount: refundCalc.bookingAmount,
+        daysBeforeTrip: refundCalc.daysBeforeTrip,
+        refundPercentage: refundCalc.refundPercentage,
+        refundAmount: refundCalc.refundAmount,
+        cancellationFee: refundCalc.cancellationFee,
+        status: refundCalc.refundAmount > 0 && (booking.paidAmount || 0) > 0 ? 'pending' : 'not_applicable'
+      }
+    });
+  } catch (error) {
+    console.error('Error cancelling booking:', error);
+    res.status(500).json({ success: false, message: 'Error cancelling booking' });
   }
 });
 

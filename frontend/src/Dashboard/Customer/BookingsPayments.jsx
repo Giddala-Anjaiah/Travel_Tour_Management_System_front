@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { CreditCard, Search, Clock, CheckCircle, XCircle, AlertCircle, Download, Eye, Sparkles, Shield, Ticket, Calendar as CalendarIcon, Wallet, Zap, Users, MapPin } from 'lucide-react'
+import { CreditCard, Search, Clock, CheckCircle, XCircle, AlertCircle, Download, Eye, Sparkles, Shield, Ticket, Calendar as CalendarIcon, Wallet, Zap, Users, MapPin, X, AlertTriangle } from 'lucide-react'
 import { useSearchParams, useLocation } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
 import { api, formatDate, readPagination } from '../../api'
@@ -48,6 +48,11 @@ const BookingsPayments = () => {
   const [limit, setLimit] = useState(10)
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
   const [stats, setStats] = useState(null)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
+  const [cancelBooking, setCancelBooking] = useState(null)
+  const [cancelReason, setCancelReason] = useState('')
+  const [cancelRefundInfo, setCancelRefundInfo] = useState(null)
 
   // `/customer/bookings` filters server-side on `search` only. Status is not
   // supported, so when it is active we load the full set and filter rows locally.
@@ -300,6 +305,34 @@ const BookingsPayments = () => {
       setAvailableCoupons([])
     } finally {
       setCouponsLoading(false)
+    }
+  }
+
+  const handleCancelBooking = async (booking) => {
+    setCancelBooking(booking)
+    setCancelReason('')
+    setCancelRefundInfo(null)
+    setShowCancelModal(true)
+  }
+
+  const confirmCancelBooking = async () => {
+    if (!cancelBooking || cancelling) return
+    setCancelling(true)
+    try {
+      const data = await api(`/customer/bookings/${cancelBooking._id}/cancel`, {
+        method: 'POST',
+        body: JSON.stringify({ reason: cancelReason })
+      })
+      if (data.success) {
+        setShowCancelModal(false)
+        setCancelBooking(null)
+        setCancelReason('')
+        await fetchBookings()
+      }
+    } catch (err) {
+      alert(err.message || 'Failed to cancel booking')
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -574,6 +607,15 @@ const BookingsPayments = () => {
                   <CheckCircle className="h-4 w-4" /> Fully Paid
                 </span>
               )}
+              {booking.status !== 'cancelled' && booking.status !== 'completed' && (
+                <button
+                  onClick={() => handleCancelBooking(booking)}
+                  className="btn-danger enhanced"
+                  style={{ background: '#ef4444', borderColor: '#ef4444' }}
+                >
+                  <X className="h-4 w-4" /> Cancel
+                </button>
+              )}
             </div>
           </div>
         ))}
@@ -789,6 +831,118 @@ const BookingsPayments = () => {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCancelModal && cancelBooking && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: '600px' }}>
+            <div className="modal-header">
+              <h3>Cancel Booking</h3>
+              <button onClick={() => { setShowCancelModal(false); setCancelBooking(null); setCancelReason(''); setCancelRefundInfo(null); }} className="modal-close">×</button>
+            </div>
+            <div className="modal-body">
+              <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#dc2626', marginBottom: '0.5rem' }}>
+                  <AlertTriangle className="h-5 w-5" />
+                  <strong>Warning: This action cannot be undone</strong>
+                </div>
+                <p style={{ margin: 0, color: '#991b1b' }}>Cancelling this booking will change its status to "cancelled" and may result in a cancellation fee based on the package's cancellation policy.</p>
+              </div>
+
+              <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+                <h4 style={{ margin: '0 0 1rem 0', color: '#0f172a' }}>Booking Details</h4>
+                <div style={{ display: 'grid', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Package</span>
+                    <strong>{cancelBooking.package}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Booking ID</span>
+                    <strong>{cancelBooking.bookingId}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Travel Date</span>
+                    <strong>{cancelBooking.dates}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Booking Amount</span>
+                    <strong>₹{(cancelBooking.finalAmount || cancelBooking.amount || 0).toLocaleString()}</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Amount Paid</span>
+                    <strong>₹{(cancelBooking.paidAmount || 0).toLocaleString()}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+                <h4 style={{ margin: '0 0 1rem 0', color: '#166534' }}>Cancellation Policy & Refund Estimate</h4>
+                <p style={{ margin: '0 0 1rem 0', color: '#166534', fontSize: '0.9rem' }}>
+                  The refund is calculated based on the package's cancellation policy at the time of booking.
+                </p>
+                {cancelRefundInfo ? (
+                  <div style={{ display: 'grid', gap: '0.5rem' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Days Before Trip</span>
+                      <strong>{cancelRefundInfo.daysBeforeTrip} days</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Applicable Refund</span>
+                      <strong>{cancelRefundInfo.refundPercentage}%</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #bbf7d0', paddingTop: '0.5rem', marginTop: '0.5rem' }}>
+                      <span>Estimated Refund Amount</span>
+                      <strong style={{ color: '#16a34a' }}>₹{cancelRefundInfo.refundAmount.toLocaleString()}</strong>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#dc2626' }}>
+                      <span>Cancellation Fee</span>
+                      <strong>₹{cancelRefundInfo.cancellationFee.toLocaleString()}</strong>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        const data = await api(`/customer/bookings/${cancelBooking._id}/cancel`, {
+                          method: 'POST',
+                          body: JSON.stringify({ reason: '', preview: true })
+                        })
+                        if (data.refund) {
+                          setCancelRefundInfo(data.refund)
+                        }
+                      } catch (err) {
+                        console.error('Failed to preview refund:', err)
+                      }
+                    }}
+                    className="btn-secondary"
+                    disabled={cancelling}
+                  >
+                    Calculate Refund
+                  </button>
+                )}
+              </div>
+
+              <div className="form-group" style={{ marginBottom: '1rem' }}>
+                <label>Cancellation Reason (optional)</label>
+                <textarea
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  rows={3}
+                  placeholder="Please let us know why you're cancelling..."
+                  style={{ width: '100%', padding: '0.5rem 0.75rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem' }}
+                />
+              </div>
+
+              <div className="form-actions">
+                <button type="button" onClick={() => { setShowCancelModal(false); setCancelBooking(null); setCancelReason(''); setCancelRefundInfo(null); }} className="btn-secondary" disabled={cancelling}>Keep Booking</button>
+                <button type="button" onClick={confirmCancelBooking} className="btn-danger" style={{ background: '#dc2626', borderColor: '#dc2626' }} disabled={cancelling}>
+                  {cancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

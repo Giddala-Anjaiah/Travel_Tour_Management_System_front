@@ -27,7 +27,16 @@ const OperatorPackages = () => {
     highlights: '',
     exclusions: '',
     terms: '',
-    cancellationPolicy: '',
+    cancellationPolicy: {
+      enabled: false,
+      rules: [
+        { minDaysBeforeTrip: 30, refundPercentage: 100 },
+        { minDaysBeforeTrip: 15, refundPercentage: 75 },
+        { minDaysBeforeTrip: 7, refundPercentage: 50 },
+        { minDaysBeforeTrip: 3, refundPercentage: 25 },
+        { minDaysBeforeTrip: 0, refundPercentage: 0 }
+      ]
+    },
     pickupInfo: '',
     startingLocation: '',
     transportType: '',
@@ -103,7 +112,16 @@ const OperatorPackages = () => {
       highlights: '',
       exclusions: '',
       terms: '',
-      cancellationPolicy: '',
+      cancellationPolicy: {
+        enabled: false,
+        rules: [
+          { minDaysBeforeTrip: 30, refundPercentage: 100 },
+          { minDaysBeforeTrip: 15, refundPercentage: 75 },
+          { minDaysBeforeTrip: 7, refundPercentage: 50 },
+          { minDaysBeforeTrip: 3, refundPercentage: 25 },
+          { minDaysBeforeTrip: 0, refundPercentage: 0 }
+        ]
+      },
       pickupInfo: '',
       startingLocation: '',
       transportType: '',
@@ -130,7 +148,16 @@ const OperatorPackages = () => {
       highlights: pkg.highlights?.join(', ') || '',
       exclusions: pkg.exclusions?.join(', ') || '',
       terms: pkg.terms || '',
-      cancellationPolicy: pkg.cancellationPolicy || '',
+      cancellationPolicy: pkg.cancellationPolicy || {
+        enabled: false,
+        rules: [
+          { minDaysBeforeTrip: 30, refundPercentage: 100 },
+          { minDaysBeforeTrip: 15, refundPercentage: 75 },
+          { minDaysBeforeTrip: 7, refundPercentage: 50 },
+          { minDaysBeforeTrip: 3, refundPercentage: 25 },
+          { minDaysBeforeTrip: 0, refundPercentage: 0 }
+        ]
+      },
       pickupInfo: pkg.pickupInfo || '',
       startingLocation: pkg.startingLocation || '',
       transportType: pkg.transportType || '',
@@ -181,7 +208,8 @@ const OperatorPackages = () => {
         maxTravelers: parseInt(formData.maxTravelers),
         inclusions: formData.inclusions.split(',').map(i => i.trim()).filter(i => i),
         highlights: formData.highlights.split(',').map(h => h.trim()).filter(h => h),
-        exclusions: formData.exclusions.split(',').map(e => e.trim()).filter(e => e)
+        exclusions: formData.exclusions.split(',').map(e => e.trim()).filter(e => e),
+        cancellationPolicy: formData.cancellationPolicy
       }
 
       const url = editingPackage 
@@ -500,13 +528,84 @@ const OperatorPackages = () => {
               <div className="form-section">
                 <h3>Policies</h3>
                 <div className="form-group full-width">
-                  <label>Cancellation Policy</label>
-                  <textarea
-                    value={formData.cancellationPolicy}
-                    onChange={(e) => setFormData({ ...formData, cancellationPolicy: e.target.value })}
-                    rows={3}
-                  />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={formData.cancellationPolicy?.enabled}
+                      onChange={(e) => setFormData({ ...formData, cancellationPolicy: { ...formData.cancellationPolicy, enabled: e.target.checked } })}
+                    />
+                    <strong>Enable Cancellation Policy</strong>
+                  </label>
                 </div>
+                
+                {formData.cancellationPolicy?.enabled && (
+                  <div>
+                    <div style={{ marginBottom: '1rem' }}>
+                      <label style={{ fontWeight: 600, marginBottom: '0.5rem', display: 'block' }}>
+                        Cancellation Rules (sorted by days before trip, highest first)
+                      </label>
+                      {formData.cancellationPolicy.rules.map((rule, index) => (
+                        <div key={index} className="cancellation-rule-row" style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                          <div style={{ flex: 1, minWidth: '150px' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '0.25rem' }}>Days Before Trip</label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={rule.minDaysBeforeTrip}
+                              onChange={(e) => {
+                                const newRules = [...formData.cancellationPolicy.rules];
+                                newRules[index] = { ...newRules[index], minDaysBeforeTrip: parseInt(e.target.value) || 0 };
+                                setFormData({ ...formData, cancellationPolicy: { ...formData.cancellationPolicy, rules: newRules } });
+                              }}
+                              style={{ width: '100%', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem' }}
+                            />
+                          </div>
+                          <div style={{ flex: 1, minWidth: '150px' }}>
+                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#64748b', marginBottom: '0.25rem' }}>Refund %</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={rule.refundPercentage}
+                              onChange={(e) => {
+                                const newRules = [...formData.cancellationPolicy.rules];
+                                newRules[index] = { ...newRules[index], refundPercentage: Math.min(100, Math.max(0, parseInt(e.target.value) || 0)) };
+                                setFormData({ ...formData, cancellationPolicy: { ...formData.cancellationPolicy, rules: newRules } });
+                              }}
+                              style={{ width: '100%', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.375rem' }}
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (formData.cancellationPolicy.rules.length > 1) {
+                                const newRules = formData.cancellationPolicy.rules.filter((_, i) => i !== index);
+                                setFormData({ ...formData, cancellationPolicy: { ...formData.cancellationPolicy, rules: newRules } });
+                              }
+                            }}
+                            style={{ padding: '0.5rem', color: '#ef4444', background: 'transparent', border: '1px solid #ef4444', borderRadius: '0.375rem', cursor: 'pointer' }}
+                            disabled={formData.cancellationPolicy.rules.length <= 1}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newRules = [...formData.cancellationPolicy.rules];
+                          newRules.push({ minDaysBeforeTrip: 0, refundPercentage: 0 });
+                          setFormData({ ...formData, cancellationPolicy: { ...formData.cancellationPolicy, rules: newRules } });
+                        }}
+                        className="btn-secondary"
+                        style={{ marginTop: '0.5rem', padding: '0.5rem 1rem' }}
+                      >
+                        + Add Rule
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
                 <div className="form-group full-width">
                   <label>Pickup Information</label>
                   <textarea
