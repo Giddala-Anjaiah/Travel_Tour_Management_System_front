@@ -1427,15 +1427,18 @@
 /* Table Styles */
 .table-container {
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  max-height: 600px;
   border-radius: 1rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   padding-bottom: 2px;
+  padding-right: 2px;
   scrollbar-color: rgba(79, 70, 229, 0.2) transparent;
   scrollbar-width: thin;
 }
 
 .table-container::-webkit-scrollbar {
+  width: 10px;
   height: 10px;
 }
 
@@ -1447,6 +1450,22 @@
 .table-container::-webkit-scrollbar-thumb {
   background: rgba(79, 70, 229, 0.3);
   border-radius: 5px;
+}
+
+.table-container::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.table-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(79, 70, 229, 0.5);
+}
+
+.table-container::-webkit-scrollbar-thumb:vertical {
+  min-height: 40px;
+}
+
+.table-container::-webkit-scrollbar-thumb:horizontal {
+  min-width: 40px;
 }
 
 .data-table {
