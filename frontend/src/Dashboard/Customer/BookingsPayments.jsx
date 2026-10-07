@@ -938,8 +938,8 @@ const BookingsPayments = () => {
               </div>
 
               <div className="form-actions">
-                <button type="button" onClick={() => { setShowCancelModal(false); setCancelBooking(null); setCancelReason(''); setCancelRefundInfo(null); }} className="btn-secondary" disabled={cancelling}>Keep Booking</button>
-                <button type="button" onClick={confirmCancelBooking} className="btn-danger" style={{ background: '#dc2626', borderColor: '#dc2626' }} disabled={cancelling}>
+                <button type="button" onClick={() => { setShowCancelModal(false); setCancelBooking(null); setCancelReason(''); setCancelRefundInfo(null); }} className="btn-secondary enhanced" disabled={cancelling}>Keep Booking</button>
+                <button type="button" onClick={confirmCancelBooking} className="btn-danger enhanced" disabled={cancelling}>
                   {cancelling ? 'Cancelling...' : 'Confirm Cancellation'}
                 </button>
               </div>
