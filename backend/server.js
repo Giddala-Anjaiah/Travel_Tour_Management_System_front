@@ -325,6 +325,10 @@ const bookingSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Package'
   },
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel'
+  },
   customer: {
     type: String
   },
