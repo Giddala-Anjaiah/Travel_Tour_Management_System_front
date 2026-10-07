@@ -3690,7 +3690,7 @@ app.get('/api/customer/bookings', async (req, res) => {
       sort: { bookingDate: -1 }
     });
     const spentAgg = await Booking.aggregate([
-      { $match: filter },
+      { $match: { customerId: new mongoose.Types.ObjectId(req.user.userId) } },
       { $group: { _id: null, totalSpent: { $sum: { $ifNull: ['$paidAmount', 0] } } } }
     ]);
     pagedResponse(res, 'bookings', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
