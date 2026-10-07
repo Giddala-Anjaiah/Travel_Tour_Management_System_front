@@ -1214,7 +1214,12 @@ function calculateRefund(booking, cancellationDate = new Date()) {
 
   result.daysBeforeTrip = daysBeforeTrip;
 
-  const policySnapshot = booking.cancellationPolicySnapshot;
+  // Check for cancellation policy snapshot (package bookings) or hotel cancellation policy (hotel bookings)
+  let policySnapshot = booking.cancellationPolicySnapshot;
+  if (!policySnapshot && booking.hotelId && booking.hotelId.cancellationPolicy) {
+    policySnapshot = booking.hotelId.cancellationPolicy;
+  }
+  
   if (!policySnapshot || !policySnapshot.enabled || !policySnapshot.rules || policySnapshot.rules.length === 0) {
     result.refundPercentage = 0;
     result.refundAmount = 0;
@@ -3966,9 +3971,6 @@ app.post('/api/customer/bookings/:id/cancel', async (req, res) => {
       });
     }
 
-    const packageSnapshot = booking.packageId?.cancellationPolicy || booking.cancellationPolicySnapshot;
-    const hotelSnapshot = booking.hotelId?.cancellationPolicy;
-    
     booking.status = 'cancelled';
     booking.cancellation = {
       cancelledAt: new Date(),
@@ -4036,7 +4038,7 @@ app.post('/api/customer/bookings/:id/cancel', async (req, res) => {
     });
   } catch (error) {
     console.error('Error cancelling booking:', error);
-    res.status(500).json({ success: false, message: 'Error cancelling booking' });
+    res.status(500).json({ success: false, message: 'Error cancelling booking', error: error.message });
   }
 });
 
