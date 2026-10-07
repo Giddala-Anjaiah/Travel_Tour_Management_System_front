@@ -1205,15 +1205,26 @@ function calculateRefund(booking, cancellationDate = new Date()) {
     return result;
   }
 
-  const tripDate = booking.checkInDate ? new Date(booking.checkInDate) : 
-                   booking.dates ? new Date(booking.dates) : null;
+  // Parse trip date from checkInDate or dates field
+  let tripDate = null;
+  if (booking.checkInDate) {
+    tripDate = new Date(booking.checkInDate);
+  } else if (booking.dates) {
+    // Handle various date string formats
+    const dateStr = String(booking.dates).trim();
+    tripDate = new Date(dateStr);
+  }
   
-  if (!tripDate) {
+  if (!tripDate || isNaN(tripDate.getTime())) {
     return result;
   }
 
+  // Use date-only comparison (midnight to midnight) to avoid timezone issues
   const cancellation = new Date(cancellationDate);
-  const timeDiff = tripDate.getTime() - cancellation.getTime();
+  const tripMidnight = new Date(tripDate.getFullYear(), tripDate.getMonth(), tripDate.getDate());
+  const cancelMidnight = new Date(cancellation.getFullYear(), cancellation.getMonth(), cancellation.getDate());
+  
+  const timeDiff = tripMidnight.getTime() - cancelMidnight.getTime();
   const daysBeforeTrip = Math.ceil(timeDiff / (1000 * 60 * 60 * 24));
 
   result.daysBeforeTrip = daysBeforeTrip;
@@ -1232,14 +1243,22 @@ function calculateRefund(booking, cancellationDate = new Date()) {
     return result;
   }
 
-  const sortedRules = [...policySnapshot.rules].sort((a, b) => b.minDaysBeforeTrip - a.minDaysBeforeTrip);
+  // Sort rules descending by minDaysBeforeTrip
+  const sortedRules = [...policySnapshot.rules].sort((a, b) => (b.minDaysBeforeTrip || 0) - (a.minDaysBeforeTrip || 0));
   let applicablePercentage = 0;
 
+  // Find first rule where daysBeforeTrip >= minDaysBeforeTrip (inclusive boundary)
   for (const rule of sortedRules) {
-    if (daysBeforeTrip >= rule.minDaysBeforeTrip) {
-      applicablePercentage = rule.refundPercentage;
+    const minDays = rule.minDaysBeforeTrip || 0;
+    if (daysBeforeTrip >= minDays) {
+      applicablePercentage = rule.refundPercentage || 0;
       break;
     }
+  }
+
+  // If trip has already started/passed (negative days), refund is 0%
+  if (daysBeforeTrip < 0) {
+    applicablePercentage = 0;
   }
 
   const bookingAmount = booking.finalAmount || booking.amount || 0;
