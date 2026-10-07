@@ -5714,6 +5714,33 @@
   transform: translateY(-2px);
 }
 
+.btn-danger.enhanced {
+  padding: 0.875rem 2rem;
+  background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+  color: white;
+  border: none;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.btn-danger.enhanced:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(220, 38, 38, 0.4);
+}
+
+.btn-danger.enhanced:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+}
+
 /* Profile Security Section */
 .profile-security-section.enhanced {
   background: rgba(102, 126, 234, 0.02);
