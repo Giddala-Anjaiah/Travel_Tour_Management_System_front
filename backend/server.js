@@ -1262,8 +1262,11 @@ function calculateRefund(booking, cancellationDate = new Date()) {
   }
 
   const bookingAmount = booking.finalAmount || booking.amount || 0;
-  const refundAmount = Math.round((bookingAmount * applicablePercentage) / 100);
-  const cancellationFee = bookingAmount - refundAmount;
+  
+  // Two-decimal monetary rounding: round to 2 decimal places
+  const rawRefund = (bookingAmount * applicablePercentage) / 100;
+  const refundAmount = Math.round(rawRefund * 100) / 100;
+  const cancellationFee = Math.round((bookingAmount - refundAmount) * 100) / 100;
 
   result.bookingAmount = bookingAmount;
   result.refundPercentage = applicablePercentage;
