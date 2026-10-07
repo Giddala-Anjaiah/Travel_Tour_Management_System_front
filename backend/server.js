@@ -829,10 +829,27 @@ const availabilitySchema = new mongoose.Schema({
     default: 1
   },
   maxGroupSize: Number,
-  status: {
+status: {
     type: String,
-    enum: ['available', 'limited', 'full', 'closed', 'past'],
-    default: 'available'
+    enum: ['active', 'inactive'],
+    default: 'active'
+  },
+  cancellationPolicy: {
+    enabled: {
+      type: Boolean,
+      default: false
+    },
+    rules: [{
+      minDaysBeforeTrip: {
+        type: Number,
+        min: 0
+      },
+      refundPercentage: {
+        type: Number,
+        min: 0,
+        max: 100
+      }
+    }]
   },
   createdAt: {
     type: Date,
@@ -1941,7 +1958,7 @@ app.post('/api/admin/hotels', async (req, res) => {
 
 app.put('/api/admin/hotels/:id', async (req, res) => {
   try {
-    const updates = pickUpdates(req.body, ['name', 'location', 'rooms', 'rating', 'partner', 'status']);
+    const updates = pickUpdates(req.body, ['name', 'location', 'rooms', 'rating', 'partner', 'status', 'cancellationPolicy']);
     const hotel = await Hotel.findByIdAndUpdate(req.params.id, updates, { new: true });
     if (!hotel) {
       return res.status(404).json({ message: 'Hotel not found' });
@@ -3910,7 +3927,8 @@ app.post('/api/customer/bookings/:id/cancel', async (req, res) => {
   try {
     const { reason, preview } = req.body || {};
     const booking = await Booking.findOne({ _id: req.params.id, customerId: req.user.userId })
-      .populate('packageId', 'name destination cancellationPolicy');
+      .populate('packageId', 'name destination cancellationPolicy')
+      .populate('hotelId', 'name cancellationPolicy');
 
     if (!booking) {
       return res.status(404).json({ success: false, message: 'Booking not found' });
@@ -3948,7 +3966,8 @@ app.post('/api/customer/bookings/:id/cancel', async (req, res) => {
       });
     }
 
-    const snapshot = booking.packageId?.cancellationPolicy || booking.cancellationPolicySnapshot;
+    const packageSnapshot = booking.packageId?.cancellationPolicy || booking.cancellationPolicySnapshot;
+    const hotelSnapshot = booking.hotelId?.cancellationPolicy;
     
     booking.status = 'cancelled';
     booking.cancellation = {
@@ -3978,11 +3997,15 @@ app.post('/api/customer/bookings/:id/cancel', async (req, res) => {
       await Package.findByIdAndUpdate(booking.packageId._id, { $inc: { bookings: -1 } }).catch(() => {});
     }
 
+    const isHotel = booking.hotelId || booking.hotelName;
+    const bookingType = isHotel ? 'hotel' : 'package';
+    const bookingName = isHotel ? booking.hotelName : booking.package;
+
     await Notification.create({
       userId: req.user.userId,
       type: 'booking',
       title: 'Booking Cancelled',
-      message: `Your booking ${booking.bookingId} has been cancelled. Refund amount: ₹${refundCalc.refundAmount.toLocaleString()}.`,
+      message: `Your ${bookingType} booking ${booking.bookingId} has been cancelled. Refund amount: ₹${refundCalc.refundAmount.toLocaleString()}.`,
       relatedId: booking._id,
       read: false
     });
@@ -3990,7 +4013,7 @@ app.post('/api/customer/bookings/:id/cancel', async (req, res) => {
       await sendNotificationEmail(
         req.user.email,
         'Booking Cancelled',
-        `Your booking <strong>${booking.bookingId}</strong> has been cancelled. Refund amount: ₹${refundCalc.refundAmount.toLocaleString()}. Refund status: ${refundCalc.refundAmount > 0 ? 'Pending' : 'Not applicable'}.`
+        `Your ${bookingType} booking <strong>${booking.bookingId}</strong> for ${bookingName} has been cancelled. Refund amount: ₹${refundCalc.refundAmount.toLocaleString()}. Refund status: ${refundCalc.refundAmount > 0 ? 'Pending' : 'Not applicable'}.`
       );
     }
 
