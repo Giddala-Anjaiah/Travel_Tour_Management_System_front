@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import {
   MapPin, Ticket, Wallet, Award, TrendingUp, Clock, ArrowUpRight, ArrowDownRight,
   RefreshCw, Star, Calendar, Compass, ChevronRight, Eye, ArrowRight,
-  AlertTriangle, CreditCard
+  AlertTriangle, CreditCard, Sparkles, Bed
 } from 'lucide-react'
 import CustomerLayout from './CustomerLayout'
 import { api, formatCurrency, formatDate } from '../../api'
@@ -101,6 +102,12 @@ const CustomerDashboard = () => {
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [autoRefresh, setAutoRefresh] = useState(false)
+  // Personalized recommendations (non-critical: a failed fetch just
+  // leaves the section hidden, the dashboard keeps working).
+  const [recPackages, setRecPackages] = useState([])
+  const [recPackageSource, setRecPackageSource] = useState('popular')
+  const [recHotels, setRecHotels] = useState([])
+  const [recHotelSource, setRecHotelSource] = useState('popular')
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
   const load = useCallback(async (silent = false) => {
@@ -121,6 +128,25 @@ const CustomerDashboard = () => {
   useEffect(() => {
     Promise.resolve().then(() => load())
   }, [load])
+  useEffect(() => {
+    let active = true
+    ;(async () => {
+      try {
+        const [pkgData, hotelData] = await Promise.all([
+          api('/customer/recommendations/packages', { params: { limit: 4 } }).catch(() => null),
+          api('/customer/recommendations/hotels', { params: { limit: 4 } }).catch(() => null)
+        ])
+        if (!active) return
+        setRecPackages(pkgData?.recommendations || [])
+        setRecPackageSource(pkgData?.source || 'popular')
+        setRecHotels(hotelData?.recommendations || [])
+        setRecHotelSource(hotelData?.source || 'popular')
+      } catch {
+        // Recommendations must never break the dashboard.
+      }
+    })()
+    return () => { active = false }
+  }, [])
   useEffect(() => {
     if (!autoRefresh) return
     const id = setInterval(() => load(true), 30000)
@@ -303,6 +329,57 @@ const CustomerDashboard = () => {
         <a href="/customer/profile" className="cd-quick"><span className="cd-quick-icon"><Award size={16} /> My Profile</span><ArrowRight size={14} /></a>
       </div>
 
+      {(recPackages.length > 0 || recHotels.length > 0) && (
+        <div className="cd-grid-2">
+          {recPackages.length > 0 && (
+            <div className="cd-card">
+              <div className="cd-card-head">
+                <h3 className="cd-card-title"><Sparkles size={18} style={{ color: '#4f46e5' }} /> {recPackageSource === 'popular' ? 'Popular Packages' : 'Recommended For You'}</h3>
+                <Link to="/customer/packages" style={{ fontSize: '0.8rem', color: '#4f46e5', fontWeight: 600, whiteSpace: 'nowrap' }}>View all</Link>
+              </div>
+              <div className="cd-list">
+                {recPackages.map(pkg => (
+                  <div key={pkg._id} className="cd-list-item">
+                    <div className="cd-list-icon" style={{ background: '#e0e7ff', color: '#3730a3' }}><MapPin size={18} /></div>
+                    <div className="cd-list-content">
+                      <div className="cd-list-title">{pkg.name}</div>
+                      <div className="cd-list-sub">{pkg.destination}{pkg.duration ? ` · ${pkg.duration}` : ''}{pkg.reason ? ` · ${pkg.reason}` : ''}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="cd-list-amount">{formatCurrency(pkg.price || 0)}</div>
+                      <Link to={`/customer/bookings?packageId=${pkg._id}`} style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 600 }}>Book</Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {recHotels.length > 0 && (
+            <div className="cd-card">
+              <div className="cd-card-head">
+                <h3 className="cd-card-title"><Bed size={18} style={{ color: '#0ea5e9' }} /> {recHotelSource === 'popular' ? 'Popular Hotels' : 'Hotels For You'}</h3>
+                <Link to="/customer/hotels" style={{ fontSize: '0.8rem', color: '#4f46e5', fontWeight: 600, whiteSpace: 'nowrap' }}>View all</Link>
+              </div>
+              <div className="cd-list">
+                {recHotels.map(hotel => (
+                  <div key={hotel._id} className="cd-list-item">
+                    <div className="cd-list-icon" style={{ background: '#e0f2fe', color: '#0369a1' }}><Bed size={18} /></div>
+                    <div className="cd-list-content">
+                      <div className="cd-list-title">{hotel.name}</div>
+                      <div className="cd-list-sub">{hotel.location}{hotel.reason ? ` · ${hotel.reason}` : ''}</div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <div className="cd-list-amount">{hotel.minPrice ? formatCurrency(hotel.minPrice) : 'On request'}</div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b' }}>per night</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       <div className="cd-grid-2">
         <div className="cd-card">
           <div className="cd-card-head">

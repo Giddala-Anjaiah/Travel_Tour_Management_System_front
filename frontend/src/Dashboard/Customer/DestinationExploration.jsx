@@ -239,9 +239,14 @@ const DestinationExploration = () => {
                         <strong>₹{dest.price.toLocaleString()}</strong>
                       </div>
                     </div>
-                    <Link to={`/customer/packages?destination=${encodeURIComponent(dest.name)}`} className="btn-primary enhanced">
-                      View packages <ArrowRight className="h-4 w-4" />
-                    </Link>
+                    <div className="destination-actions">
+                      <Link to={`/customer/destination/${dest.id}`} className="btn-secondary enhanced">
+                        View Details <ArrowRight className="h-4 w-4" />
+                      </Link>
+                      <Link to={`/customer/packages?destination=${encodeURIComponent(dest.name)}`} className="btn-primary enhanced">
+                        View packages <ArrowRight className="h-4 w-4" />
+                      </Link>
+                    </div>
                   </div>
                 </div>
               </div>

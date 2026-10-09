@@ -12,9 +12,11 @@
   "dependencies": {
     "@vitejs/plugin-react": "^6.1.0",
     "jspdf": "^4.2.1",
+    "leaflet": "^1.9.4",
     "lucide-react": "0.323.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.18.2",
     "vite": "^8.2.2"
   },

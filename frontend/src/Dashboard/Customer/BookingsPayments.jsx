@@ -54,6 +54,12 @@ const BookingsPayments = () => {
   const [cancelReason, setCancelReason] = useState('')
   const [cancelRefundInfo, setCancelRefundInfo] = useState(null)
 
+  // Fire-and-forget browsing signal for the recommendation engine.
+  // Failures are swallowed on purpose — tracking must never break booking.
+  const trackActivity = (payload) => {
+    api('/customer/activity', { method: 'POST', body: JSON.stringify(payload) }).catch(() => {})
+  }
+
   // `/customer/bookings` filters server-side on `search` only. Status is not
   // supported, so when it is active we load the full set and filter rows locally.
   const hasLocalFilters = filterStatus !== 'all'
@@ -131,6 +137,18 @@ const BookingsPayments = () => {
     const stateHotel = location.state?.hotel
     const handleCoupons = async () => {
       if (statePackage) {
+        // Package details view — the booking modal is the package
+        // details surface in this app, so opening it counts as a view.
+        trackActivity({
+          activityType: 'PACKAGE_VIEW',
+          itemType: 'package',
+          itemId: statePackage._id || statePackage.id,
+          metadata: {
+            destination: statePackage.destination,
+            category: statePackage.category,
+            price: Number(statePackage.price) || 0
+          }
+        })
         setBookingType('package')
         setForm(prev => ({
           ...prev,
@@ -141,6 +159,12 @@ const BookingsPayments = () => {
         setShowBookingModal(true)
         await fetchAvailableCoupons('package', statePackage._id || statePackage.id || '')
       } else if (stateHotel) {
+        trackActivity({
+          activityType: 'HOTEL_VIEW',
+          itemType: 'hotel',
+          itemId: stateHotel._id || stateHotel.id,
+          metadata: { location: stateHotel.location }
+        })
         setBookingType('hotel')
         setForm(prev => ({
           ...prev,
@@ -153,6 +177,16 @@ const BookingsPayments = () => {
       } else if (packageId) {
         const pkg = packages.find(p => (p._id || p.id) === packageId)
         if (pkg) {
+          trackActivity({
+            activityType: 'PACKAGE_VIEW',
+            itemType: 'package',
+            itemId: pkg._id || pkg.id,
+            metadata: {
+              destination: pkg.destination,
+              category: pkg.category,
+              price: Number(pkg.price) || 0
+            }
+          })
           setBookingType('package')
           setForm(prev => ({
             ...prev,
@@ -183,17 +217,6 @@ const BookingsPayments = () => {
       case 'cancelled': return <XCircle className="h-4 w-4" />
       case 'rejected': return <XCircle className="h-4 w-4" />
       default: return <Clock className="h-4 w-4" />
-    }
-  }
-
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'confirmed': return '#22c55e'
-      case 'completed': return '#22c55e'
-      case 'pending': return '#f59e0b'
-      case 'cancelled': return '#ef4444'
-      case 'rejected': return '#ef4444'
-      default: return '#64748b'
     }
   }
 
@@ -534,7 +557,7 @@ const BookingsPayments = () => {
                 </div>
               </div>
               <div className="booking-badges">
-                <span className={`status-badge ${booking.status}`} style={{ backgroundColor: getStatusColor(booking.status) }}>
+                <span className={`status-badge ${booking.status}`}>
                   {getStatusIcon(booking.status)}
                   {booking.status}
                 </span>
@@ -581,7 +604,7 @@ const BookingsPayments = () => {
                   <span>Total: ₹{(booking.finalAmount || booking.amount || 0).toLocaleString()}</span>
                 </div>
               </div>
-              <div className="payment-status-badge" style={{ color: getPaymentStatusColor(booking.paymentStatus) }}>
+              <div className={`payment-status-badge payment-status--${booking.paymentStatus}`}>
                 <CreditCard className="h-4 w-4" />
                 <span>{booking.paymentStatus}</span>
               </div>

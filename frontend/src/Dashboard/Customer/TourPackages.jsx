@@ -71,11 +71,21 @@ const TourPackages = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit])
 
+  // Fire-and-forget browsing signal for the recommendation engine.
+  // Failures are swallowed on purpose — tracking must never break browsing.
+  const trackActivity = (payload) => {
+    api('/customer/activity', { method: 'POST', body: JSON.stringify(payload) }).catch(() => {})
+  }
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setPage(1)
       setLoading(true)
       fetchPackages({ page: 1 })
+      const term = searchTerm.trim()
+      if (term.length >= 2) {
+        trackActivity({ activityType: 'PACKAGE_SEARCH', itemType: 'package', metadata: { term } })
+      }
     }, 350)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps

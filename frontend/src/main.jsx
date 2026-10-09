@@ -44,6 +44,7 @@ const NotificationsManagement = lazy(() => import('./Dashboard/Admin/Notificatio
 const ReportsCouponsSettings = lazy(() => import('./Dashboard/Admin/ReportsCouponsSettings.jsx'))
 const ProfileManagement = lazy(() => import('./Dashboard/Customer/ProfileManagement.jsx'))
 const DestinationExploration = lazy(() => import('./Dashboard/Customer/DestinationExploration.jsx'))
+const DestinationDetail = lazy(() => import('./Dashboard/Customer/DestinationDetail.jsx'))
 const TourPackages = lazy(() => import('./Dashboard/Customer/TourPackages.jsx'))
 const Itineraries = lazy(() => import('./Dashboard/Customer/Itineraries.jsx'))
 const HotelSearchAvailability = lazy(() => import('./Dashboard/Customer/HotelSearchAvailability.jsx'))
@@ -163,6 +164,14 @@ createRoot(document.getElementById('root')).render(
           element={
             <ProtectedRoute allowedRoles={['customer']}>
               <DestinationExploration />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/customer/destination/:id"
+          element={
+            <ProtectedRoute allowedRoles={['customer']}>
+              <DestinationDetail />
             </ProtectedRoute>
           }
         />

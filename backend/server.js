@@ -8,6 +8,12 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import {
+  recordCustomerActivity,
+  getPackageRecommendations,
+  getHotelRecommendations,
+  ActivityValidationError
+} from './recommendationService.js';
 
 dotenv.config();
 
@@ -3709,7 +3715,7 @@ app.get('/api/customer/bookings', async (req, res) => {
 
 app.post('/api/customer/bookings', async (req, res) => {
   try {
-    const { packageId, package: packageName, dates, travelers, amount, email, phone, customer, coupon } = req.body;
+    const { packageId, package: packageName, hotelId, hotelName, dates, travelers, amount, email, phone, customer, coupon } = req.body;
     const originalAmount = Number(amount) || 0;
     let finalAmount = originalAmount;
     let discountAmount = 0;
@@ -3767,6 +3773,14 @@ app.post('/api/customer/bookings', async (req, res) => {
           };
         }
       }
+    }
+    // Persist hotel references so hotel booking history (used by the
+    // recommendation engine) is complete for customer-initiated stays.
+    if (hotelId && mongoose.Types.ObjectId.isValid(hotelId)) {
+      payload.hotelId = hotelId;
+    }
+    if (hotelName) {
+      payload.hotelName = String(hotelName).slice(0, 200);
     }
     payload.timeline = [{ status: 'pending', date: new Date(), note: 'Booking created' }];
     const newBooking = new Booking(payload);
@@ -4753,6 +4767,46 @@ app.get('/api/customer/analytics', async (req, res) => {
   } catch (error) {
     console.error('Error fetching analytics:', error);
     res.status(500).json({ message: 'Error fetching analytics' });
+  }
+});
+
+// --- Customer activity tracking (browsing behavior for recommendations) ---
+// Identity is always derived from the authenticated JWT (req.user.userId);
+// a customer can never post activity for another user.
+app.post('/api/customer/activity', async (req, res) => {
+  try {
+    const { activityType, itemType, itemId, metadata } = req.body || {};
+    await recordCustomerActivity(req.user.userId, { activityType, itemType, itemId, metadata });
+    res.status(200).json({ success: true, message: 'Activity recorded' });
+  } catch (error) {
+    if (error instanceof ActivityValidationError) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
+    console.error('Error recording activity:', error);
+    res.status(500).json({ success: false, message: 'Error recording activity' });
+  }
+});
+
+// --- Personalized recommendations (hybrid: browsing + booking history) ---
+app.get('/api/customer/recommendations/packages', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 20);
+    const { recommendations, source } = await getPackageRecommendations(req.user.userId, limit);
+    res.status(200).json({ success: true, recommendations, source });
+  } catch (error) {
+    console.error('Error fetching package recommendations:', error);
+    res.status(500).json({ success: false, message: 'Error fetching recommendations' });
+  }
+});
+
+app.get('/api/customer/recommendations/hotels', async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 8, 1), 20);
+    const { recommendations, source } = await getHotelRecommendations(req.user.userId, limit);
+    res.status(200).json({ success: true, recommendations, source });
+  } catch (error) {
+    console.error('Error fetching hotel recommendations:', error);
+    res.status(500).json({ success: false, message: 'Error fetching recommendations' });
   }
 });
 

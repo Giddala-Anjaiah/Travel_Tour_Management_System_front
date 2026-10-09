@@ -62,10 +62,20 @@ const HotelSearchAvailability = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit, refreshKey])
 
+  // Fire-and-forget browsing signal for the recommendation engine.
+  // Failures are swallowed on purpose — tracking must never break browsing.
+  const trackActivity = (payload) => {
+    api('/customer/activity', { method: 'POST', body: JSON.stringify(payload) }).catch(() => {})
+  }
+
   useEffect(() => {
     const timer = setTimeout(() => {
       setPage(1)
       load({ page: 1 })
+      const term = searchTerm.trim()
+      if (term.length >= 2) {
+        trackActivity({ activityType: 'HOTEL_SEARCH', itemType: 'hotel', metadata: { term } })
+      }
     }, 350)
     return () => clearTimeout(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -298,7 +308,19 @@ const HotelSearchAvailability = () => {
                       )}
                     </div>
                   </div>
-                  <button onClick={() => setSelectedHotel(hotel)} className="btn-secondary enhanced">
+                  <button
+                    onClick={() => {
+                      // Hotel details view — feeds the recommendation engine.
+                      trackActivity({
+                        activityType: 'HOTEL_VIEW',
+                        itemType: 'hotel',
+                        itemId: hotel._id,
+                        metadata: { location: hotel.location }
+                      })
+                      setSelectedHotel(hotel)
+                    }}
+                    className="btn-secondary enhanced"
+                  >
                     View Details
                   </button>
                   <Link to="/customer/bookings" className="btn-primary enhanced" state={{ hotel }}>
@@ -344,15 +366,15 @@ const HotelSearchAvailability = () => {
                   <h4 style={{ margin: '0 0 0.5rem', color: '#0f172a' }}>Amenities</h4>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                     {selectedHotel.amenities.map((a, i) => (
-                      <span key={i} style={{ padding: '0.25rem 0.6rem', background: '#f1f5f9', borderRadius: '6px', fontSize: '0.85rem', color: '#334155' }}>{a}</span>
+                      <span key={i} className="amenity-chip">{a}</span>
                     ))}
                   </div>
                 </div>
               )}
 
               {selectedHotel.rooms && selectedHotel.rooms.length > 0 && (
-                <div style={{ marginBottom: '1rem' }}>
-                  <h4 style={{ margin: '0 0 0.5rem', color: '#0f172a' }}>Available Rooms</h4>
+                <div className="table-scroll" style={{ marginBottom: '1rem' }}>
+                  <h4 style={{ margin: '0.75rem 1rem 0.5rem', color: '#0f172a' }}>Available Rooms</h4>
                   <table className="data-table">
                     <thead><tr><th>Type</th><th>Price/night</th><th>Available</th></tr></thead>
                     <tbody>

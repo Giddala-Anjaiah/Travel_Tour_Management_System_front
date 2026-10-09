@@ -91,15 +91,6 @@ const InvoicesBookingHistory = () => {
     }
   }
 
-  const getStatusColor = (status) => {
-    switch(status) {
-      case 'paid': return '#22c55e'
-      case 'pending': return '#f59e0b'
-      case 'overdue': return '#ef4444'
-      default: return '#64748b'
-    }
-  }
-
   const viewInvoice = (invoice) => {
     setSelectedInvoice(invoice)
     setShowInvoiceModal(true)
@@ -252,7 +243,7 @@ const InvoicesBookingHistory = () => {
                   </div>
                 </div>
                 <div className="invoice-badges">
-                  <span className={`status-badge ${invoice.status}`} style={{ backgroundColor: getStatusColor(invoice.status) }}>
+                  <span className={`status-badge ${invoice.status}`}>
                     {getStatusIcon(invoice.status)}
                     {invoice.status}
                   </span>
@@ -349,7 +340,7 @@ const InvoicesBookingHistory = () => {
                   </div>
                   <div className="info-row">
                     <span className="label">Status:</span>
-                    <span className={`value status-badge ${selectedInvoice.status}`} style={{ backgroundColor: getStatusColor(selectedInvoice.status) }}>
+                    <span className={`value status-badge ${selectedInvoice.status}`}>
                       {getStatusIcon(selectedInvoice.status)}
                       {selectedInvoice.status}
                     </span>
