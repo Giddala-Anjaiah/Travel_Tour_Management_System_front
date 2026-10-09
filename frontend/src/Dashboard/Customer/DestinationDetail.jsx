@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, MapPin, Calendar, Users, Star, Heart, Mountain, Waves, Landmark, Leaf, ExternalLink, Loader2 } from 'lucide-react';
 import CustomerLayout from './CustomerLayout';
 import { api } from '../../api';
@@ -33,6 +33,7 @@ const TYPE_LABELS = {
 };
 
 const DestinationDetail = () => {
+  const { id } = useParams();
   const [destinationId, setDestinationId] = useState(null);
   const [destination, setDestination] = useState(null);
   const [packages, setPackages] = useState([]);
@@ -43,38 +44,10 @@ const DestinationDetail = () => {
   const [mapDirectionsOpened, setMapDirectionsOpened] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get('id');
-    const name = params.get('name');
-    
     if (id) {
       setDestinationId(id);
-    } else if (name) {
-      loadDestinationByName(name);
     }
-  }, []);
-
-  const loadDestinationByName = async (name) => {
-    try {
-      setError('');
-      setLoading(true);
-      const data = await api('/packages', { params: { publishedOnly: 'true', limit: 'all' } });
-      const pkg = (data.packages || []).find(p => 
-        p.destination?.toLowerCase() === name.toLowerCase() || 
-        p.name?.toLowerCase() === name.toLowerCase()
-      );
-      if (pkg) {
-        setDestinationId(pkg._id);
-        await loadDestination(pkg._id);
-      } else {
-        setError('Destination not found');
-        setLoading(false);
-      }
-    } catch (err) {
-      setError(err.message || 'Failed to load destination');
-      setLoading(false);
-    }
-  };
+  }, [id]);
 
   const loadDestination = async (id) => {
     try {
