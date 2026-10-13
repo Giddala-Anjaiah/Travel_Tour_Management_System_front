@@ -1,5 +1,6 @@
-import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut } from 'lucide-react'
+import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, X, Sun, Moon } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import '../Dashboard.css'
 
 const navItems = [
@@ -16,6 +17,9 @@ const navItems = [
 
 const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
   const navigate = useNavigate()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
   const user = JSON.parse(localStorage.getItem('user') || '{}')
   const initials = (user.fullName || 'Customer')
     .split(' ')
@@ -23,6 +27,26 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
     .slice(0, 2)
     .map((part) => part[0].toUpperCase())
     .join('')
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    document.documentElement.style.colorScheme = theme
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
+  }
+
+  const isMobile = () => window.matchMedia('(max-width: 900px)').matches
+
+  const handleMenuToggle = () => {
+    if (isMobile()) {
+      setSidebarOpen((prev) => !prev)
+    } else {
+      setSidebarCollapsed((prev) => !prev)
+    }
+  }
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -32,15 +56,21 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
 
   return (
     <div className="dashboard-container customer-portal">
-      <aside className="dashboard-sidebar">
+      <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle sidebar">
+        {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </button>
+      <aside className={`dashboard-sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
           <span className="cp-brand-mark">
             <Compass className="h-6 w-6" />
           </span>
-          <div>
+          <div className="cp-brand-text">
             <h2>My Trips</h2>
             <p className="cp-brand-sub">Customer portal</p>
           </div>
+          <button className="sidebar-menu-btn" onClick={handleMenuToggle} aria-label="Toggle menu">
+            {sidebarCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
+          </button>
         </div>
         <nav className="sidebar-nav">
           {navItems.map((item) => {
@@ -50,6 +80,8 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
                 key={item.to}
                 to={item.to}
                 className={`nav-item ${active === item.match ? 'active' : ''}`}
+                title={sidebarCollapsed ? item.label : ''}
+                onClick={() => setSidebarOpen(false)}
               >
                 <Icon className="h-5 w-5" />
                 <span>{item.label}</span>
@@ -59,7 +91,7 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
         </nav>
       </aside>
 
-      <main className="dashboard-main">
+      <main className={`dashboard-main ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <header className="dashboard-header">
           <div>
             <h1>{title}</h1>
@@ -67,6 +99,9 @@ const CustomerLayout = ({ active, title, subtitle, actions, children }) => {
           </div>
           <div className="header-actions">
             {actions}
+            <button onClick={toggleTheme} className="icon-btn header-icon-btn" aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title={theme === 'light' ? 'Dark mode' : 'Light mode'}>
+              {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            </button>
             <button onClick={handleLogout} className="btn-logout-header">
               <LogOut className="h-4 w-4" />
               <span>Logout</span>

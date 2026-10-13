@@ -3,14 +3,17 @@ export const DESTINATION_COORDINATES = {
   'Manali': { lat: 32.2432, lng: 77.1892, name: 'Manali, Himachal Pradesh' },
   'Kashmir': { lat: 34.0837, lng: 74.7973, name: 'Kashmir' },
   'Tirupati': { lat: 13.6288, lng: 79.4192, name: 'Tirupati, Andhra Pradesh' },
+  'Tirupathi': { lat: 13.6288, lng: 79.4192, name: 'Tirupati, Andhra Pradesh' },
   'Jaipur': { lat: 26.9124, lng: 75.7873, name: 'Jaipur, Rajasthan' },
   'Rajasthan': { lat: 27.0238, lng: 74.2179, name: 'Rajasthan' },
+  'Rajastan': { lat: 27.0238, lng: 74.2179, name: 'Rajasthan' },
   'Goa': { lat: 15.2993, lng: 74.1240, name: 'Goa' },
   'Kerala': { lat: 10.8505, lng: 76.2711, name: 'Kerala' },
   'Himachal Pradesh': { lat: 31.1048, lng: 77.1734, name: 'Himachal Pradesh' },
   'Andhra Pradesh': { lat: 15.9129, lng: 79.7400, name: 'Andhra Pradesh' },
   'Uttarakhand': { lat: 30.0668, lng: 79.0193, name: 'Uttarakhand' },
   'Delhi': { lat: 28.7041, lng: 77.1025, name: 'Delhi' },
+  'New Delhi': { lat: 28.7041, lng: 77.1025, name: 'Delhi' },
   'Mumbai': { lat: 19.0760, lng: 72.8777, name: 'Mumbai, Maharashtra' },
   'Bangalore': { lat: 12.9716, lng: 77.5946, name: 'Bengaluru, Karnataka' },
   'Chennai': { lat: 13.0827, lng: 80.2707, name: 'Chennai, Tamil Nadu' },
@@ -94,15 +97,36 @@ export function getCoordinatesForDestination(destinationName) {
 
   const normalized = normalizeName(destinationName);
 
+  // 1. Exact match
   for (const [key, coords] of Object.entries(DESTINATION_COORDINATES)) {
-    if (normalizeName(key) === normalized || normalized.includes(normalizeName(key))) {
+    if (normalizeName(key) === normalized) {
       return coords;
     }
   }
 
+  // 2. Check if destination name contains the key (e.g., "Munnar Tour" contains "Munnar")
   for (const [key, coords] of Object.entries(DESTINATION_COORDINATES)) {
-    const keyWords = normalizeName(key).split(' ');
-    if (keyWords.some(word => word.length > 3 && normalized.includes(word))) {
+    const keyNorm = normalizeName(key);
+    if (normalized.includes(keyNorm)) {
+      return coords;
+    }
+  }
+
+  // 3. Check if key contains destination name (e.g., "Munnar, Kerala" contains "Munnar")
+  for (const [key, coords] of Object.entries(DESTINATION_COORDINATES)) {
+    const keyNorm = normalizeName(key);
+    if (keyNorm.includes(normalized)) {
+      return coords;
+    }
+  }
+
+  // 4. Word-based matching - check for common significant words
+  const destWords = normalized.split(' ').filter(w => w.length > 2);
+  for (const [key, coords] of Object.entries(DESTINATION_COORDINATES)) {
+    const keyNorm = normalizeName(key);
+    const keyWords = keyNorm.split(' ').filter(w => w.length > 2);
+    const commonWords = destWords.filter(w => keyWords.includes(w));
+    if (commonWords.length > 0) {
       return coords;
     }
   }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import {  Send, Search, Download, CheckCircle, Trash2 } from 'lucide-react'
+import { Send, Search, Download, CheckCircle, Trash2, Bell, Users, Calendar, DollarSign, Star, Settings, Gift, Building } from 'lucide-react'
 import { api, downloadCsv, fetchAllPages, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
@@ -176,13 +176,13 @@ const NotificationsManagement = () => {
     }
   }
 
-  const typeIcons = {
-    booking: '📅',
-    payment: '💰',
-    review: '⭐',
-    system: '⚙️',
-    offer: '🎁',
-    availability: '🏨'
+  const typeIconMap = {
+    booking: Calendar,
+    payment: DollarSign,
+    review: Star,
+    system: Settings,
+    offer: Gift,
+    availability: Building
   }
 
   const typeLabels = {
@@ -194,134 +194,134 @@ const NotificationsManagement = () => {
     availability: 'Availability'
   }
 
+  const renderTypeIcon = (type) => {
+    const Icon = typeIconMap[type] || Bell
+    return <Icon className="h-4 w-4" />
+  }
+
   return (
     <AdminLayout
       active="notifications"
       title="Notification Management"
-      actions={[
-        <button key="delete-old" className="action-btn" onClick={handleDeleteOlder} style={{ color: '#ef4444' }}>
-          <Trash2 className="h-4 w-4" /> Delete Older
-        </button>,
-        <button key="export" className="action-btn" onClick={handleExport}>
-          <Download className="h-4 w-4" /> Export
-        </button>,
-        <button key="send" className="action-btn" style={{ background: '#4f46e5', color: 'white' }} onClick={() => setShowSendModal(true)}>
-          <Send className="h-4 w-4" /> Send Notification
-        </button>
-      ]}
+      actions={
+        <>
+          <button className="action-btn delete-older" onClick={handleDeleteOlder}>
+            <Trash2 className="h-4 w-4" /> Delete Older
+          </button>
+          <button className="action-btn" onClick={handleExport}>
+            <Download className="h-4 w-4" /> Export
+          </button>
+          <button className="action-btn" onClick={() => setShowSendModal(true)}>
+            <Send className="h-4 w-4" /> Send Notification
+          </button>
+        </>
+      }
     >
-      {error && <div className="error-message">{error}</div>}
+      <div className="notifications-page">
+        {error && <div className="error-message">{error}</div>}
 
-      {stats && (
-        <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>
-          <div className="stat-card">
-            <div className="stat-value" style={{ color: '#4f46e5' }}>{stats.total || 0}</div>
-            <div className="stat-label">Total Notifications</div>
+        {stats && (
+          <div className="stats-grid enhanced">
+            <div className="stat-card"><Bell className="stat-icon" /><div className="stat-content"><h3>Total Notifications</h3><p className="stat-number">{stats.total || 0}</p></div></div>
+            <div className="stat-card"><CheckCircle className="stat-icon" /><div className="stat-content"><h3>Unread</h3><p className="stat-number">{stats.unread || 0}</p></div></div>
+            <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Active Recipients</h3><p className="stat-number">{stats.recipients || 0}</p></div></div>
+            {notificationTypes.map((t) => {
+              const Icon = typeIconMap[t.value] || Bell
+              return (
+                <div className="stat-card" key={t.value}>
+                  <Icon className="stat-icon" />
+                  <div className="stat-content"><h3>{t.label}</h3><p className="stat-number">{stats.byType?.[t.value] || 0}</p></div>
+                </div>
+              )
+            })}
           </div>
-          <div className="stat-card">
-            <div className="stat-value" style={{ color: '#ef4444' }}>{stats.unread || 0}</div>
-            <div className="stat-label">Unread</div>
-          </div>
-          <div className="stat-card">
-            <div className="stat-value" style={{ color: '#10b981' }}>{stats.recipients || 0}</div>
-            <div className="stat-label">Active Recipients</div>
-          </div>
-          {notificationTypes.map((t) => (
-            <div className="stat-card" key={t.value}>
-              <div className="stat-value" style={{ color: '#64748b' }}>{stats.byType?.[t.value] || 0}</div>
-              <div className="stat-label">{t.label}</div>
-            </div>
-          ))}
-        </div>
-      )}
+        )}
 
-      <div className="filters-section">
-        <div className="search-bar">
-          <Search className="search-icon" />
-          <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search by title, message, or recipient..." />
+        <div className="filters-section enhanced">
+          <div className="search-bar enhanced">
+            <Search className="search-icon" />
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search by title, message, or recipient..." />
+          </div>
+          <div className="filter-controls enhanced">
+            <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="filter-select enhanced">
+              <option value="all">All Types</option>
+              {notificationTypes.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+            <select value={filterRead} onChange={(e) => setFilterRead(e.target.value)} className="filter-select enhanced">
+              <option value="all">All Status</option>
+              <option value="unread">Unread</option>
+              <option value="read">Read</option>
+            </select>
+          </div>
         </div>
-        <div className="filter-controls">
-          <select value={filterType} onChange={(e) => setFilterType(e.target.value)} className="filter-select">
-            <option value="all">All Types</option>
-            {notificationTypes.map((t) => (
-              <option key={t.value} value={t.value}>{t.label}</option>
-            ))}
-          </select>
-          <select value={filterRead} onChange={(e) => setFilterRead(e.target.value)} className="filter-select">
-            <option value="all">All Status</option>
-            <option value="unread">Unread</option>
-            <option value="read">Read</option>
-          </select>
-        </div>
-      </div>
 
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading notifications...</div>
-      ) : (
-        <div className="section-card full-width">
-          <h3>Notification Entries ({hasLocalFilters ? filteredLogs.length : meta.total})</h3>
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Date & Time</th>
-                  <th>Recipient</th>
-                  <th>Type</th>
-                  <th>Status</th>
-                  <th>Title</th>
-                  <th>Message</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLogs.length === 0 ? (
+        {loading ? (
+          <div className="skeleton-wrap">
+            {[0, 1, 2, 3, 4].map((i) => <div key={i} className="skeleton-bar" style={{ width: `${96 - i * 4}%` }} />)}
+          </div>
+        ) : (
+          <div className="section-card enhanced full-width">
+            <h3><Bell className="h-5 w-5" /> Notification Entries ({hasLocalFilters ? filteredLogs.length : meta.total})</h3>
+            <div className="table-container enhanced">
+              <table className="data-table enhanced">
+                <thead>
                   <tr>
-                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No notifications found</td>
+                    <th>Date &amp; Time</th>
+                    <th>Recipient</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th>Title</th>
+                    <th>Message</th>
+                    <th>Actions</th>
                   </tr>
-                ) : filteredLogs.map((notif) => (
-                  <tr key={notif._id}>
-                    <td style={{ whiteSpace: 'nowrap', fontSize: '0.85rem' }}>{new Date(notif.createdAt).toLocaleString()}</td>
-                    <td>
-                      <div style={{ fontWeight: '500' }}>{notif.userId?.fullName || 'Unknown User'}</div>
-                      <div style={{ fontSize: '0.8rem', color: '#64748b' }}>{notif.userId?.email || ''}</div>
-                    </td>
-                    <td>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span>{typeIcons[notif.type] || '🔔'}</span>
-                        {typeLabels[notif.type] || notif.type}
-                      </span>
-                    </td>
-                    <td>
-                      <button
-                        onClick={() => handleReadToggle(notif._id)}
-                        style={{
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '1rem',
-                          fontSize: '0.75rem',
-                          fontWeight: '600',
-                          border: 'none',
-                          cursor: 'pointer',
-                          background: notif.read ? '#f1f5f9' : '#dcfce7',
-                          color: notif.read ? '#64748b' : '#166534'
-                        }}
-                      >
-                        {notif.read ? 'Read' : 'Unread'}
-                      </button>
-                    </td>
-                    <td style={{ fontWeight: '500' }}>{notif.title || '—'}</td>
-                    <td style={{ fontSize: '0.85rem', color: '#64748b', maxWidth: '250px' }}>{notif.message || '—'}</td>
-                    <td>
-                      <button onClick={() => handleReadToggle(notif._id)} className="action-btn" title={notif.read ? 'Mark as unread' : 'Mark as read'}>
-                        <CheckCircle className="h-4 w-4" style={{ color: notif.read ? '#94a3b8' : '#10b981' }} />
-                      </button>
-                      <button onClick={() => handleDelete(notif._id)} className="action-btn" title="Delete">
-                        <Trash2 className="h-4 w-4" style={{ color: '#ef4444' }} />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan="7">
+                        <div className="empty-state enhanced">
+                          <Bell className="h-8 w-8" />
+                          <h3>No notifications found</h3>
+                          <p>Try adjusting your search or filters.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredLogs.map((notif) => (
+                    <tr key={notif._id}>
+                      <td className="cell-nowrap">{new Date(notif.createdAt).toLocaleString()}</td>
+                      <td>
+                        <div className="recipient-name">{notif.userId?.fullName || 'Unknown User'}</div>
+                        <div className="recipient-email">{notif.userId?.email || ''}</div>
+                      </td>
+                      <td>
+                        <span className={`notif-type ${notif.type || 'system'}`}>
+                          {renderTypeIcon(notif.type)}
+                          {typeLabels[notif.type] || notif.type}
+                        </span>
+                      </td>
+                      <td>
+                        <button className={`read-toggle ${notif.read ? 'read' : 'unread'}`} onClick={() => handleReadToggle(notif._id)} title={notif.read ? 'Mark as unread' : 'Mark as read'}>
+                          {notif.read ? 'Read' : 'Unread'}
+                        </button>
+                      </td>
+                      <td className="notif-title">{notif.title || '—'}</td>
+                      <td className="cell-ellipsis" title={notif.message || ''}>{notif.message || '—'}</td>
+                      <td>
+                        <div className="action-buttons enhanced">
+                          <button className="icon-btn enhanced" title={notif.read ? 'Mark as unread' : 'Mark as read'} onClick={() => handleReadToggle(notif._id)}>
+                            <CheckCircle className="h-4 w-4" />
+                          </button>
+                          <button className="icon-btn enhanced delete" title="Delete" onClick={() => handleDelete(notif._id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             <Pagination
               page={page}
               totalPages={meta.totalPages}
@@ -337,109 +337,72 @@ const NotificationsManagement = () => {
       )}
 
       {showSendModal && (
-        <div style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}>
-          <div style={{
-            background: 'white',
-            borderRadius: '0.75rem',
-            padding: '2rem',
-            width: '90%',
-            maxWidth: '500px',
-            maxHeight: '80vh',
-            overflow: 'auto'
-          }}>
-            <h3 style={{ margin: '0 0 1.5rem' }}>Send Notification</h3>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500' }}>Notification Type</label>
-              <select
-                value={sendForm.type}
-                onChange={(e) => setSendForm({ ...sendForm, type: e.target.value })}
-                className="filter-select"
-              >
-                {notificationTypes.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
+        <div className="modal-overlay enhanced" onClick={() => setShowSendModal(false)}>
+          <div className="modal enhanced" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Send Notification</h3>
+              <button className="modal-close" onClick={() => setShowSendModal(false)}>×</button>
             </div>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500' }}>Title</label>
-              <input
-                type="text"
-                value={sendForm.title}
-                onChange={(e) => setSendForm({ ...sendForm, title: e.target.value })}
-                placeholder="Enter notification title"
-                className="form-input"
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem' }}
-              />
-            </div>
-            <div style={{ marginBottom: '1rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500' }}>Message</label>
-              <textarea
-                value={sendForm.message}
-                onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
-                placeholder="Enter notification message"
-                className="form-input"
-                rows="3"
-                style={{ width: '100%', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem' }}
-              />
-            </div>
-            <div style={{ marginBottom: '1.5rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: '500' }}>Recipients</label>
-              <select
-                value={sendForm.recipient}
-                onChange={(e) => setSendForm({ ...sendForm, recipient: e.target.value })}
-                className="filter-select"
-              >
-                <option value="all">All Users & Partners</option>
-                <option value="customer">Customers Only</option>
-                <option value="tour_operator">Tour Operators Only</option>
-                <option value="hotel_partner">Hotel Partners Only</option>
-                <option value="admin">Admins Only</option>
-                <option value="custom">Specific Users (comma-separated IDs)</option>
-              </select>
-              {sendForm.recipient === 'custom' && (
-                <input
-                  type="text"
-                  value={sendForm.customUserIds}
-                  onChange={(e) => setSendForm({ ...sendForm, customUserIds: e.target.value })}
-                  placeholder="e.g. 64a1b2c3d4e5f6a7b8c9d0e1, 64a1b2c3d4e5f6a7b8c9d0e2"
-                  className="form-input"
-                  style={{ width: '100%', marginTop: '0.5rem', padding: '0.5rem', border: '1px solid #e2e8f0', borderRadius: '0.5rem' }}
-                />
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
-              <button onClick={() => setShowSendModal(false)} className="action-btn" style={{ border: '1px solid #e2e8f0' }}>
-                Cancel
-              </button>
-              <button
-                onClick={handleSend}
-                disabled={sending}
-                style={{
-                  background: '#4f46e5',
-                  color: 'white',
-                  border: 'none',
-                  padding: '0.5rem 1.5rem',
-                  borderRadius: '0.5rem',
-                  cursor: sending ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem'
-                }}
-              >
-                {sending ? 'Sending...' : <><Send className="h-4 w-4" /> Send</>}
-              </button>
+            <div className="modal-body">
+              <div className="send-form">
+                <div className="form-group">
+                  <label>Notification Type</label>
+                  <select value={sendForm.type} onChange={(e) => setSendForm({ ...sendForm, type: e.target.value })}>
+                    {notificationTypes.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Title</label>
+                  <input
+                    type="text"
+                    value={sendForm.title}
+                    onChange={(e) => setSendForm({ ...sendForm, title: e.target.value })}
+                    placeholder="Enter notification title"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Message</label>
+                  <textarea
+                    value={sendForm.message}
+                    onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
+                    placeholder="Enter notification message"
+                    rows="3"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Recipients</label>
+                  <select value={sendForm.recipient} onChange={(e) => setSendForm({ ...sendForm, recipient: e.target.value })}>
+                    <option value="all">All Users &amp; Partners</option>
+                    <option value="customer">Customers Only</option>
+                    <option value="tour_operator">Tour Operators Only</option>
+                    <option value="hotel_partner">Hotel Partners Only</option>
+                    <option value="admin">Admins Only</option>
+                    <option value="custom">Specific Users (comma-separated IDs)</option>
+                  </select>
+                  {sendForm.recipient === 'custom' && (
+                    <input
+                      type="text"
+                      value={sendForm.customUserIds}
+                      onChange={(e) => setSendForm({ ...sendForm, customUserIds: e.target.value })}
+                      placeholder="e.g. 64a1b2c3d4e5f6a7b8c9d0e1, 64a1b2c3d4e5f6a7b8c9d0e2"
+                      className="send-custom-ids"
+                    />
+                  )}
+                </div>
+                <div className="form-actions">
+                  <button className="btn-secondary" onClick={() => setShowSendModal(false)}>Cancel</button>
+                  <button className="btn-primary" onClick={handleSend} disabled={sending}>
+                    {sending ? 'Sending...' : (<><Send className="h-4 w-4" /> Send</>)}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       )}
+      </div>
     </AdminLayout>
   )
 }

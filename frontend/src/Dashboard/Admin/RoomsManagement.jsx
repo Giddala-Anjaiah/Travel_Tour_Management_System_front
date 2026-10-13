@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bed, Plus, Pencil as Edit, Trash2, Search, Download, Building, Users, DollarSign } from 'lucide-react'
+import { Bed, Plus, Minus, Pencil as Edit, Trash2, Search, Download, Building, Users, DollarSign, Power } from 'lucide-react'
 import { api, downloadCsv, fetchAllPages, formValues, formatCurrency, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
@@ -203,62 +203,85 @@ const RoomsManagement = () => {
         </>
       }
     >
-      {error && <div className="error-message">{error}</div>}
-      <div className="filters-section">
-        <div className="search-bar">
-          <Search className="search-icon" />
-          <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search rooms by type or hotel..." />
-        </div>
-        <div className="filter-controls">
-          <select value={filterHotel} onChange={(e) => setFilterHotel(e.target.value)} className="filter-select">
-            <option value="all">All Hotels</option>
-            {hotelNames.map((hotel) => <option key={hotel} value={hotel}>{hotel}</option>)}
-          </select>
-        </div>
-      </div>
-
-      <div className="stats-grid">
-        <div className="stat-card"><Bed className="stat-icon" /><div className="stat-content"><h3>Total Rooms</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.total, 0)}</p></div></div>
-        <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Available</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.available, 0)}</p></div></div>
-        <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Booked</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.booked, 0)}</p></div></div>
-        <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Booked Value</h3><p className="stat-number">{formatCurrency(rooms.reduce((sum, room) => sum + room.booked * room.price, 0))}</p></div></div>
-      </div>
-
-      <div className="section-card full-width">
-        <h3>Room Types ({hasLocalFilters ? filteredRooms.length : meta.total})</h3>
-        {loading ? <div style={{ padding: '2rem', textAlign: 'center' }}>Loading rooms...</div> : (
-          <div className="rooms-grid">
-            {filteredRooms.length === 0 ? <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No rooms found. Add a hotel first, then a room type.</div> : filteredRooms.map((room) => (
-              <div key={room.id} className="room-card">
-                <div className="room-header">
-                  <div className="room-type-info">
-                    <h4>{room.type}</h4>
-                    <span className="room-hotel"><Building className="h-4 w-4" />{room.hotel}</span>
-                  </div>
-                  <span className={`status-badge ${room.status}`}>{room.status}</span>
-                </div>
-                <div className="room-stats">
-                  <div className="room-stat"><span className="stat-label">Total</span><span className="stat-value">{room.total}</span></div>
-                  <div className="room-stat"><span className="stat-label">Available</span><span className="stat-value available">{room.available}</span></div>
-                  <div className="room-stat"><span className="stat-label">Booked</span><span className="stat-value booked">{room.booked}</span></div>
-                </div>
-                <div className="room-availability-bar">
-                  <div className="availability-fill" style={{ width: `${room.total ? (room.available / room.total) * 100 : 0}%` }}></div>
-                </div>
-                <div className="room-footer">
-                  <span className="room-price">₹{room.price.toLocaleString()}/night</span>
-                  <div className="room-actions">
-                    <button onClick={() => updateAvailability(room.id, -1)} className="availability-btn decrease" disabled={room.available === 0}>-</button>
-                    <button onClick={() => updateAvailability(room.id, 1)} className="availability-btn increase" disabled={room.available === room.total}>+</button>
-                    <button onClick={() => { setSelectedRoom(room); setShowEditModal(true) }} className="icon-btn edit"><Edit className="h-4 w-4" /></button>
-                    <button onClick={() => handleToggleStatus(room.id)} className="icon-btn toggle">{room.status === 'active' ? '🔴' : '🟢'}</button>
-                    <button onClick={() => handleDeleteRoom(room.id)} className="icon-btn delete"><Trash2 className="h-4 w-4" /></button>
-                  </div>
-                </div>
-              </div>
-            ))}
+      <div className="rooms-page">
+        {error && <div className="error-message">{error}</div>}
+        <div className="filters-section enhanced">
+          <div className="search-bar enhanced">
+            <Search className="search-icon" />
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search rooms by type or hotel..." />
           </div>
-        )}
+          <div className="filter-controls enhanced">
+            <select value={filterHotel} onChange={(e) => setFilterHotel(e.target.value)} className="filter-select enhanced">
+              <option value="all">All Hotels</option>
+              {hotelNames.map((hotel) => <option key={hotel} value={hotel}>{hotel}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div className="stats-grid enhanced">
+          <div className="stat-card"><Bed className="stat-icon" /><div className="stat-content"><h3>Total Rooms</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.total, 0)}</p></div></div>
+          <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Available</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.available, 0)}</p></div></div>
+          <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Booked</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.booked, 0)}</p></div></div>
+          <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Booked Value</h3><p className="stat-number">{formatCurrency(rooms.reduce((sum, room) => sum + room.booked * room.price, 0))}</p></div></div>
+        </div>
+
+        <div className="section-card enhanced full-width">
+          <h3><Bed className="h-5 w-5" /> Room Types ({hasLocalFilters ? filteredRooms.length : meta.total})</h3>
+          {loading ? (
+            <div className="rooms-grid enhanced">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="skeleton-card">
+                  <div className="skeleton-bar" style={{ width: '55%' }} />
+                  <div className="skeleton-bar" style={{ width: '85%' }} />
+                  <div className="skeleton-bar" style={{ width: '70%' }} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="rooms-grid enhanced">
+                {filteredRooms.length === 0 ? (
+                  <div className="empty-state enhanced full-width">
+                    <Bed className="h-8 w-8" />
+                    <h3>No rooms found</h3>
+                    <p>Add a hotel first, then a room type.</p>
+                  </div>
+                ) : filteredRooms.map((room) => (
+                  <div key={room.id} className="room-card enhanced">
+                    <div className="room-header">
+                      <div className="room-type-info">
+                        <h4>{room.type}</h4>
+                        <span className="room-hotel"><Building className="h-4 w-4" />{room.hotel}</span>
+                      </div>
+                      <span className={`status-badge enhanced ${room.status}`}>{room.status}</span>
+                    </div>
+                    <div className="room-stats">
+                      <div className="room-stat"><span className="stat-label">Total</span><span className="stat-value">{room.total}</span></div>
+                      <div className="room-stat"><span className="stat-label">Available</span><span className="stat-value available">{room.available}</span></div>
+                      <div className="room-stat"><span className="stat-label">Booked</span><span className="stat-value booked">{room.booked}</span></div>
+                    </div>
+                    <div className="room-availability-bar">
+                      <div className="availability-fill" style={{ width: `${room.total ? (room.available / room.total) * 100 : 0}%` }}></div>
+                    </div>
+                    <div className="availability-meta">
+                      <span>{room.total ? Math.round((room.available / room.total) * 100) : 0}% available</span>
+                      <span>{room.booked} of {room.total} booked</span>
+                    </div>
+                    <div className="room-footer">
+                      <span className="room-price">₹{room.price.toLocaleString()}<small>/night</small></span>
+                      <div className="room-actions">
+                        <button onClick={() => updateAvailability(room.id, -1)} className="availability-btn decrease" disabled={room.available === 0} title="Decrease availability"><Minus className="h-3 w-3" /></button>
+                        <button onClick={() => updateAvailability(room.id, 1)} className="availability-btn increase" disabled={room.available === room.total} title="Increase availability"><Plus className="h-3 w-3" /></button>
+                        <button onClick={() => { setSelectedRoom(room); setShowEditModal(true) }} className="icon-btn enhanced edit" title="Edit"><Edit className="h-4 w-4" /></button>
+                        <button onClick={() => handleToggleStatus(room.id)} className={`icon-btn enhanced toggle ${room.status === 'active' ? 'on' : 'off'}`} title={room.status === 'active' ? 'Deactivate' : 'Activate'}><Power className="h-4 w-4" /></button>
+                        <button onClick={() => handleDeleteRoom(room.id)} className="icon-btn enhanced delete" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         <Pagination
           page={page}
           totalPages={meta.totalPages}
@@ -272,11 +295,11 @@ const RoomsManagement = () => {
       </div>
 
       {showAddModal && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
             <div className="modal-header"><h3>Add Room Type</h3><button className="modal-close" onClick={() => setShowAddModal(false)}>×</button></div>
             <div className="modal-body">
-              <form className="room-form" onSubmit={handleAddRoom}>
+              <form className="room-form enhanced" onSubmit={handleAddRoom}>
                 <div className="form-group">
                   <label>Hotel</label>
                   {hotelNames.length > 0 ? (
@@ -305,11 +328,11 @@ const RoomsManagement = () => {
       )}
 
       {showEditModal && selectedRoom && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
             <div className="modal-header"><h3>Edit Room Type</h3><button className="modal-close" onClick={() => setShowEditModal(false)}>×</button></div>
             <div className="modal-body">
-              <form className="room-form" onSubmit={handleUpdateRoom}>
+              <form className="room-form enhanced" onSubmit={handleUpdateRoom}>
                 <div className="form-group"><label>Room Type</label><input name="type" defaultValue={selectedRoom.type} required /></div>
                 <div className="form-row">
                   <div className="form-group"><label>Total Rooms</label><input name="total" type="number" defaultValue={selectedRoom.total} required /></div>
@@ -325,6 +348,7 @@ const RoomsManagement = () => {
           </div>
         </div>
       )}
+      </div>
     </AdminLayout>
   )
 }

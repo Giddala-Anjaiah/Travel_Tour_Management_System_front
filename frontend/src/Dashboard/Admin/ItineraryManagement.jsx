@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Calendar, Building, Plus, Pencil as Edit, Trash2, Search, Download, MapPin, Clock, Users, Star } from 'lucide-react'
+import { Calendar, Building, Plus, Pencil as Edit, Trash2, Search, Download, MapPin, Clock, Users, Star, Power } from 'lucide-react'
 import { api, downloadCsv, fetchAllPages, formValues, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
@@ -186,41 +186,57 @@ const ItineraryManagement = () => {
         </>
       }
     >
-      {error && <div className="error-message">{error}</div>}
-      <div className="tabs">
-        <button className={`tab ${activeTab === 'itineraries' ? 'active' : ''}`} onClick={() => setActiveTab('itineraries')}><Calendar className="h-4 w-4" /> Itineraries</button>
-        <button className={`tab ${activeTab === 'hotels' ? 'active' : ''}`} onClick={() => setActiveTab('hotels')}><Building className="h-4 w-4" /> Hotels</button>
-      </div>
-      <div className="filters-section">
-        <div className="search-bar">
-          <Search className="search-icon" />
-          <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={`Search ${activeTab}...`} />
+      <div className="itinerary-page">
+        {error && <div className="error-message">{error}</div>}
+        <div className="tabs enhanced">
+          <button className={`tab ${activeTab === 'itineraries' ? 'active' : ''}`} onClick={() => setActiveTab('itineraries')}><Calendar className="h-4 w-4" /> Itineraries</button>
+          <button className={`tab ${activeTab === 'hotels' ? 'active' : ''}`} onClick={() => setActiveTab('hotels')}><Building className="h-4 w-4" /> Hotels</button>
         </div>
-      </div>
+        <div className="filters-section enhanced">
+          <div className="search-bar enhanced">
+            <Search className="search-icon" />
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={`Search ${activeTab}...`} />
+          </div>
+        </div>
 
       {activeTab === 'itineraries' && (
         <>
-          <div className="stats-grid">
+          <div className="stats-grid enhanced">
             <div className="stat-card"><Calendar className="stat-icon" /><div className="stat-content"><h3>Total Itineraries</h3><p className="stat-number">{itineraryStats?.total ?? itineraryMeta.total}</p></div></div>
             <div className="stat-card"><Clock className="stat-icon" /><div className="stat-content"><h3>Total Days</h3><p className="stat-number">{itineraries.reduce((sum, i) => sum + i.days, 0)}</p></div></div>
             <div className="stat-card"><Building className="stat-icon" /><div className="stat-content"><h3>Listed Hotels</h3><p className="stat-number">{hotelMeta.total}</p></div></div>
           </div>
-          <div className="section-card full-width">
-            <h3>Itineraries ({itineraryMeta.total})</h3>
-            {loading ? <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div> : (
-              <div className="table-container">
-                <table className="data-table">
+          <div className="section-card enhanced full-width">
+            <h3><Calendar className="h-5 w-5" /> Itineraries ({itineraryMeta.total})</h3>
+            {loading ? (
+              <div className="skeleton-wrap">
+                {[0, 1, 2, 3, 4].map((i) => <div key={i} className="skeleton-bar" style={{ width: `${96 - i * 7}%` }} />)}
+              </div>
+            ) : (
+              <div className="table-container enhanced">
+                <table className="data-table enhanced">
                   <thead><tr><th>Name</th><th>Package</th><th>Duration</th><th>Hotels</th><th>Status</th><th>Actions</th></tr></thead>
                   <tbody>
-                    {itineraries.length === 0 ? <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>No itineraries found</td></tr> : itineraries.map((item) => (
+                    {itineraries.length === 0 ? (
+                      <tr><td colSpan="6">
+                        <div className="empty-state enhanced">
+                          <Calendar className="h-8 w-8" />
+                          <h3>No itineraries found</h3>
+                          <p>Try adjusting your search or add a new itinerary.</p>
+                        </div>
+                      </td></tr>
+                    ) : itineraries.map((item) => (
                       <tr key={item.id}>
-                        <td>{item.name}</td><td>{item.package}</td><td>{item.days} Days</td><td>{item.hotels} Hotels</td>
-                        <td><span className={`status-badge ${item.status}`}>{item.status}</span></td>
+                        <td className="cell-strong">{item.name}</td>
+                        <td>{item.package}</td>
+                        <td><span className="duration-pill"><Clock className="h-3 w-3" /> {item.days} Days</span></td>
+                        <td>{item.hotels} Hotels</td>
+                        <td><span className={`status-badge enhanced ${item.status}`}>{item.status}</span></td>
                         <td>
-                          <div className="action-buttons">
-                            <button className="icon-btn edit" onClick={() => { setSelectedItem({ ...item, type: 'itinerary' }); setShowEditModal(true) }}><Edit className="h-4 w-4" /></button>
-                            <button className="icon-btn toggle" onClick={() => handleToggle(item.id, 'itinerary')}>{item.status === 'active' ? '🔴' : '🟢'}</button>
-                            <button className="icon-btn delete" onClick={() => handleDelete(item.id, 'itinerary')}><Trash2 className="h-4 w-4" /></button>
+                          <div className="action-buttons enhanced">
+                            <button className="icon-btn enhanced edit" onClick={() => { setSelectedItem({ ...item, type: 'itinerary' }); setShowEditModal(true) }} title="Edit"><Edit className="h-4 w-4" /></button>
+                            <button className={`icon-btn enhanced toggle ${item.status === 'active' ? 'on' : 'off'}`} onClick={() => handleToggle(item.id, 'itinerary')} title={item.status === 'active' ? 'Deactivate' : 'Activate'}><Power className="h-4 w-4" /></button>
+                            <button className="icon-btn enhanced delete" onClick={() => handleDelete(item.id, 'itinerary')} title="Delete"><Trash2 className="h-4 w-4" /></button>
                           </div>
                         </td>
                       </tr>
@@ -245,31 +261,54 @@ const ItineraryManagement = () => {
 
       {activeTab === 'hotels' && (
         <>
-          <div className="stats-grid">
+          <div className="stats-grid enhanced">
             <div className="stat-card"><Building className="stat-icon" /><div className="stat-content"><h3>Total Hotels</h3><p className="stat-number">{hotelMeta.total}</p></div></div>
             <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Total Rooms</h3><p className="stat-number">{hotels.reduce((sum, h) => sum + h.rooms, 0)}</p></div></div>
             <div className="stat-card"><Star className="stat-icon" /><div className="stat-content"><h3>Avg Rating</h3><p className="stat-number">{avgRating}</p></div></div>
           </div>
-          <div className="section-card full-width">
-            <h3>Hotels ({hotelMeta.total})</h3>
-            <div className="hotels-grid">
-              {hotels.length === 0 ? <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No hotels found</div> : hotels.map((hotel) => (
-                <div key={hotel.id} className="hotel-card">
-                  <div className="hotel-header"><h4>{hotel.name}</h4><span className={`status-badge ${hotel.status}`}>{hotel.status}</span></div>
-                  <p className="hotel-location"><MapPin className="h-4 w-4" />{hotel.location}</p>
-                  <div className="hotel-stats">
-                    <span className="hotel-rooms"><Users className="h-4 w-4" />{hotel.rooms} rooms</span>
-                    <span className="hotel-rating"><Star className="h-4 w-4 fill" />{hotel.rating}</span>
+          <div className="section-card enhanced full-width">
+            <h3><Building className="h-5 w-5" /> Hotels ({hotelMeta.total})</h3>
+            {loading ? (
+              <div className="hotels-grid enhanced">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="skeleton-card">
+                    <div className="skeleton-bar" style={{ width: '65%' }} />
+                    <div className="skeleton-bar" style={{ width: '90%' }} />
+                    <div className="skeleton-bar" style={{ width: '45%' }} />
                   </div>
-                  <p className="hotel-partner">Partner: {hotel.partner}</p>
-                  <div className="hotel-actions">
-                    <button className="icon-btn edit" onClick={() => { setSelectedItem({ ...hotel, type: 'hotel' }); setShowEditModal(true) }}><Edit className="h-4 w-4" /></button>
-                    <button className="icon-btn toggle" onClick={() => handleToggle(hotel.id, 'hotel')}>{hotel.status === 'active' ? '🔴' : '🟢'}</button>
-                    <button className="icon-btn delete" onClick={() => handleDelete(hotel.id, 'hotel')}><Trash2 className="h-4 w-4" /></button>
-                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="hotels-grid enhanced">
+                  {hotels.length === 0 ? (
+                    <div className="empty-state enhanced full-width">
+                      <Building className="h-8 w-8" />
+                      <h3>No hotels found</h3>
+                      <p>Try adjusting your search or add a new hotel.</p>
+                    </div>
+                  ) : hotels.map((hotel) => (
+                    <div key={hotel.id} className="hotel-card enhanced">
+                      <div className="hotel-header enhanced">
+                        <div className="hotel-info"><h3>{hotel.name}</h3></div>
+                        <span className={`status-badge enhanced ${hotel.status}`}>{hotel.status}</span>
+                      </div>
+                      <div className="hotel-content enhanced">
+                        <p className="hotel-location enhanced"><MapPin className="h-4 w-4" />{hotel.location}</p>
+                        <div className="hotel-stats">
+                          <span className="hotel-rooms"><Users className="h-4 w-4" />{hotel.rooms} rooms</span>
+                          <span className="hotel-rating"><Star className="h-4 w-4 fill" />{hotel.rating}</span>
+                        </div>
+                        <p className="hotel-partner">Partner: <strong>{hotel.partner}</strong></p>
+                        <div className="hotel-actions">
+                          <button className="icon-btn enhanced edit" onClick={() => { setSelectedItem({ ...hotel, type: 'hotel' }); setShowEditModal(true) }} title="Edit"><Edit className="h-4 w-4" /></button>
+                          <button className={`icon-btn enhanced toggle ${hotel.status === 'active' ? 'on' : 'off'}`} onClick={() => handleToggle(hotel.id, 'hotel')} title={hotel.status === 'active' ? 'Deactivate' : 'Activate'}><Power className="h-4 w-4" /></button>
+                          <button className="icon-btn enhanced delete" onClick={() => handleDelete(hotel.id, 'hotel')} title="Delete"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
             <Pagination
               page={hotelPage}
               totalPages={hotelMeta.totalPages}
@@ -280,19 +319,21 @@ const ItineraryManagement = () => {
               itemLabel="hotels"
               disabled={loading}
             />
+            </>
+            )}
           </div>
         </>
       )}
 
       {(showAddModal || showEditModal) && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
             <div className="modal-header">
               <h3>{showAddModal ? 'Add' : 'Edit'} {showItineraryForm ? 'Itinerary' : 'Hotel'}</h3>
               <button className="modal-close" onClick={() => { setShowAddModal(false); setShowEditModal(false) }}>×</button>
             </div>
             <div className="modal-body">
-              <form className="item-form" onSubmit={handleSubmit}>
+              <form className="item-form enhanced" onSubmit={handleSubmit}>
                 {showItineraryForm ? (
                   <>
                     <div className="form-group"><label>Itinerary Name</label><input name="name" defaultValue={selectedItem?.name} required /></div>
@@ -328,6 +369,7 @@ const ItineraryManagement = () => {
           </div>
         </div>
       )}
+      </div>
     </AdminLayout>
   )
 }

@@ -1,5 +1,6 @@
 import { BarChart3, PieChart } from 'lucide-react'
 import { formatCurrency } from '../../api'
+import './ChartBar.css'
 
 const ChartBar = ({ type, data, title, height = 160 }) => {
   const isEmpty = Array.isArray(data)
@@ -28,7 +29,7 @@ function renderBarChart(data, title) {
   const valueWidth = 70
   const chartWidth = 280
   const totalHeight = data.length * (barHeight + barGap) + 24
-  const color = '#4f46e5'
+  const color = 'var(--primary)'
 
   return (
     <div className="chart-wrapper">
@@ -50,7 +51,7 @@ function renderBarChart(data, title) {
                 y={y + barHeight / 2 + 5}
                 textAnchor="end"
                 fontSize="11"
-                fill="#64748b"
+                className="bar-label"
               >
                 {item.label || item.name || item.month || item._id || ''}
               </text>
@@ -69,7 +70,7 @@ function renderBarChart(data, title) {
                 y={y + barHeight / 2 + 5}
                 fontSize="11"
                 fontWeight="600"
-                fill="#1e293b"
+                className="bar-value"
               >
                 {item.format === 'currency' ? formatCurrency(value) : value}
               </text>
@@ -97,7 +98,7 @@ function renderPieChart(data, title) {
   const centerX = 90
   const centerY = 80
   let offset = 0
-  const colors = ['#4f46e5', '#7c3aed', '#10b981', '#f59e0b', '#ef4444', '#06b6d4', '#8b5cf6', '#3b82f6']
+  const colors = ['var(--primary)', 'var(--secondary)', 'var(--success)', 'var(--warning)', 'var(--danger)', 'var(--info)', 'var(--purple)', 'var(--blue)']
 
   return (
     <div className="chart-wrapper">
@@ -133,14 +134,14 @@ function renderPieChart(data, title) {
             </g>
           )
         })}
-        <text x={centerX} y={centerY + radius + 24} textAnchor="middle" fontSize="12" fontWeight="600" fill="#1e293b">
+        <text x={centerX} y={centerY + radius + 24} textAnchor="middle" fontSize="12" fontWeight="600" className="pie-total">
           Total: {total}
         </text>
       </svg>
       <div className="pie-legend">
         {entries.map(([key, value], i) => (
           <div key={key} className="legend-item">
-            <span className="legend-color" style={{ background: colors[i % colors.length] }} />
+            <span className="legend-color" style={{ background: colors[i % colors.length].replace('var(', '').replace(')', '') }} />
             <span>{key.replace('_', ' ')}</span>
             <span className="legend-value">{value} ({(value / total * 100).toFixed(1)}%)</span>
           </div>
@@ -173,30 +174,29 @@ function renderLineChart(data, title, height) {
     <div className="chart-wrapper">
       {title && <h4 className="chart-title">{title}</h4>}
       <svg width="100%" height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`} className="line-chart-svg">
-        <line x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} stroke="#e2e8f0" strokeWidth="1" />
-        <line x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} stroke="#e2e8f0" strokeWidth="1" />
+        <line className="axis-line" x1={padding.left} y1={padding.top} x2={padding.left} y2={padding.top + innerHeight} strokeWidth="1" />
+        <line className="axis-line" x1={padding.left} y1={padding.top + innerHeight} x2={padding.left + innerWidth} y2={padding.top + innerHeight} strokeWidth="1" />
         {points.map((p, i) => (
-          <line key={i} x1={p.x} y1={padding.top + innerHeight} x2={p.x} y2={padding.top + innerHeight + 4} stroke="#cbd5e1" strokeWidth="1" />
+          <line key={i} className="grid-line" x1={p.x} y1={padding.top + innerHeight} x2={p.x} y2={padding.top + innerHeight + 4} strokeWidth="1" />
         ))}
         <polyline
           points={points.map(p => `${p.x},${p.y}`).join(' ')}
           fill="none"
-          stroke="#4f46e5"
           strokeWidth="2.5"
           strokeLinecap="round"
           strokeLinejoin="round"
           className="line-path"
         />
         {points.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r="4" fill="#4f46e5" opacity="0.7" />
+          <circle key={i} cx={p.x} cy={p.y} r="4" opacity="0.7" className="data-point" />
         ))}
         {points.map((p, i) => (
-          <text key={i} x={p.x} y={p.y - 8} textAnchor="middle" fontSize="9" fill="#64748b">
+          <text key={i} x={p.x} y={p.y - 8} textAnchor="middle" fontSize="9" className="point-value">
             {p.value > 0 ? (typeof p.value === 'number' && p.value >= 1000 ? formatCurrency(p.value) : p.value) : ''}
           </text>
         ))}
         {data.map((d, i) => (
-          <text key={i} x={points[i].x} y={padding.top + innerHeight + 16} textAnchor="middle" fontSize="10" fill="#94a3b8">
+          <text key={i} x={points[i].x} y={padding.top + innerHeight + 16} textAnchor="middle" fontSize="10" className="point-label">
             {d.label || ''}
           </text>
         ))}

@@ -52,69 +52,75 @@ const OperatorSettingsPage = () => {
   }
 
   return (
-    <OperatorLayout active="settings" title="Settings">
+    <OperatorLayout active="settings" title="Settings" subtitle="Manage your notification preferences and account settings">
       <div className="settings-container">
         <div className="settings-section">
           <h3>Notification Preferences</h3>
           <div className="settings-group">
             <div className="setting-item">
               <label>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={settings.emailNotifications}
                   onChange={(e) => handleSettingChange('emailNotifications', e.target.checked)}
                 />
                 <span>Email Notifications</span>
+                <small className="setting-desc">Receive booking and update emails</small>
               </label>
             </div>
             <div className="setting-item">
               <label>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={settings.smsNotifications}
                   onChange={(e) => handleSettingChange('smsNotifications', e.target.checked)}
                 />
                 <span>SMS Notifications</span>
+                <small className="setting-desc">Get text alerts for important events</small>
               </label>
             </div>
             <div className="setting-item">
               <label>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={settings.pushNotifications}
                   onChange={(e) => handleSettingChange('pushNotifications', e.target.checked)}
                 />
                 <span>Push Notifications</span>
+                <small className="setting-desc">Browser push notifications</small>
               </label>
             </div>
             <div className="setting-item">
               <label>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={settings.bookingAlerts}
                   onChange={(e) => handleSettingChange('bookingAlerts', e.target.checked)}
                 />
                 <span>Booking Alerts</span>
+                <small className="setting-desc">New booking notifications</small>
               </label>
             </div>
             <div className="setting-item">
               <label>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={settings.paymentUpdates}
                   onChange={(e) => handleSettingChange('paymentUpdates', e.target.checked)}
                 />
                 <span>Payment Updates</span>
+                <small className="setting-desc">Payment status changes</small>
               </label>
             </div>
             <div className="setting-item">
               <label>
-                <input 
-                  type="checkbox" 
+                <input
+                  type="checkbox"
                   checked={settings.reviewAlerts}
                   onChange={(e) => handleSettingChange('reviewAlerts', e.target.checked)}
                 />
                 <span>Review Alerts</span>
+                <small className="setting-desc">New customer reviews</small>
               </label>
             </div>
           </div>
@@ -125,7 +131,7 @@ const OperatorSettingsPage = () => {
           <div className="settings-group">
             <div className="setting-item">
               <label>Currency</label>
-              <select 
+              <select
                 value={settings.currency}
                 onChange={(e) => handleSettingChange('currency', e.target.value)}
               >
@@ -136,7 +142,7 @@ const OperatorSettingsPage = () => {
             </div>
             <div className="setting-item">
               <label>Language</label>
-              <select 
+              <select
                 value={settings.language}
                 onChange={(e) => handleSettingChange('language', e.target.value)}
               >
@@ -146,7 +152,7 @@ const OperatorSettingsPage = () => {
             </div>
             <div className="setting-item">
               <label>Timezone</label>
-              <select 
+              <select
                 value={settings.timezone}
                 onChange={(e) => handleSettingChange('timezone', e.target.value)}
               >
@@ -158,9 +164,9 @@ const OperatorSettingsPage = () => {
         </div>
 
         <div className="settings-actions">
-          <button 
-            onClick={handleSaveSettings} 
-            className="btn-primary"
+          <button
+            onClick={handleSaveSettings}
+            className="btn-primary enhanced"
             disabled={isSaving}
           >
             <Save className="h-4 w-4" />

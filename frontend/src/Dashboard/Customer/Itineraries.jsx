@@ -1,10 +1,23 @@
 import { useState, useEffect } from 'react'
-import { Clock, Building, Star, Search, Eye, ArrowRight, Compass, Sparkles, CheckCircle, Info } from 'lucide-react'
+import { Clock, Building, Star, Search, Eye, ArrowRight, Compass, Sparkles, CheckCircle, Info, MapPin, Calendar as CalendarIcon } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
 import { api, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
+
+const DIFFICULTY_COLORS = {
+  Easy: 'var(--cp-success)',
+  Moderate: 'var(--cp-warning)',
+  Hard: 'var(--cp-danger)'
+}
+
+const CATEGORY_BADGES = {
+  beach: { label: 'Beach', color: 'var(--cp-type-beach)' },
+  nature: { label: 'Nature', color: 'var(--cp-type-nature)' },
+  adventure: { label: 'Adventure', color: 'var(--cp-type-adventure)' },
+  heritage: { label: 'Heritage', color: 'var(--cp-type-heritage)' }
+}
 
 const Itineraries = () => {
   const [searchTerm, setSearchTerm] = useState('')
@@ -17,8 +30,6 @@ const Itineraries = () => {
   const [limit, setLimit] = useState(12)
   const [meta, setMeta] = useState({ page: 1, limit: 12, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
 
-  // `/customer/itineraries` has no unsupported filters on this page — the search
-  // box is the only control and the route filters server-side on it.
   const fetchItineraries = async (overrides = {}) => {
     const nextPage = overrides.page ?? page
     const nextLimit = overrides.limit ?? limit
@@ -44,7 +55,6 @@ const Itineraries = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchItineraries())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit])
 
   useEffect(() => {
@@ -54,7 +64,6 @@ const Itineraries = () => {
       fetchItineraries({ page: 1 })
     }, 350)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm])
 
   const handlePageChange = (nextPage) => {
@@ -90,22 +99,11 @@ const Itineraries = () => {
   }
 
   const getDifficultyColor = (difficulty) => {
-    const colors = {
-      Easy: '#22c55e',
-      Moderate: '#f59e0b',
-      Hard: '#ef4444'
-    }
-    return colors[difficulty] || '#64748b'
+    return DIFFICULTY_COLORS[difficulty] || 'var(--cp-muted)'
   }
 
   const getCategoryBadge = (category) => {
-    const badges = {
-      beach: { label: 'Beach', color: '#0e7490' },
-      nature: { label: 'Nature', color: '#15803d' },
-      adventure: { label: 'Adventure', color: '#b45309' },
-      heritage: { label: 'Heritage', color: '#6d28d9' }
-    }
-    return badges[category] || { label: 'Tour', color: '#475569' }
+    return CATEGORY_BADGES[category] || { label: 'Tour', color: 'var(--cp-type-tour)' }
   }
 
   return (
@@ -122,8 +120,34 @@ const Itineraries = () => {
         </div>
       }
     >
-      {loading && <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}><p style={{ color: '#64748b' }}>Loading itineraries…</p></div>}
+      {loading && <div className="cd-skeleton-grid">{[1,2,3,4].map(i => <div key={i} className="cd-skeleton-card" />)}</div>}
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
+
+      <div className="cd-hero">
+        <div className="cd-hero-copy">
+          <p>Your travel plans</p>
+          <h2>Itineraries <span style={{ color: 'var(--cp-accent)' }}>🗓️</span></h2>
+          <span>Browse detailed day-by-day schedules for your upcoming trips.</span>
+        </div>
+        <div className="cd-hero-stats">
+          <div className="cd-hero-stat">
+            <small>Total Trips</small>
+            <strong>{meta.total}</strong>
+          </div>
+          <div className="cd-hero-stat">
+            <small>Active</small>
+            <strong>{filteredItineraries.filter(i => i.status === 'active').length}</strong>
+          </div>
+          <div className="cd-hero-stat">
+            <small>Completed</small>
+            <strong>{filteredItineraries.filter(i => i.status === 'completed').length}</strong>
+          </div>
+          <div className="cd-hero-stat">
+            <small>Avg Duration</small>
+            <strong>{filteredItineraries.length ? Math.round(filteredItineraries.reduce((s, i) => s + i.days, 0) / filteredItineraries.length) : 0} days</strong>
+          </div>
+        </div>
+      </div>
 
       <div className="filters-section enhanced">
         <div className="search-bar enhanced">
@@ -137,95 +161,107 @@ const Itineraries = () => {
         </div>
       </div>
 
-      <div className="itineraries-grid enhanced">
-        {filteredItineraries.map(itinerary => {
-          const categoryBadge = getCategoryBadge(itinerary.category)
-          return (
-            <div key={itinerary.id} className="itinerary-card enhanced">
-              <div className="itinerary-header enhanced">
-                <div className="itinerary-image-wrapper">
+      {filteredItineraries.length === 0 ? (
+        <div className="cd-card cp-empty">
+          <MapPin className="cp-empty-icon" size={48} />
+          <h3>No itineraries found</h3>
+          <p>Try adjusting your search to find your travel plans.</p>
+          <Link to="/customer/packages" className="btn-primary enhanced" style={{ display: 'inline-flex', marginTop: '1rem' }}>
+            <Sparkles className="h-4 w-4" /> Browse Packages
+          </Link>
+        </div>
+      ) : (
+        <div className="itineraries-grid enhanced">
+          {filteredItineraries.map(itinerary => {
+            const categoryBadge = getCategoryBadge(itinerary.category)
+            return (
+              <div key={itinerary.id} className="itinerary-card enhanced">
+                <div className="itinerary-banner enhanced">
                   <img className="cp-cover" src={itinerary.image} alt={itinerary.name} />
-                </div>
-                <div className="itinerary-info">
-                  <h3>{itinerary.name}</h3>
-                  <div className="itinerary-package">
-                    <Star className="h-4 w-4" />
-                    <span>{itinerary.package}</span>
+                  <div className="itinerary-badges">
+                    <div className="itinerary-category-badge" style={{ backgroundColor: categoryBadge.color }}>
+                      <span>{categoryBadge.label}</span>
+                    </div>
+                    <div className="itinerary-difficulty-badge" style={{ backgroundColor: getDifficultyColor(itinerary.difficulty) }}>
+                      <Compass className="h-3 w-3" />
+                      <span>{itinerary.difficulty}</span>
+                    </div>
+                    <span className={`status-badge ${itinerary.status}`}>
+                      <CheckCircle className="h-3 w-3" />
+                      {itinerary.status}
+                    </span>
                   </div>
                 </div>
-                <div className="itinerary-badges">
-                  <div className="itinerary-category-badge" style={{ backgroundColor: categoryBadge.color }}>
-                    <span>{categoryBadge.label}</span>
+
+                <div className="itinerary-header enhanced">
+                  <div className="itinerary-info">
+                    <h3 style={{ color: 'var(--cp-ink)' }}>{itinerary.name}</h3>
+                    <div className="itinerary-package">
+                      <Star className="h-4 w-4" style={{ color: 'var(--cp-gold)' }} />
+                      <span style={{ color: 'var(--cp-muted)' }}>{itinerary.package}</span>
+                    </div>
                   </div>
-                  <div className="itinerary-difficulty-badge" style={{ backgroundColor: getDifficultyColor(itinerary.difficulty) }}>
-                    <Compass className="h-3 w-3" />
-                    <span>{itinerary.difficulty}</span>
+                </div>
+
+                {itinerary.highlights.length > 0 && (
+                  <div className="itinerary-highlights">
+                    <h4 style={{ color: 'var(--cp-ink)' }}>Trip Highlights</h4>
+                    <div className="highlights-grid">
+                      {itinerary.highlights.map((highlight, idx) => (
+                        <span key={idx} className="highlight-tag" style={{ background: 'var(--cp-surface)', color: 'var(--cp-ink)', borderColor: 'var(--cp-line)' }}>
+                          <Sparkles className="h-3 w-3" style={{ color: 'var(--cp-accent)' }} />
+                          {highlight}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <span className={`status-badge ${itinerary.status}`}>
-                    <CheckCircle className="h-3 w-3" />
-                    {itinerary.status}
+                )}
+
+                <div className="itinerary-meta enhanced" style={{ borderTopColor: 'var(--cp-line)' }}>
+                  <span className="meta-item">
+                    <Clock className="h-4 w-4" style={{ color: 'var(--cp-accent)' }} />
+                    <div>
+                      <small style={{ color: 'var(--cp-muted)' }}>Duration</small>
+                      <strong style={{ color: 'var(--cp-ink)' }}>{itinerary.days} Days</strong>
+                    </div>
+                  </span>
+                  <span className="meta-item">
+                    <Building className="h-4 w-4" style={{ color: 'var(--cp-purple)' }} />
+                    <div>
+                      <small style={{ color: 'var(--cp-muted)' }}>Hotels</small>
+                      <strong style={{ color: 'var(--cp-ink)' }}>{itinerary.hotels} Properties</strong>
+                    </div>
                   </span>
                 </div>
-              </div>
 
-              {itinerary.highlights.length > 0 && (
-                <div className="itinerary-highlights">
-                  <h4>Trip Highlights</h4>
-                  <div className="highlights-grid">
-                    {itinerary.highlights.map((highlight, idx) => (
-                      <span key={idx} className="highlight-tag">
-                        <Sparkles className="h-3 w-3" />
-                        {highlight}
-                      </span>
+                <div className="itinerary-preview" style={{ borderTopColor: 'var(--cp-line)' }}>
+                  <h4 style={{ color: 'var(--cp-ink)' }}>Daily Schedule Preview</h4>
+                  <div className="schedule-preview">
+                    {itinerary.schedule.slice(0, 3).map((day, idx) => (
+                      <div key={idx} className="day-preview" style={{ borderLeftColor: 'var(--cp-accent)' }}>
+                        <span className="day-number" style={{ color: 'var(--cp-accent)' }}>Day {day.day}</span>
+                        <span className="day-title" style={{ color: 'var(--cp-ink)' }}>{day.title}</span>
+                      </div>
                     ))}
+                    {itinerary.schedule.length > 3 && (
+                      <span className="more-days" style={{ color: 'var(--cp-muted)' }}>+{itinerary.schedule.length - 3} more days</span>
+                    )}
                   </div>
                 </div>
-              )}
 
-              <div className="itinerary-meta enhanced">
-                <span className="meta-item">
-                  <Clock className="h-4 w-4" />
-                  <div>
-                    <small>Duration</small>
-                    <strong>{itinerary.days} Days</strong>
-                  </div>
-                </span>
-                <span className="meta-item">
-                  <Building className="h-4 w-4" />
-                  <div>
-                    <small>Hotels</small>
-                    <strong>{itinerary.hotels} Properties</strong>
-                  </div>
-                </span>
-              </div>
-
-              <div className="itinerary-preview">
-                <h4>Daily Schedule Preview</h4>
-                <div className="schedule-preview">
-                  {itinerary.schedule.slice(0, 3).map((day, idx) => (
-                    <div key={idx} className="day-preview">
-                      <span className="day-number">Day {day.day}</span>
-                      <span className="day-title">{day.title}</span>
-                    </div>
-                  ))}
-                  {itinerary.schedule.length > 3 && (
-                    <span className="more-days">+{itinerary.schedule.length - 3} more days</span>
-                  )}
+                <div className="itinerary-actions enhanced">
+                  <button onClick={() => viewDetails(itinerary)} className="btn-secondary enhanced">
+                    <Eye className="h-4 w-4" /> View Full Itinerary
+                  </button>
+                  <Link to="/customer/bookings" state={{ package: { name: itinerary.name, price: 0, _id: itinerary.id } }} className="btn-primary enhanced">
+                    Book This Trip <ArrowRight className="h-4 w-4" />
+                  </Link>
                 </div>
               </div>
-
-              <div className="itinerary-actions enhanced">
-                <button onClick={() => viewDetails(itinerary)} className="btn-secondary enhanced">
-                  <Eye className="h-4 w-4" /> View Full Itinerary
-                </button>
-                <Link to="/customer/bookings" state={{ package: { name: itinerary.name, price: 0, _id: itinerary.id } }} className="btn-primary enhanced">
-                  Book This Trip <ArrowRight className="h-4 w-4" />
-                </Link>
-              </div>
-            </div>
-          )
-        })}
-      </div>
+            )
+          })}
+        </div>
+      )}
 
       <Pagination
         page={page}
@@ -252,60 +288,51 @@ const Itineraries = () => {
               <div className="itinerary-details enhanced">
                 <div className="itinerary-summary">
                   <div className="summary-item">
-                    <Clock className="h-5 w-5" />
+                    <Clock className="h-5 w-5" style={{ color: 'var(--cp-accent)' }} />
                     <div>
-                      <small>Duration</small>
-                      <strong>{selectedItinerary.days} Days</strong>
+                      <small style={{ color: 'var(--cp-muted)' }}>Duration</small>
+                      <strong style={{ color: 'var(--cp-ink)' }}>{selectedItinerary.days} Days</strong>
                     </div>
                   </div>
                   <div className="summary-item">
-                    <Building className="h-5 w-5" />
+                    <Building className="h-5 w-5" style={{ color: 'var(--cp-purple)' }} />
                     <div>
-                      <small>Hotels</small>
-                      <strong>{selectedItinerary.hotels} Properties</strong>
+                      <small style={{ color: 'var(--cp-muted)' }}>Hotels</small>
+                      <strong style={{ color: 'var(--cp-ink)' }}>{selectedItinerary.hotels} Properties</strong>
                     </div>
                   </div>
                   <div className="summary-item">
-                    <Compass className="h-5 w-5" />
+                    <Compass className="h-5 w-5" style={{ color: getDifficultyColor(selectedItinerary.difficulty) }} />
                     <div>
-                      <small>Difficulty</small>
-                      <strong>{selectedItinerary.difficulty}</strong>
+                      <small style={{ color: 'var(--cp-muted)' }}>Difficulty</small>
+                      <strong style={{ color: 'var(--cp-ink)' }}>{selectedItinerary.difficulty}</strong>
                     </div>
                   </div>
                 </div>
 
                 <div className="itinerary-timeline">
                   {selectedItinerary.schedule.map((day, idx) => (
-                    <div key={idx} className="day-schedule enhanced">
-                      <div className="day-header enhanced">
-                        <div className="day-number-badge">Day {day.day}</div>
-                        <h4>{day.title}</h4>
+                    <div key={idx} className="day-schedule enhanced" style={{ borderColor: 'var(--cp-line)', background: 'var(--cp-card)' }}>
+                      <div className="day-header enhanced" style={{ borderBottomColor: 'var(--cp-line)' }}>
+                        <div className="day-number-badge" style={{ background: 'var(--cp-accent)' }}>Day {day.day}</div>
+                        <h4 style={{ color: 'var(--cp-ink)' }}>{day.title}</h4>
                         {day.meals && (
-                          <div className="meals-info">
-                            <Info className="h-4 w-4" />
+                          <div className="meals-info" style={{ color: 'var(--cp-muted)' }}>
+                            <Info className="h-4 w-4" style={{ color: 'var(--cp-info)' }} />
                             <span>Meals: {day.meals.join(', ')}</span>
                           </div>
                         )}
                       </div>
                       <div className="activities-list enhanced">
                         {day.activities.map((activity, actIdx) => (
-                          <div key={actIdx} className="activity-item">
-                            <div className="activity-dot"></div>
-                            <span>{activity}</span>
+                          <div key={actIdx} className="activity-item" style={{ borderLeftColor: 'var(--cp-line)' }}>
+                            <div className="activity-dot" style={{ background: 'var(--cp-accent)' }}></div>
+                            <span style={{ color: 'var(--cp-ink)' }}>{activity}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   ))}
-                </div>
-
-                <div className="itinerary-modal-actions">
-                  <button onClick={() => setShowDetails(false)} className="btn-secondary">
-                    Close
-                  </button>
-                  <Link to="/customer/bookings" state={{ package: { name: selectedItinerary.name, price: 0, _id: selectedItinerary.id } }} className="btn-primary">
-                    Book This Itinerary <ArrowRight className="h-4 w-4" />
-                  </Link>
                 </div>
               </div>
             </div>

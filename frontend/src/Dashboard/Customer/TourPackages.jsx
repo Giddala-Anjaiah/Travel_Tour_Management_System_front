@@ -9,6 +9,15 @@ import '../Dashboard.css'
 const FALLBACK_IMAGE = 'https://images.unsplash.com/photo-1488646953014-85cb44e25828?auto=format&fit=crop&w=1200&q=80'
 const WISHLIST_KEY = 'customerWishlist'
 
+const CATEGORY_BADGES = {
+  beach: { label: 'Beach', color: 'var(--cp-type-beach)' },
+  nature: { label: 'Nature', color: 'var(--cp-type-nature)' },
+  adventure: { label: 'Adventure', color: 'var(--cp-type-adventure)' },
+  heritage: { label: 'Heritage', color: 'var(--cp-type-heritage)' },
+  hill: { label: 'Hill Station', color: 'var(--cp-type-hill)' },
+  city: { label: 'City', color: 'var(--cp-type-city)' }
+}
+
 const parseDurationDays = (duration) => {
   if (!duration) return 0
   const match = String(duration).match(/(\d+)/)
@@ -68,7 +77,6 @@ const TourPackages = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchPackages())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit])
 
   // Fire-and-forget browsing signal for the recommendation engine.
@@ -88,7 +96,6 @@ const TourPackages = () => {
       }
     }, 350)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterPrice, filterDuration])
 
   const handlePageChange = (nextPage) => {
@@ -145,15 +152,7 @@ const TourPackages = () => {
   }
 
   const getCategoryBadge = (category) => {
-    const badges = {
-      beach: { label: 'Beach', color: '#0e7490' },
-      nature: { label: 'Nature', color: '#15803d' },
-      adventure: { label: 'Adventure', color: '#b45309' },
-      heritage: { label: 'Heritage', color: '#6d28d9' },
-      hill: { label: 'Hill Station', color: '#0369a1' },
-      city: { label: 'City', color: '#475569' }
-    }
-    return badges[category] || { label: 'Tour', color: '#475569' }
+    return CATEGORY_BADGES[category] || { label: 'Tour', color: 'var(--cp-type-tour)' }
   }
 
   return (
@@ -174,7 +173,34 @@ const TourPackages = () => {
         </div>
       }
     >
-      {error && <div className="error-message">{error}</div>}
+      {loading && <div className="cd-skeleton-grid">{[1,2,3,4,5,6].map(i => <div key={i} className="cd-skeleton-card" />)}</div>}
+      {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
+
+      <div className="cd-hero">
+        <div className="cd-hero-copy">
+          <p>Your next adventure</p>
+          <h2>Tour Packages <span style={{ color: 'var(--cp-accent)' }}>🌍</span></h2>
+          <span>Discover curated experiences from verified operators. Filter by price, duration or destination.</span>
+        </div>
+        <div className="cd-hero-stats">
+          <div className="cd-hero-stat">
+            <small>Total Packages</small>
+            <strong>{meta.total}</strong>
+          </div>
+          <div className="cd-hero-stat">
+            <small>Destinations</small>
+            <strong>{new Set(normalized.map(p => p.destination)).size}</strong>
+          </div>
+          <div className="cd-hero-stat">
+            <small>Saved</small>
+            <strong>{favorites.length}</strong>
+          </div>
+          <div className="cd-hero-stat">
+            <small>Avg Rating</small>
+            <strong>{normalized.length ? (normalized.reduce((s, p) => s + p.rating, 0) / normalized.length).toFixed(1) : '—'}</strong>
+          </div>
+        </div>
+      </div>
 
       <div className="package-section-header">
         <div className="lead">
@@ -199,11 +225,12 @@ const TourPackages = () => {
         </div>
         <div className="filter-controls enhanced">
           <div className="filter-group">
-            <label>Price Range</label>
+            <label style={{ color: 'var(--cp-ink)' }}>Price Range</label>
             <select
               value={filterPrice}
               onChange={(e) => setFilterPrice(e.target.value)}
               className="filter-select"
+              style={{ background: 'var(--cp-surface)', borderColor: 'var(--cp-line)', color: 'var(--cp-ink)' }}
             >
               <option value="all">All Prices</option>
               <option value="low">Under ₹20,000</option>
@@ -212,11 +239,12 @@ const TourPackages = () => {
             </select>
           </div>
           <div className="filter-group">
-            <label>Duration</label>
+            <label style={{ color: 'var(--cp-ink)' }}>Duration</label>
             <select
               value={filterDuration}
               onChange={(e) => setFilterDuration(e.target.value)}
               className="filter-select"
+              style={{ background: 'var(--cp-surface)', borderColor: 'var(--cp-line)', color: 'var(--cp-ink)' }}
             >
               <option value="all">All Durations</option>
               <option value="short">Short (≤4 days)</option>
@@ -227,11 +255,9 @@ const TourPackages = () => {
         </div>
       </div>
 
-      {loading ? (
-        <div className="cp-loading">Loading packages…</div>
-      ) : filteredPackages.length === 0 ? (
-        <div className="cp-empty-state">
-          <Award className="h-12 w-12" />
+      {filteredPackages.length === 0 ? (
+        <div className="cd-card cp-empty">
+          <Award className="cp-empty-icon" size={48} />
           <h3>No packages found</h3>
           <p>Try a different search or check back later for new tours.</p>
         </div>
@@ -257,7 +283,7 @@ const TourPackages = () => {
                     <div className="package-category-badge" style={{ backgroundColor: categoryBadge.color }}>
                       <span>{categoryBadge.label}</span>
                     </div>
-                    <div className="package-difficulty-badge" style={{ backgroundColor: '#22c55e' }}>
+                    <div className="package-difficulty-badge" style={{ backgroundColor: 'var(--cp-success)' }}>
                       <Zap className="h-3 w-3" />
                       <span>{pkg.difficulty}</span>
                     </div>
@@ -265,24 +291,24 @@ const TourPackages = () => {
                 </div>
                 <div className="package-content enhanced">
                   <div className="package-header enhanced">
-                    <h3>{pkg.name}</h3>
+                    <h3 style={{ color: 'var(--cp-ink)' }}>{pkg.name}</h3>
                     <div className="package-rating enhanced">
-                      <Star className="h-4 w-4 fill" />
-                      <span>{pkg.rating.toFixed(1)}</span>
+                      <Star className="h-4 w-4 fill" style={{ color: 'var(--cp-gold)' }} />
+                      <span style={{ color: 'var(--cp-ink)' }}>{pkg.rating.toFixed(1)}</span>
                     </div>
                   </div>
                   <div className="package-destination enhanced">
-                    <MapPin className="h-4 w-4" />
-                    <span>{pkg.destination}</span>
+                    <MapPin className="h-4 w-4" style={{ color: 'var(--cp-accent)' }} />
+                    <span style={{ color: 'var(--cp-muted)' }}>{pkg.destination}</span>
                   </div>
 
                   {pkg.highlights.length > 0 && (
                     <div className="package-highlights">
-                      <h4>Package Highlights</h4>
+                      <h4 style={{ color: 'var(--cp-ink)' }}>Package Highlights</h4>
                       <div className="highlights-grid">
                         {pkg.highlights.slice(0, 4).map((highlight, idx) => (
-                          <span key={idx} className="highlight-tag">
-                            <Sparkles className="h-3 w-3" />
+                          <span key={idx} className="highlight-tag" style={{ background: 'var(--cp-surface)', color: 'var(--cp-ink)', borderColor: 'var(--cp-line)' }}>
+                            <Sparkles className="h-3 w-3" style={{ color: 'var(--cp-accent)' }} />
                             {highlight}
                           </span>
                         ))}
@@ -290,30 +316,30 @@ const TourPackages = () => {
                     </div>
                   )}
 
-                  <div className="package-meta enhanced">
+                  <div className="package-meta enhanced" style={{ borderTopColor: 'var(--cp-line)' }}>
                     <span className="meta-item">
-                      <Clock className="h-4 w-4" />
+                      <Clock className="h-4 w-4" style={{ color: 'var(--cp-accent)' }} />
                       <div>
-                        <small>Duration</small>
-                        <strong>{pkg.duration}</strong>
+                        <small style={{ color: 'var(--cp-muted)' }}>Duration</small>
+                        <strong style={{ color: 'var(--cp-ink)' }}>{pkg.duration}</strong>
                       </div>
                     </span>
                     <span className="meta-item">
-                      <Users className="h-4 w-4" />
+                      <Users className="h-4 w-4" style={{ color: 'var(--cp-purple)' }} />
                       <div>
-                        <small>Group Size</small>
-                        <strong>Max {pkg.maxPeople}</strong>
+                        <small style={{ color: 'var(--cp-muted)' }}>Group Size</small>
+                        <strong style={{ color: 'var(--cp-ink)' }}>Max {pkg.maxPeople}</strong>
                       </div>
                     </span>
                   </div>
 
                   {pkg.inclusions.length > 0 && (
-                    <div className="package-inclusions enhanced">
-                      <h4>What's Included</h4>
+                    <div className="package-inclusions enhanced" style={{ borderTopColor: 'var(--cp-line)' }}>
+                      <h4 style={{ color: 'var(--cp-ink)' }}>What's Included</h4>
                       <div className="inclusions-list">
                         {pkg.inclusions.map((inc, idx) => (
-                          <span key={idx} className="inclusion-item">
-                            <Check className="h-3 w-3" />
+                          <span key={idx} className="inclusion-item" style={{ background: 'var(--cp-surface)', color: 'var(--cp-ink)', borderColor: 'var(--cp-line)' }}>
+                            <Check className="h-3 w-3" style={{ color: 'var(--cp-success)' }} />
                             {inc}
                           </span>
                         ))}
@@ -322,12 +348,12 @@ const TourPackages = () => {
                   )}
 
                   {pkg.cancellationPolicy && pkg.cancellationPolicy.enabled && pkg.cancellationPolicy.rules && pkg.cancellationPolicy.rules.length > 0 && (
-                    <div className="package-cancellation-policy" style={{ marginTop: '1rem', padding: '0.75rem', background: '#fef3c7', border: '1px solid #fde68a', borderRadius: '0.5rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: '#92400e' }}>
+                    <div className="package-cancellation-policy" style={{ marginTop: '1rem', padding: '0.75rem', background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '0.5rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem', color: 'var(--cp-warning)' }}>
                         <AlertTriangle className="h-4 w-4" />
                         <strong>Cancellation Policy</strong>
                       </div>
-                      <div style={{ fontSize: '0.85rem', color: '#92400e' }}>
+                      <div style={{ fontSize: '0.85rem', color: 'var(--cp-muted)' }}>
                         {pkg.cancellationPolicy.rules
                           .sort((a, b) => b.minDaysBeforeTrip - a.minDaysBeforeTrip)
                           .map((rule, idx) => (
@@ -340,15 +366,15 @@ const TourPackages = () => {
                     </div>
                   )}
 
-                  <div className="package-footer enhanced">
+                  <div className="package-footer enhanced" style={{ borderTopColor: 'var(--cp-line)' }}>
                     <div className="package-price enhanced">
                       <div>
-                        <small>Per person</small>
-                        <strong>₹{pkg.price.toLocaleString()}</strong>
+                        <small style={{ color: 'var(--cp-muted)' }}>Per person</small>
+                        <strong style={{ color: 'var(--cp-ink)' }}>₹{pkg.price.toLocaleString()}</strong>
                       </div>
                     </div>
                     <div className="package-features">
-                      <span className="feature-badge">
+                      <span className="feature-badge" style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--cp-success)', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
                         <Shield className="h-3 w-3" />
                         Secure Booking
                       </span>

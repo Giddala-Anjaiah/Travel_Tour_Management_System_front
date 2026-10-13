@@ -12,6 +12,14 @@ const TYPE_ICONS = {
   heritage: Landmark
 }
 
+const TYPE_COLORS = {
+  beach: 'var(--cp-type-beach)',
+  nature: 'var(--cp-type-nature)',
+  adventure: 'var(--cp-type-adventure)',
+  heritage: 'var(--cp-type-heritage)',
+  tour: 'var(--cp-type-tour)'
+}
+
 const DestinationExploration = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [filterType, setFilterType] = useState('all')
@@ -24,8 +32,6 @@ const DestinationExploration = () => {
     const load = async () => {
       try {
         setError('')
-        // Destinations are derived from the whole package list, so this fetch
-        // intentionally opts out of pagination (limit=all).
         const data = await api('/packages', { params: { publishedOnly: 'true', limit: 'all' } })
         setPackages(data.packages || [])
       } catch (err) {
@@ -75,14 +81,7 @@ const DestinationExploration = () => {
   }
 
   const getTypeColor = (type) => {
-    const colors = {
-      beach: '#0e7490',
-      nature: '#15803d',
-      adventure: '#b45309',
-      heritage: '#6d28d9',
-      tour: '#475569'
-    }
-    return colors[type] || '#475569'
+    return TYPE_COLORS[type] || TYPE_COLORS.tour
   }
 
   const types = [
@@ -97,7 +96,7 @@ const DestinationExploration = () => {
 
   return (
     <CustomerLayout
-      active="dashboard"
+      active="destinations"
       title="Explore destinations"
       subtitle="Handpicked places for your next journey"
       actions={
@@ -109,34 +108,8 @@ const DestinationExploration = () => {
         </div>
       }
     >
-      {loading && <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}><p style={{ color: '#64748b' }}>Loading destinations…</p></div>}
+      {loading && <div className="cd-skeleton-grid">{[1,2,3,4].map(i => <div key={i} className="cd-skeleton-card" />)}</div>}
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
-
-      <div className="cp-hero">
-        <div className="cp-hero-copy">
-          <p>Travel, planned with care</p>
-          <h2>Find a destination that fits your pace</h2>
-          <span>Browse curated trips, compare packages, and book hotels from one workspace.</span>
-        </div>
-        <div className="cp-hero-stats">
-          <div className="cp-hero-stat">
-            <small>Saved trips</small>
-            <strong>{favorites.length}</strong>
-          </div>
-          <div className="cp-hero-stat">
-            <small>Packages</small>
-            <strong>{packages.length}</strong>
-          </div>
-          <div className="cp-hero-stat">
-            <small>Regions</small>
-            <strong>{destinations.length}</strong>
-          </div>
-          <div className="cp-hero-stat">
-            <small>Best rated</small>
-            <strong>{destinations.length ? (destinations.reduce((s, d) => s + d.rating, 0) / destinations.length).toFixed(1) : '—'}</strong>
-          </div>
-        </div>
-      </div>
 
       <div className="filters-section enhanced">
         <div className="search-bar enhanced">
@@ -163,7 +136,11 @@ const DestinationExploration = () => {
       </div>
 
       {filteredDestinations.length === 0 ? (
-        <div className="cp-empty">No destinations match your search.</div>
+        <div className="cd-card cp-empty">
+          <Compass className="cp-empty-icon" size={48} />
+          <h3>No destinations found</h3>
+          <p>Try adjusting your search or filters to discover more places.</p>
+        </div>
       ) : (
         <div className="destinations-grid enhanced">
           {filteredDestinations.map((dest) => {
@@ -240,7 +217,7 @@ const DestinationExploration = () => {
                       </div>
                     </div>
                     <div className="destination-actions">
-                      <Link to={`/customer/destination/${dest.id}`} className="btn-secondary enhanced">
+                      <Link to={`/customer/destination/${dest.id}`} className="btn-primary enhanced">
                         View Details <ArrowRight className="h-4 w-4" />
                       </Link>
                       <Link to={`/customer/packages?destination=${encodeURIComponent(dest.name)}`} className="btn-primary enhanced">

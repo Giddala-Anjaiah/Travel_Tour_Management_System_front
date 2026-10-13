@@ -186,82 +186,97 @@ const BookingManagement = () => {
         </>
       }
     >
-      {error && <div className="error-message">{error}</div>}
-      <div className="filters-section">
-        <div className="search-bar">
-          <Search className="search-icon" />
-          <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search bookings by customer, email or package..." />
+      <div className="bookings-page">
+        {error && <div className="error-message">{error}</div>}
+        <div className="filters-section enhanced">
+          <div className="search-bar enhanced">
+            <Search className="search-icon" />
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search bookings by customer, email or package..." />
+          </div>
+          <div className="filter-controls enhanced">
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select enhanced">
+              <option value="all">All Status</option>
+              <option value="confirmed">Confirmed</option>
+              <option value="pending">Pending</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)} className="filter-select enhanced">
+              <option value="all">All Payment Status</option>
+              <option value="paid">Paid</option>
+              <option value="pending">Pending</option>
+              <option value="refunded">Refunded</option>
+            </select>
+          </div>
         </div>
-        <div className="filter-controls">
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select">
-            <option value="all">All Status</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="pending">Pending</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-          <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)} className="filter-select">
-            <option value="all">All Payment Status</option>
-            <option value="paid">Paid</option>
-            <option value="pending">Pending</option>
-            <option value="refunded">Refunded</option>
-          </select>
+
+        <div className="stats-grid enhanced">
+          <div className="stat-card"><Ticket className="stat-icon" /><div className="stat-content"><h3>Total Bookings</h3><p className="stat-number">{stats?.total ?? meta.total}</p></div></div>
+          <div className="stat-card"><CheckCircle className="stat-icon" /><div className="stat-content"><h3>Confirmed</h3><p className="stat-number">{confirmedBookings}</p></div></div>
+          <div className="stat-card"><Clock className="stat-icon" /><div className="stat-content"><h3>Pending</h3><p className="stat-number">{pendingBookings}</p></div></div>
+          <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Total Revenue</h3><p className="stat-number">{formatCurrency(paidRevenue)}</p></div></div>
+          <div className="stat-card"><CreditCard className="stat-icon" /><div className="stat-content"><h3>Pending Payments</h3><p className="stat-number">{formatCurrency(pendingPayments)}</p></div></div>
         </div>
-      </div>
 
-      <div className="stats-grid">
-        <div className="stat-card"><Ticket className="stat-icon" /><div className="stat-content"><h3>Total Bookings</h3><p className="stat-number">{stats?.total ?? meta.total}</p></div></div>
-        <div className="stat-card"><CheckCircle className="stat-icon" /><div className="stat-content"><h3>Confirmed</h3><p className="stat-number">{confirmedBookings}</p></div></div>
-        <div className="stat-card"><Clock className="stat-icon" /><div className="stat-content"><h3>Pending</h3><p className="stat-number">{pendingBookings}</p></div></div>
-        <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Total Revenue</h3><p className="stat-number">{formatCurrency(paidRevenue)}</p></div></div>
-        <div className="stat-card"><CreditCard className="stat-icon" /><div className="stat-content"><h3>Pending Payments</h3><p className="stat-number">{formatCurrency(pendingPayments)}</p></div></div>
-      </div>
-
-      <div className="section-card full-width">
-        <h3>Bookings ({hasLocalFilters ? filteredBookings.length : meta.total})</h3>
-        {loading ? <div style={{ padding: '2rem', textAlign: 'center' }}>Loading bookings...</div> : (
-          <div className="table-container">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Customer</th><th>Email</th><th>Package</th><th>Dates</th><th>Amount</th><th>Status</th><th>Payment</th><th>Booking Date</th><th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredBookings.length === 0 ? <tr><td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No bookings found</td></tr> : filteredBookings.map((booking) => (
-                  <tr key={booking.id}>
-                    <td className="customer-name">{booking.customer}</td>
-                    <td>{booking.email}</td>
-                    <td>{booking.package}</td>
-                    <td><Calendar className="h-4 w-4 inline-icon" />{booking.dates}</td>
-                    <td>₹{(booking.amount || 0).toLocaleString()}</td>
-                    <td><span className={`status-badge ${booking.status}`}>{booking.status}</span></td>
-                    <td><span className={`payment-badge ${booking.paymentStatus}`}>{booking.paymentStatus}</span></td>
-                    <td>{booking.bookingDate}</td>
-                    <td>
-                      <div className="action-buttons">
-                        <button className="icon-btn edit" onClick={() => { setSelectedBooking(booking); setShowEditModal(true) }}><Edit className="h-4 w-4" /></button>
-                        <select value={booking.status} className="status-select" onChange={(e) => updateBooking(booking.id, { status: e.target.value })}>
-                          <option value="confirmed">Confirmed</option>
-                          <option value="pending">Pending</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                        {booking.paymentStatus === 'pending' && (
-                          <button className="icon-btn payment" title="Mark paid" onClick={() => updateBooking(booking.id, { paymentStatus: 'paid', status: 'confirmed' })}>
-                            <CreditCard className="h-4 w-4" />
-                          </button>
-                        )}
-                        {booking.paymentStatus === 'paid' && (
-                          <button className="icon-btn refund" title="Refund" onClick={() => updateBooking(booking.id, { paymentStatus: 'refunded', status: 'cancelled' })}>
-                            <DollarSign className="h-4 w-4" />
-                          </button>
-                        )}
-                        <button className="icon-btn delete" onClick={() => handleDeleteBooking(booking.id)}><Trash2 className="h-4 w-4" /></button>
-                      </div>
-                    </td>
+        <div className="section-card enhanced full-width">
+          <h3><Ticket className="h-5 w-5" /> Bookings ({hasLocalFilters ? filteredBookings.length : meta.total})</h3>
+          {loading ? (
+            <div className="skeleton-wrap">
+              {[0, 1, 2, 3, 4].map((i) => <div key={i} className="skeleton-bar" style={{ width: `${96 - i * 4}%` }} />)}
+            </div>
+          ) : (
+            <div className="table-container enhanced">
+              <table className="data-table enhanced">
+                <thead>
+                  <tr>
+                    <th>Customer</th><th>Email</th><th>Package</th><th>Dates</th><th>Amount</th><th>Status</th><th>Payment</th><th>Booking Date</th><th>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredBookings.length === 0 ? (
+                    <tr>
+                      <td colSpan="9">
+                        <div className="empty-state enhanced">
+                          <Ticket className="h-8 w-8" />
+                          <h3>No bookings found</h3>
+                          <p>Try adjusting your search or filters.</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : filteredBookings.map((booking) => (
+                    <tr key={booking.id}>
+                      <td className="customer-name">{booking.customer}</td>
+                      <td className="cell-ellipsis" title={booking.email}>{booking.email}</td>
+                      <td className="cell-ellipsis" title={booking.package}>{booking.package}</td>
+                      <td className="cell-nowrap"><Calendar className="h-4 w-4 inline-icon" />{booking.dates}</td>
+                      <td className="cell-amount">₹{(booking.amount || 0).toLocaleString()}</td>
+                      <td><span className={`status-badge enhanced ${booking.status}`}>{booking.status}</span></td>
+                      <td><span className={`payment-badge enhanced ${booking.paymentStatus}`}>{booking.paymentStatus}</span></td>
+                      <td className="cell-nowrap">{booking.bookingDate}</td>
+                      <td>
+                        <div className="action-buttons enhanced">
+                          <button className="icon-btn enhanced edit" title="Edit" onClick={() => { setSelectedBooking(booking); setShowEditModal(true) }}><Edit className="h-4 w-4" /></button>
+                          <select value={booking.status} className="status-select enhanced" title="Change status" onChange={(e) => updateBooking(booking.id, { status: e.target.value })}>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="pending">Pending</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                          {booking.paymentStatus === 'pending' && (
+                            <button className="icon-btn enhanced payment" title="Mark paid" onClick={() => updateBooking(booking.id, { paymentStatus: 'paid', status: 'confirmed' })}>
+                              <CreditCard className="h-4 w-4" />
+                            </button>
+                          )}
+                          {booking.paymentStatus === 'paid' && (
+                            <button className="icon-btn enhanced refund" title="Refund" onClick={() => updateBooking(booking.id, { paymentStatus: 'refunded', status: 'cancelled' })}>
+                              <DollarSign className="h-4 w-4" />
+                            </button>
+                          )}
+                          <button className="icon-btn enhanced delete" title="Delete" onClick={() => handleDeleteBooking(booking.id)}><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             <Pagination
               page={page}
               totalPages={meta.totalPages}
@@ -277,11 +292,11 @@ const BookingManagement = () => {
       </div>
 
       {showAddModal && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
             <div className="modal-header"><h3>Add New Booking</h3><button className="modal-close" onClick={() => setShowAddModal(false)}>×</button></div>
             <div className="modal-body">
-              <form className="booking-form" onSubmit={handleAddBooking}>
+              <form className="booking-form enhanced" onSubmit={handleAddBooking}>
                 <div className="form-group"><label>Customer Name</label><input name="customer" required /></div>
                 <div className="form-group"><label>Email</label><input name="email" type="email" required /></div>
                 <div className="form-group">
@@ -314,11 +329,11 @@ const BookingManagement = () => {
       )}
 
       {showEditModal && selectedBooking && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
             <div className="modal-header"><h3>Edit Booking</h3><button className="modal-close" onClick={() => setShowEditModal(false)}>×</button></div>
             <div className="modal-body">
-              <form className="booking-form" onSubmit={handleUpdateBooking}>
+              <form className="booking-form enhanced" onSubmit={handleUpdateBooking}>
                 <div className="form-group"><label>Customer Name</label><input name="customer" defaultValue={selectedBooking.customer} required /></div>
                 <div className="form-group"><label>Email</label><input name="email" type="email" defaultValue={selectedBooking.email} required /></div>
                 <div className="form-group">
@@ -357,6 +372,7 @@ const BookingManagement = () => {
           </div>
         </div>
       )}
+      </div>
     </AdminLayout>
   )
 }

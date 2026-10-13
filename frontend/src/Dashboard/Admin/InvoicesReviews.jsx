@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { FileText, Star, Plus, Trash2, Search, Download, DollarSign } from 'lucide-react'
+import { FileText, Star, Plus, Trash2, Search, Download, DollarSign, CheckCircle, Clock } from 'lucide-react'
 import { api, downloadCsv, fetchAllPages, formValues, formatCurrency, formatDate, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
@@ -271,71 +271,86 @@ const InvoicesReviews = () => {
         </>
       }
     >
-      {error && <div className="error-message">{error}</div>}
-      <div className="tabs">
-        <button className={`tab ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => { setActiveTab('invoices'); setFilterStatus('all') }}><FileText className="h-4 w-4" /> Invoices</button>
-        <button className={`tab ${activeTab === 'reviews' ? 'active' : ''}`} onClick={() => { setActiveTab('reviews'); setFilterStatus('all') }}><Star className="h-4 w-4" /> Reviews</button>
-      </div>
-      <div className="filters-section">
-        <div className="search-bar">
-          <Search className="search-icon" />
-          <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={`Search ${activeTab}...`} />
+      <div className="invoices-page">
+        {error && <div className="error-message">{error}</div>}
+        <div className="tabs enhanced">
+          <button className={`tab ${activeTab === 'invoices' ? 'active' : ''}`} onClick={() => { setActiveTab('invoices'); setFilterStatus('all') }}><FileText className="h-4 w-4" /> Invoices</button>
+          <button className={`tab ${activeTab === 'reviews' ? 'active' : ''}`} onClick={() => { setActiveTab('reviews'); setFilterStatus('all') }}><Star className="h-4 w-4" /> Reviews</button>
         </div>
-        <div className="filter-controls">
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select">
-            <option value="all">All Status</option>
-            {activeTab === 'invoices' ? (
-              <>
-                <option value="paid">Paid</option>
-                <option value="pending">Pending</option>
-                <option value="overdue">Overdue</option>
-              </>
-            ) : (
-              <>
-                <option value="approved">Approved</option>
-                <option value="pending">Pending</option>
-                <option value="rejected">Rejected</option>
-              </>
-            )}
-          </select>
+        <div className="filters-section enhanced">
+          <div className="search-bar enhanced">
+            <Search className="search-icon" />
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={`Search ${activeTab}...`} />
+          </div>
+          <div className="filter-controls enhanced">
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select enhanced">
+              <option value="all">All Status</option>
+              {activeTab === 'invoices' ? (
+                <>
+                  <option value="paid">Paid</option>
+                  <option value="pending">Pending</option>
+                  <option value="overdue">Overdue</option>
+                </>
+              ) : (
+                <>
+                  <option value="approved">Approved</option>
+                  <option value="pending">Pending</option>
+                  <option value="rejected">Rejected</option>
+                </>
+              )}
+            </select>
+          </div>
         </div>
-      </div>
 
       {activeTab === 'invoices' && (
         <>
-          <div className="stats-grid">
+          <div className="stats-grid enhanced">
             <div className="stat-card"><FileText className="stat-icon" /><div className="stat-content"><h3>Total Invoices</h3><p className="stat-number">{invoiceStats?.total ?? invoiceMeta.total}</p></div></div>
             <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Total Amount</h3><p className="stat-number">{formatCurrency(invoiceStats?.totalAmount ?? invoices.reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
-            <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Paid</h3><p className="stat-number">{formatCurrency(invoices.filter((i) => i.status === 'paid').reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
-            <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Pending</h3><p className="stat-number">{formatCurrency(invoices.filter((i) => i.status !== 'paid').reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
+            <div className="stat-card"><CheckCircle className="stat-icon" /><div className="stat-content"><h3>Paid</h3><p className="stat-number">{formatCurrency(invoices.filter((i) => i.status === 'paid').reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
+            <div className="stat-card"><Clock className="stat-icon" /><div className="stat-content"><h3>Pending</h3><p className="stat-number">{formatCurrency(invoices.filter((i) => i.status !== 'paid').reduce((sum, inv) => sum + inv.amount, 0))}</p></div></div>
           </div>
-          <div className="section-card full-width">
-            <h3>Invoices ({hasLocalFilters ? filteredInvoices.length : invoiceMeta.total})</h3>
-            {loading ? <div style={{ padding: '2rem', textAlign: 'center' }}>Loading...</div> : (
-              <div className="table-container">
-                <table className="data-table">
+          <div className="section-card enhanced full-width">
+            <h3><FileText className="h-5 w-5" /> Invoices ({hasLocalFilters ? filteredInvoices.length : invoiceMeta.total})</h3>
+            {loading ? (
+              <div className="skeleton-wrap">
+                {[0, 1, 2, 3, 4].map((i) => <div key={i} className="skeleton-bar" style={{ width: `${96 - i * 4}%` }} />)}
+              </div>
+            ) : (
+              <div className="table-container enhanced">
+                <table className="data-table enhanced">
                   <thead><tr><th>Invoice No</th><th>Customer</th><th>Email</th><th>Package</th><th>Amount</th><th>Status</th><th>Date</th><th>Due Date</th><th>Actions</th></tr></thead>
                   <tbody>
-                    {filteredInvoices.length === 0 ? <tr><td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No invoices found</td></tr> : filteredInvoices.map((invoice) => (
+                    {filteredInvoices.length === 0 ? (
+                      <tr>
+                        <td colSpan="9">
+                          <div className="empty-state enhanced">
+                            <FileText className="h-8 w-8" />
+                            <h3>No invoices found</h3>
+                            <p>Try adjusting your search or filters.</p>
+                          </div>
+                        </td>
+                      </tr>
+                    ) : filteredInvoices.map((invoice) => (
                       <tr key={invoice.id}>
                         <td className="invoice-no">{invoice.invoiceNo}</td>
-                        <td>{invoice.customer}</td>
-                        <td>{invoice.email}</td>
-                        <td>{invoice.package}</td>
-                        <td>₹{invoice.amount.toLocaleString()}</td>
+                        <td className="customer-name">{invoice.customer}</td>
+                        <td className="cell-ellipsis" title={invoice.email}>{invoice.email}</td>
+                        <td className="cell-ellipsis" title={invoice.package}>{invoice.package}</td>
+                        <td className="cell-amount">₹{invoice.amount.toLocaleString()}</td>
                         <td>
-                          <select className="status-select" value={invoice.status} onChange={(e) => api(`/admin/invoices/${invoice.id}`, { method: 'PUT', body: JSON.stringify({ status: e.target.value }) }).then(() => load()).catch((err) => console.error('Status update failed:', err))}>
+                          <select className="status-select enhanced" value={invoice.status} onChange={(e) => api(`/admin/invoices/${invoice.id}`, { method: 'PUT', body: JSON.stringify({ status: e.target.value }) }).then(() => load()).catch((err) => console.error('Status update failed:', err))}>
                             <option value="paid">paid</option>
                             <option value="pending">pending</option>
                             <option value="overdue">overdue</option>
                           </select>
                         </td>
-                        <td>{invoice.date}</td>
-                        <td>{invoice.dueDate}</td>
+                        <td className="cell-nowrap">{invoice.date}</td>
+                        <td className="cell-nowrap">{invoice.dueDate}</td>
                         <td>
-                          <div className="action-buttons">
-                            <button className="icon-btn download" onClick={() => downloadInvoice(invoice)}><Download className="h-4 w-4" /></button>
-                            <button className="icon-btn delete" onClick={() => handleDeleteInvoice(invoice.id)}><Trash2 className="h-4 w-4" /></button>
+                          <div className="action-buttons enhanced">
+                            <button className="icon-btn enhanced download" title="Download" onClick={() => downloadInvoice(invoice)}><Download className="h-4 w-4" /></button>
+                            <button className="icon-btn enhanced delete" title="Delete" onClick={() => handleDeleteInvoice(invoice.id)}><Trash2 className="h-4 w-4" /></button>
                           </div>
                         </td>
                       </tr>
@@ -360,65 +375,87 @@ const InvoicesReviews = () => {
 
       {activeTab === 'reviews' && (
         <>
-          <div className="stats-grid">
+          <div className="stats-grid enhanced">
             <div className="stat-card"><Star className="stat-icon" /><div className="stat-content"><h3>Total Reviews</h3><p className="stat-number">{reviewStats?.total ?? reviewMeta.total}</p></div></div>
-            <div className="stat-card"><Star className="stat-icon" /><div className="stat-content"><h3>Average Rating</h3><p className="stat-number">{avgRating}</p></div></div>
-            <div className="stat-card"><FileText className="stat-icon" /><div className="stat-content"><h3>Pending Approval</h3><p className="stat-number">{reviewStats?.byStatus?.pending ?? reviews.filter((r) => r.status === 'pending').length}</p></div></div>
+            <div className="stat-card"><CheckCircle className="stat-icon" /><div className="stat-content"><h3>Average Rating</h3><p className="stat-number">{avgRating}</p></div></div>
+            <div className="stat-card"><Clock className="stat-icon" /><div className="stat-content"><h3>Pending Approval</h3><p className="stat-number">{reviewStats?.byStatus?.pending ?? reviews.filter((r) => r.status === 'pending').length}</p></div></div>
           </div>
-          <div className="section-card full-width">
-            <h3>Reviews ({hasLocalFilters ? filteredReviews.length : reviewMeta.total})</h3>
-            <div className="reviews-list">
-              {filteredReviews.length === 0 && <div style={{ padding: '2rem', textAlign: 'center' }}>No reviews found</div>}
-              {filteredReviews.map((review) => (
-                <div key={review.id} className="review-item">
-                  <div className="review-header">
-                    <div className="reviewer-info">
-                      <span className="reviewer">{review.customer}</span>
-                      <span className="review-package">{review.package}</span>
+          <div className="section-card enhanced full-width">
+            <h3><Star className="h-5 w-5" /> Reviews ({hasLocalFilters ? filteredReviews.length : reviewMeta.total})</h3>
+            {loading ? (
+              <div className="reviews-list">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="skeleton-card">
+                    <div className="skeleton-bar" style={{ width: '45%' }} />
+                    <div className="skeleton-bar" style={{ width: '90%' }} />
+                    <div className="skeleton-bar" style={{ width: '70%' }} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="reviews-list">
+                  {filteredReviews.length === 0 ? (
+                    <div className="empty-state enhanced">
+                      <Star className="h-8 w-8" />
+                      <h3>No reviews found</h3>
+                      <p>Try adjusting your search or filters.</p>
                     </div>
-                    <div className="review-meta">
-                      <div className="rating">
-                        {[...Array(5)].map((_, i) => <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'fill' : ''}`} />)}
+                  ) : filteredReviews.map((review) => (
+                    <div key={review.id} className="review-item enhanced">
+                      <div className="review-header">
+                        <div className="reviewer-info">
+                          <div className="reviewer-row">
+                            <span className="reviewer-avatar">{review.customer.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()}</span>
+                            <span className="reviewer">{review.customer}</span>
+                          </div>
+                          <span className="review-package">{review.package}</span>
+                        </div>
+                        <div className="review-meta">
+                          <div className="rating">
+                            {[...Array(5)].map((_, i) => <Star key={i} className={`h-4 w-4 ${i < review.rating ? 'fill' : ''}`} />)}
+                          </div>
+                          <span className={`status-badge enhanced ${review.status}`}>{review.status}</span>
+                        </div>
                       </div>
-                      <span className={`status-badge ${review.status}`}>{review.status}</span>
+                      <p className="review-text">{review.comment}</p>
+                      <div className="review-footer">
+                        <span className="review-date">{review.date}</span>
+                        <div className="review-actions">
+                          {review.status === 'pending' && (
+                            <>
+                              <button className="btn-approve enhanced" onClick={() => updateReviewStatus(review.id, 'approved')}>Approve</button>
+                              <button className="btn-reject enhanced" onClick={() => updateReviewStatus(review.id, 'rejected')}>Reject</button>
+                            </>
+                          )}
+                          <button className="icon-btn enhanced delete" title="Delete" onClick={() => handleDeleteReview(review.id)}><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <p className="review-text">{review.comment}</p>
-                  <div className="review-footer">
-                    <span className="review-date">{review.date}</span>
-                    <div className="review-actions">
-                      {review.status === 'pending' && (
-                        <>
-                          <button className="btn-approve" onClick={() => updateReviewStatus(review.id, 'approved')}>Approve</button>
-                          <button className="btn-reject" onClick={() => updateReviewStatus(review.id, 'rejected')}>Reject</button>
-                        </>
-                      )}
-                      <button className="icon-btn delete" onClick={() => handleDeleteReview(review.id)}><Trash2 className="h-4 w-4" /></button>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-            <Pagination
-              page={reviewPage}
-              totalPages={reviewMeta.totalPages}
-              total={reviewMeta.total}
-              limit={reviewMeta.limit}
-              onPageChange={handleReviewPageChange}
-              onLimitChange={handleReviewLimitChange}
-              itemLabel="reviews"
-              disabled={loading}
-            />
+                <Pagination
+                  page={reviewPage}
+                  totalPages={reviewMeta.totalPages}
+                  total={reviewMeta.total}
+                  limit={reviewMeta.limit}
+                  onPageChange={handleReviewPageChange}
+                  onLimitChange={handleReviewLimitChange}
+                  itemLabel="reviews"
+                  disabled={loading}
+                />
+              </>
+            )}
           </div>
         </>
       )}
 
       {showReviewModal && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
             <div className="modal-header"><h3>Add Review</h3><button className="modal-close" onClick={() => setShowReviewModal(false)}>×</button></div>
             <div className="modal-body">
-              <form className="invoice-form" onSubmit={handleCreateReview}>
+              <form className="invoice-form enhanced" onSubmit={handleCreateReview}>
                 <div className="form-group"><label>Customer Name</label><input name="customer" required /></div>
                 <div className="form-group">
                   <label>Package</label>
@@ -449,11 +486,11 @@ const InvoicesReviews = () => {
       )}
 
       {showAddModal && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
             <div className="modal-header"><h3>Create Invoice</h3><button className="modal-close" onClick={() => setShowAddModal(false)}>×</button></div>
             <div className="modal-body">
-              <form className="invoice-form" onSubmit={handleCreateInvoice}>
+              <form className="invoice-form enhanced" onSubmit={handleCreateInvoice}>
                 <div className="form-group"><label>Customer Name</label><input name="customer" required /></div>
                 <div className="form-group"><label>Email</label><input name="email" type="email" required /></div>
                 <div className="form-group">
@@ -476,6 +513,7 @@ const InvoicesReviews = () => {
           </div>
         </div>
       )}
+      </div>
     </AdminLayout>
   )
 }

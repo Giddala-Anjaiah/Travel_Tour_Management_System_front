@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { ExternalLink, Loader2, MapPin } from 'lucide-react';
+import { ExternalLink, Loader2, MapPin, Map as MapIcon } from 'lucide-react';
 
 delete L.Icon.Default.prototype._getIconUrl;
 
@@ -41,15 +41,34 @@ function MapComponent({ destination, coordinates, onGetDirections }) {
   useEffect(() => {
     if (coordinates) {
       setMapReady(true);
+    } else {
+      setMapReady(false);
     }
   }, [coordinates]);
+
+  // Fallback when coordinates are not available
+  if (!coordinates) {
+    return (
+      <div className="map-container" ref={containerRef}>
+        <div className="map-unavailable">
+          <MapIcon className="h-12 w-12" style={{ color: 'var(--cp-text-muted)', opacity: 0.5 }} />
+          <p style={{ fontWeight: 500, margin: '1rem 0 0.5rem 0', color: 'var(--cp-text)' }}>
+            Map not available for "{destination}"
+          </p>
+          <small style={{ color: 'var(--cp-text-muted)' }}>
+            Coordinates not found in our database
+          </small>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="map-container" ref={containerRef}>
       {!mapReady ? (
         <div className="map-loading">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <p>Loading map...</p>
+          <Loader2 className="h-8 w-8 animate-spin" style={{ color: 'var(--cp-primary)' }} />
+          <p style={{ color: 'var(--cp-text-muted)' }}>Loading map...</p>
         </div>
       ) : (
         <>
@@ -64,7 +83,7 @@ function MapComponent({ destination, coordinates, onGetDirections }) {
               attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            {coordinates && <CustomMarker position={position} name={destination} coords={coordinates} />}
+            <CustomMarker position={position} name={destination} coords={coordinates} />
           </MapContainer>
           <div className="map-directions">
             <a

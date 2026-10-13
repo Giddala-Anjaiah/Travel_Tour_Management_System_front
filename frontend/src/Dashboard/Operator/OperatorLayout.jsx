@@ -1,5 +1,6 @@
-import { BarChart3, Users, MapPin, Calendar, Ticket, PieChart, Settings, LogOut, Building, TrendingUp, Star, User } from 'lucide-react'
+import { BarChart3, Users, MapPin, Calendar, Ticket, PieChart, Settings, LogOut, Building, TrendingUp, Star, User, Menu, X, Sun, Moon } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useState, useEffect } from 'react'
 import '../Dashboard.css'
 
 const navItems = [
@@ -15,9 +16,38 @@ const navItems = [
   { to: '/tour-operator/settings', match: 'settings', label: 'Settings', icon: Settings }
 ]
 
-const OperatorLayout = ({ active, title, actions, children }) => {
+const OperatorLayout = ({ active, title, subtitle, actions, children }) => {
   const navigate = useNavigate()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
+  const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
   const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const initials = (user.fullName || 'Operator')
+    .split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0].toUpperCase())
+    .join('')
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme)
+    document.documentElement.style.colorScheme = theme
+    localStorage.setItem('theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
+  }
+
+  const isMobile = () => window.matchMedia('(max-width: 900px)').matches
+
+  const handleMenuToggle = () => {
+    if (isMobile()) {
+      setSidebarOpen((prev) => !prev)
+    } else {
+      setSidebarCollapsed((prev) => !prev)
+    }
+  }
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -26,11 +56,22 @@ const OperatorLayout = ({ active, title, actions, children }) => {
   }
 
   return (
-    <div className="dashboard-container">
-      <aside className="dashboard-sidebar">
+    <div className="dashboard-container operator-portal">
+      <button className="sidebar-toggle" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle sidebar">
+        {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+      </button>
+      <aside className={`dashboard-sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <div className="sidebar-header">
-          <MapPin className="h-8 w-8" />
-          <h2>Tour Operator</h2>
+          <span className="op-brand-mark">
+            <MapPin className="h-6 w-6" />
+          </span>
+          <div className="op-brand-text">
+            <h2>Tour Operator</h2>
+            <p className="op-brand-sub">Operator portal</p>
+          </div>
+          <button className="sidebar-menu-btn" onClick={handleMenuToggle} aria-label="Toggle menu">
+            {sidebarCollapsed ? <Menu className="h-5 w-5" /> : <X className="h-5 w-5" />}
+          </button>
         </div>
         <nav className="sidebar-nav">
           {navItems.map((item) => {
@@ -40,6 +81,8 @@ const OperatorLayout = ({ active, title, actions, children }) => {
                 key={item.to}
                 to={item.to}
                 className={`nav-item ${active === item.match ? 'active' : ''}`}
+                title={sidebarCollapsed ? item.label : ''}
+                onClick={() => setSidebarOpen(false)}
               >
                 <Icon className="h-5 w-5" />
                 <span>{item.label}</span>
@@ -47,19 +90,26 @@ const OperatorLayout = ({ active, title, actions, children }) => {
             )
           })}
         </nav>
-    </aside>
+      </aside>
 
-      <main className="dashboard-main">
+      <main className={`dashboard-main ${sidebarCollapsed ? 'collapsed' : ''}`}>
         <header className="dashboard-header">
-          <h1>{title}</h1>
+          <div>
+            <h1>{title}</h1>
+            {subtitle ? <p className="header-subtitle">{subtitle}</p> : null}
+          </div>
           <div className="header-actions">
             {actions}
+            <button onClick={toggleTheme} className="icon-btn header-icon-btn" aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`} title={theme === 'light' ? 'Dark mode' : 'Light mode'}>
+              {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+            </button>
             <button onClick={handleLogout} className="btn-logout-header">
               <LogOut className="h-4 w-4" />
               <span>Logout</span>
             </button>
             <div className="user-info">
-              <span>Welcome, {user.fullName || 'Tour Operator'}</span>
+              <span className="cp-avatar">{initials}</span>
+              <span>{user.fullName || 'Tour Operator'}</span>
             </div>
           </div>
         </header>

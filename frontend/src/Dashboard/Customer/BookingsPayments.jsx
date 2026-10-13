@@ -1,10 +1,34 @@
-import { useState, useEffect } from 'react'
-import { CreditCard, Search, Clock, CheckCircle, XCircle, AlertCircle, Download, Eye, Sparkles, Shield, Ticket, Calendar as CalendarIcon, Wallet, Zap, Users, MapPin, X, AlertTriangle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { CreditCard, Search, Clock, CheckCircle, XCircle, AlertCircle, Download, Eye, Sparkles, Shield, Ticket, Calendar as CalendarIcon, Wallet, Zap, Users, MapPin, X, AlertTriangle, Calendar, Link as LinkIcon } from 'lucide-react'
 import { useSearchParams, useLocation } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
 import { api, formatDate, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
+
+const AnimatedNumber = ({ value, prefix = '', suffix = '', decimals = 0 }) => {
+  const [display, setDisplay] = useState(0)
+  const displayRef = useRef(display)
+  useEffect(() => {
+    const start = displayRef.current
+    const end = Number(value) || 0
+    const duration = 700
+    const startTime = Date.now()
+    const tick = () => {
+      const elapsed = Date.now() - startTime
+      const t = Math.min(elapsed / duration, 1)
+      const eased = 1 - Math.pow(1 - t, 3)
+      const next = start + (end - start) * eased
+      setDisplay(next)
+      displayRef.current = next
+      if (t < 1) requestAnimationFrame(tick)
+    }
+    const raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [value])
+  return <>{prefix}{display.toFixed(decimals)}{suffix}</>
+}
 
 const BookingsPayments = () => {
   const [bookings, setBookings] = useState([])
@@ -443,9 +467,175 @@ const BookingsPayments = () => {
     }
   }
 
-  const totalCount = stats?.total ?? meta.total
+const totalCount = stats?.total ?? meta.total
   const totalSpent = stats?.totalSpent ?? bookings.reduce((sum, b) => sum + (b.paidAmount || 0), 0)
   const pendingPayment = bookings.reduce((sum, b) => sum + ((b.amount || 0) - (b.paidAmount || 0)), 0)
+
+  const kpis = [
+    { icon: Ticket, label: 'Total Bookings', value: totalCount, accent: 'var(--cp-accent)', sub: 'All time' },
+    { icon: CheckCircle, label: 'Confirmed', value: bookings.filter(b => b.status === 'confirmed').length, accent: 'var(--cp-success)', sub: 'Active trips' },
+    { icon: Wallet, label: 'Total Spent', value: totalSpent, prefix: '₹', accent: 'var(--cp-info)', sub: 'Lifetime spend' },
+    { icon: AlertCircle, label: 'Pending Payment', value: pendingPayment, prefix: '₹', accent: 'var(--cp-warning)', sub: 'Awaiting payment' }
+  ]
+
+  // Render content based on state
+  const renderContent = () => {
+    if (loading) {
+      return (
+        <>
+          <div className="cd-skeleton-grid">
+            {[1,2,3,4].map(i => <div key={i} className="cd-skeleton-card" />)}
+          </div>
+          <Pagination
+            page={page}
+            totalPages={meta.totalPages}
+            total={hasLocalFilters ? filteredBookings.length : totalCount}
+            limit={meta.limit}
+            onPageChange={handlePageChange}
+            onLimitChange={handleLimitChange}
+            itemLabel="bookings"
+            disabled={loading}
+          />
+        </>
+      )
+    }
+    if (bookings.length === 0) {
+      return (
+        <>
+          <div className="cd-card cp-empty">
+            <Calendar className="cp-empty-icon" size={48} />
+            <h3>No bookings yet</h3>
+            <p>Start your journey by browsing our curated packages.</p>
+            <Link to="/customer/packages" className="btn-primary enhanced" style={{ display: 'inline-flex', marginTop: '1rem' }}>
+              <Ticket className="h-4 w-4" /> Explore Packages
+            </Link>
+          </div>
+          <Pagination
+            page={page}
+            totalPages={meta.totalPages}
+            total={hasLocalFilters ? filteredBookings.length : totalCount}
+            limit={meta.limit}
+            onPageChange={handlePageChange}
+            onLimitChange={handleLimitChange}
+            itemLabel="bookings"
+            disabled={loading}
+          />
+        </>
+      )
+    }
+    return (
+      <>
+        <div className="bookings-list enhanced">
+          {filteredBookings.map(booking => (
+            <div key={booking._id} className="booking-card enhanced">
+              <div className="booking-header enhanced">
+                <div className="booking-info">
+                  <h3>{booking.package}</h3>
+                  <div className="booking-id">
+                    <Ticket className="h-4 w-4" />
+                    <span>{booking.bookingId}</span>
+                  </div>
+                </div>
+                <div className="booking-badges">
+                  <span className={`status-badge ${booking.status}`}>
+                    {getStatusIcon(booking.status)}
+                    {booking.status}
+                  </span>
+                </div>
+              </div>
+
+              <div className="booking-details enhanced">
+                <div className="detail-item">
+                  <CalendarIcon className="h-4 w-4" />
+                  <div>
+                    <small>Travel Date</small>
+                    <strong>{booking.dates || formatDate(booking.bookingDate)}</strong>
+                  </div>
+                </div>
+                <div className="detail-item">
+                  <Users className="h-4 w-4" />
+                  <div>
+                    <small>Travelers</small>
+                    <strong>{booking.travelers || 1}</strong>
+                  </div>
+                </div>
+              </div>
+
+              <div className="booking-payment-section">
+                <div className="payment-progress">
+                  <div className="progress-header">
+                    <span>Payment Progress</span>
+                    <span>{getPaymentProgress(booking.paidAmount || 0, booking.finalAmount || booking.amount || 0)}%</span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-fill"
+                      style={{
+                        width: `${getPaymentProgress(booking.paidAmount || 0, booking.finalAmount || booking.amount || 0)}%`,
+                        backgroundColor: getPaymentStatusColor(booking.paymentStatus)
+                      }}
+                    ></div>
+                  </div>
+                  <div className="payment-amounts">
+                    {booking.coupon && (
+                      <span style={{ color: 'var(--cp-success)' }}>Coupon: {booking.coupon.code} (-₹{(booking.discountAmount || 0).toLocaleString()})</span>
+                    )}
+                    <span>Paid: ₹{(booking.paidAmount || 0).toLocaleString()}</span>
+                    <span>Total: ₹{(booking.finalAmount || booking.amount || 0).toLocaleString()}</span>
+                  </div>
+                </div>
+                <div className={`payment-status-badge payment-status--${booking.paymentStatus}`}>
+                  <CreditCard className="h-4 w-4" />
+                  <span>{booking.paymentStatus}</span>
+                </div>
+              </div>
+
+              <div className="booking-actions enhanced">
+                <button className="icon-btn" onClick={() => handleViewDetails(booking)}>
+                  <Eye className="h-4 w-4" />
+                </button>
+                <button className="icon-btn" onClick={() => handleDownloadInvoice(booking)}>
+                  <Download className="h-4 w-4" />
+                </button>
+                {booking.paymentStatus !== 'paid' && (
+                  <button
+                    onClick={() => handlePayment(booking)}
+                    className="btn-primary enhanced"
+                  >
+                    <CreditCard className="h-4 w-4" /> Pay Now
+                  </button>
+                )}
+                {booking.paymentStatus === 'paid' && (
+                  <span className="fully-paid-badge">
+                    <CheckCircle className="h-4 w-4" /> Fully Paid
+                  </span>
+                )}
+                {booking.status !== 'cancelled' && booking.status !== 'completed' && (
+                  <button
+                    onClick={() => handleCancelBooking(booking)}
+                    className="btn-danger enhanced"
+                    style={{ background: 'var(--cp-danger)', borderColor: 'var(--cp-danger)' }}
+                  >
+                    <X className="h-4 w-4" /> Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <Pagination
+          page={page}
+          totalPages={meta.totalPages}
+          total={hasLocalFilters ? filteredBookings.length : totalCount}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="bookings"
+          disabled={loading}
+        />
+      </>
+    )
+  }
 
   return (
     <CustomerLayout
@@ -465,197 +655,70 @@ const BookingsPayments = () => {
         </div>
       }
     >
-      {error && <div className="section-card"><p style={{ color: '#ef4444' }}>{error}</p></div>}
+      <div className="dashboard-page">
+        {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 
-      <div className="stats-grid enhanced">
-        <div className="stat-card enhanced">
-          <Ticket className="stat-icon" />
-          <div className="stat-content">
-<h3>Total Bookings</h3>
-          <p className="stat-number">{totalCount}</p>
+        <div className="cd-kpi-grid">
+          {kpis.map((k, i) => {
+            const Icon = k.icon
+            return (
+              <div key={i} className="cd-kpi" style={{ '--accent': k.accent }}>
+                <div className="cd-kpi-head">
+                  <div className="cd-kpi-icon"><Icon size={22} /></div>
+                </div>
+                <div className="cd-kpi-label">{k.label}</div>
+                <p className="cd-kpi-value">
+                  <AnimatedNumber value={k.value} prefix={k.prefix || ''} />
+                </p>
+                <div className="cd-kpi-sub">{k.sub}</div>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="cd-card" style={{ marginBottom: '1.5rem' }}>
+          <h3 style={{ margin: '0 0 1rem 0', color: 'var(--cp-ink)' }}>Create New Booking</h3>
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button onClick={() => openBookingModal('package')} className="btn-primary enhanced">
+              <Ticket className="h-4 w-4" /> Book a Package
+            </button>
+            <button onClick={() => openBookingModal('hotel')} className="btn-secondary enhanced">
+              <MapPin className="h-4 w-4" /> Book a Hotel
+            </button>
           </div>
         </div>
-        <div className="stat-card enhanced">
-          <CheckCircle className="stat-icon" />
-          <div className="stat-content">
-            <h3>Confirmed</h3>
-            <p className="stat-number">{bookings.filter(b => b.status === 'confirmed').length}</p>
+
+        <div className="filters-section enhanced">
+          <div className="search-bar enhanced">
+            <Search className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search bookings, packages..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
           </div>
-        </div>
-        <div className="stat-card enhanced">
-          <Wallet className="stat-icon" />
-          <div className="stat-content">
-            <h3>Total Spent</h3>
-            <p className="stat-number">₹{totalSpent.toLocaleString()}</p>
-          </div>
-        </div>
-        <div className="stat-card enhanced">
-          <AlertCircle className="stat-icon" />
-          <div className="stat-content">
-            <h3>Pending Payment</h3>
-            <p className="stat-number">₹{pendingPayment.toLocaleString()}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="section-card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ margin: '0 0 1rem 0' }}>Create New Booking</h3>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button onClick={() => openBookingModal('package')} className="btn-primary enhanced">
-            <Ticket className="h-4 w-4" /> Book a Package
-          </button>
-          <button onClick={() => openBookingModal('hotel')} className="btn-secondary enhanced">
-            <MapPin className="h-4 w-4" /> Book a Hotel
-          </button>
-        </div>
-      </div>
-
-      <div className="filters-section enhanced">
-        <div className="search-bar enhanced">
-          <Search className="search-icon" />
-          <input
-            type="text"
-            placeholder="Search bookings, packages..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
-        </div>
-        <div className="filter-controls enhanced">
-          <div className="filter-group">
-            <label>Status</label>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="filter-select"
-            >
-              <option value="all">All Status</option>
-              <option value="confirmed">Confirmed</option>
-              <option value="pending">Pending</option>
-              <option value="completed">Completed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {loading && <div className="section-card"><p>Loading bookings...</p></div>}
-      {!loading && bookings.length === 0 && (
-        <div className="section-card">
-          <p>You have no bookings yet. Browse packages to book your first trip.</p>
-        </div>
-      )}
-
-      <div className="bookings-list enhanced">
-        {filteredBookings.map(booking => (
-          <div key={booking._id} className="booking-card enhanced">
-            <div className="booking-header enhanced">
-              <div className="booking-info">
-                <h3>{booking.package}</h3>
-                <div className="booking-id">
-                  <Ticket className="h-4 w-4" />
-                  <span>{booking.bookingId}</span>
-                </div>
-              </div>
-              <div className="booking-badges">
-                <span className={`status-badge ${booking.status}`}>
-                  {getStatusIcon(booking.status)}
-                  {booking.status}
-                </span>
-              </div>
-            </div>
-
-            <div className="booking-details enhanced">
-              <div className="detail-item">
-                <CalendarIcon className="h-4 w-4" />
-                <div>
-                  <small>Travel Date</small>
-                  <strong>{booking.dates || formatDate(booking.bookingDate)}</strong>
-                </div>
-              </div>
-              <div className="detail-item">
-                <Users className="h-4 w-4" />
-                <div>
-                  <small>Travelers</small>
-                  <strong>{booking.travelers || 1}</strong>
-                </div>
-              </div>
-            </div>
-
-            <div className="booking-payment-section">
-              <div className="payment-progress">
-                <div className="progress-header">
-                  <span>Payment Progress</span>
-                  <span>{getPaymentProgress(booking.paidAmount || 0, booking.finalAmount || booking.amount || 0)}%</span>
-                </div>
-                <div className="progress-bar">
-                  <div
-                    className="progress-fill"
-                    style={{
-                      width: `${getPaymentProgress(booking.paidAmount || 0, booking.finalAmount || booking.amount || 0)}%`,
-                      backgroundColor: getPaymentStatusColor(booking.paymentStatus)
-                    }}
-                  ></div>
-                </div>
-                <div className="payment-amounts">
-                  {booking.coupon && (
-                    <span style={{ color: '#22c55e' }}>Coupon: {booking.coupon.code} (-₹{(booking.discountAmount || 0).toLocaleString()})</span>
-                  )}
-                  <span>Paid: ₹{(booking.paidAmount || 0).toLocaleString()}</span>
-                  <span>Total: ₹{(booking.finalAmount || booking.amount || 0).toLocaleString()}</span>
-                </div>
-              </div>
-              <div className={`payment-status-badge payment-status--${booking.paymentStatus}`}>
-                <CreditCard className="h-4 w-4" />
-                <span>{booking.paymentStatus}</span>
-              </div>
-            </div>
-
-            <div className="booking-actions enhanced">
-              <button className="icon-btn">
-                <Eye className="h-4 w-4" />
-              </button>
-              <button className="icon-btn">
-                <Download className="h-4 w-4" />
-              </button>
-              {booking.paymentStatus !== 'paid' && (
-                <button
-                  onClick={() => handlePayment(booking)}
-                  className="btn-primary enhanced"
-                >
-                  <CreditCard className="h-4 w-4" /> Pay Now
-                </button>
-              )}
-              {booking.paymentStatus === 'paid' && (
-                <span className="fully-paid-badge">
-                  <CheckCircle className="h-4 w-4" /> Fully Paid
-                </span>
-              )}
-              {booking.status !== 'cancelled' && booking.status !== 'completed' && (
-                <button
-                  onClick={() => handleCancelBooking(booking)}
-                  className="btn-danger enhanced"
-                  style={{ background: '#ef4444', borderColor: '#ef4444' }}
-                >
-                  <X className="h-4 w-4" /> Cancel
-                </button>
-              )}
+          <div className="filter-controls enhanced">
+            <div className="filter-group">
+              <label>Status</label>
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="filter-select"
+              >
+                <option value="all">All Status</option>
+                <option value="confirmed">Confirmed</option>
+                <option value="pending">Pending</option>
+                <option value="completed">Completed</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
             </div>
           </div>
-        ))}
-      </div>
+</div>
 
-      <Pagination
-        page={page}
-        totalPages={meta.totalPages}
-        total={hasLocalFilters ? filteredBookings.length : totalCount}
-        limit={meta.limit}
-        onPageChange={handlePageChange}
-        onLimitChange={handleLimitChange}
-        itemLabel="bookings"
-        disabled={loading}
-      />
+        {renderContent()}
 
-      {showPaymentModal && selectedBooking && (
+        {showPaymentModal && selectedBooking && (
         <div className="modal-overlay">
           <div className="modal payment-modal">
             <div className="modal-header">
@@ -970,6 +1033,7 @@ const BookingsPayments = () => {
           </div>
         </div>
       )}
+      </div>
     </CustomerLayout>
   )
 }

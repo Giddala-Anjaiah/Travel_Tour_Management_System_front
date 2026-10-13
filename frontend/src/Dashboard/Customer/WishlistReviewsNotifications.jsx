@@ -383,7 +383,8 @@ const WishlistReviewsNotifications = () => {
                     <div className="wishlist-emoji-wrapper">
                       {item.image ? <img className="cp-cover" src={item.image} alt={item.packageName} /> : <Star className="h-12 w-12" style={{ color: '#cbd5e1' }} />}
                     </div>
-                    <div className="wishlist-category-badge" style={{ backgroundColor: categoryBadge.color }}>
+                    <div className="wishlist-category-badge">
+                      <span className="badge-dot" style={{ backgroundColor: categoryBadge.color }} />
                       <span>{categoryBadge.label}</span>
                     </div>
                   </div>
@@ -441,12 +442,18 @@ const WishlistReviewsNotifications = () => {
 
       {activeTab === 'reviews' && (
         <div className="reviews-section enhanced">
-          <button
-            onClick={() => setShowReviewModal(true)}
-            className="btn-primary enhanced"
-          >
-            <Plus className="h-4 w-4" /> Write a Review
-          </button>
+          <div className="section-toolbar">
+            <div className="section-toolbar-copy">
+              <h3>Your Reviews</h3>
+              <p>{reviews.length} review{reviews.length !== 1 ? 's' : ''} submitted</p>
+            </div>
+            <button
+              onClick={() => setShowReviewModal(true)}
+              className="btn-primary enhanced"
+            >
+              <Plus className="h-4 w-4" /> Write a Review
+            </button>
+          </div>
           <div className="reviews-list enhanced">
             {filteredReviews.length === 0 ? (
               <div className="cd-empty">No reviews yet.</div>

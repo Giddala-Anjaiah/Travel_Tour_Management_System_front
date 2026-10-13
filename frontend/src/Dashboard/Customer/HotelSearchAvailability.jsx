@@ -304,7 +304,7 @@ const HotelSearchAvailability = () => {
                       <small>{hotel.minPrice && hotel.maxPrice && hotel.minPrice !== hotel.maxPrice ? 'Starting from' : 'Per night'}</small>
                       <strong>{hotel.minPrice ? `₹${hotel.minPrice.toLocaleString()}` : 'Price on request'}</strong>
                       {hotel.maxPrice && hotel.minPrice !== hotel.maxPrice && (
-                        <small style={{ display: 'block', color: '#64748b' }}>up to ₹{hotel.maxPrice.toLocaleString()}</small>
+                        <small style={{ display: 'block', color: 'var(--cp-muted)' }}>up to ₹{hotel.maxPrice.toLocaleString()}</small>
                       )}
                     </div>
                   </div>

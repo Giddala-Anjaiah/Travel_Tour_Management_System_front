@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import {
   MapPin, Ticket, Wallet, Award, TrendingUp, Clock, ArrowUpRight, ArrowDownRight,
   RefreshCw, Star, Calendar, Compass, ChevronRight, Eye, ArrowRight,
-  AlertTriangle, CreditCard, Sparkles, Bed
+  AlertTriangle, CreditCard, Sparkles, Bed, Plane, Heart, TrendingUp as TrendingUpIcon
 } from 'lucide-react'
 import CustomerLayout from './CustomerLayout'
 import { api, formatCurrency, formatDate } from '../../api'
@@ -67,7 +67,7 @@ const Donut = ({ segments, size = 140, thickness = 18 }) => {
   return (
     <div className="cd-donut-wrap">
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="#e2e8f0" strokeWidth={thickness} />
+        <circle cx={size/2} cy={size/2} r={radius} fill="none" stroke="var(--cp-line)" strokeWidth={thickness} />
         {segments.map((seg, i) => {
           const portion = seg.value / total
           const dash = portion * circumference
@@ -94,6 +94,40 @@ const Donut = ({ segments, size = 140, thickness = 18 }) => {
   )
 }
 
+const SkeletonGrid = () => (
+  <div className="cd-skeleton-grid">
+    {[1,2,3,4].map(i => <div key={i} className="cd-skeleton-card" />)}
+  </div>
+)
+
+const SkeletonCharts = () => (
+  <div className="cd-skeleton-grid" style={{ gridTemplateColumns: '2fr 1fr', marginTop: '1.25rem' }}>
+    <div className="cd-skeleton-chart" />
+    <div className="cd-skeleton-chart" />
+  </div>
+)
+
+const ErrorState = ({ error, onRetry, user }) => (
+  <CustomerLayout active="dashboard" title="Dashboard Analytics">
+    <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}>
+      <div className="cd-hero-stats" style={{ justifyContent: 'center', marginBottom: '1.5rem' }}>
+        <div className="cd-hero-stat">
+          <small>Total Bookings</small>
+          <strong>—</strong>
+        </div>
+        <div className="cd-hero-stat">
+          <small>Total Spent</small>
+          <strong>—</strong>
+        </div>
+      </div>
+      <h3 style={{ color: 'var(--cp-ink)' }}>Welcome, {user.fullName || 'Traveler'}!</h3>
+      <p style={{ color: 'var(--cp-muted)', margin: '0.5rem 0 1.5rem' }}>Plan your trips, track bookings, and explore destinations.</p>
+      {error && <p style={{ color: 'var(--cp-danger)', marginTop: '1rem' }}>{error}</p>}
+      <button className="cd-btn cd-btn-primary" onClick={onRetry} style={{ marginTop: '1rem' }}>Retry</button>
+    </div>
+  </CustomerLayout>
+)
+
 const CustomerDashboard = () => {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -102,8 +136,6 @@ const CustomerDashboard = () => {
   const [refreshing, setRefreshing] = useState(false)
   const [lastUpdated, setLastUpdated] = useState(null)
   const [autoRefresh, setAutoRefresh] = useState(false)
-  // Personalized recommendations (non-critical: a failed fetch just
-  // leaves the section hidden, the dashboard keeps working).
   const [recPackages, setRecPackages] = useState([])
   const [recPackageSource, setRecPackageSource] = useState('popular')
   const [recHotels, setRecHotels] = useState([])
@@ -156,83 +188,72 @@ const CustomerDashboard = () => {
   if (loading) {
     return (
       <CustomerLayout active="dashboard" title="Dashboard Analytics">
-        <div className="cd-skeleton-grid">
-          {[1,2,3,4].map(i => <div key={i} className="cd-skeleton-card" />)}
-        </div>
-        <div className="cd-skeleton-chart" />
+        <SkeletonGrid />
+        <SkeletonCharts />
       </CustomerLayout>
     )
   }
 
   if (error && !stats) {
-    return (
-      <CustomerLayout active="dashboard" title="Dashboard Analytics">
-        <div className="cd-card">
-          <h3 style={{ color: '#1e293b' }}>Welcome, {user.fullName || 'Traveler'}!</h3>
-          <p style={{ color: '#475569' }}>Plan your trips, track bookings, and explore destinations.</p>
-          {error && <p style={{ color: '#ef4444', marginTop: '1rem' }}>{error}</p>}
-          <button className="cd-btn cd-btn-primary" onClick={() => load()} style={{ marginTop: '1rem' }}>Retry</button>
-        </div>
-      </CustomerLayout>
-    )
+    return <ErrorState error={error} onRetry={load} user={user} />
   }
 
   const s = stats || {}
   const avgTripValue = s.totalBookings > 0 ? Math.round(s.totalSpent / s.totalBookings) : 0
 
   const bookingSegments = [
-    { label: 'Confirmed', value: s.bookingStatus?.confirmed || 0, color: '#10b981' },
-    { label: 'Pending', value: s.bookingStatus?.pending || 0, color: '#f59e0b' },
-    { label: 'Completed', value: s.bookingStatus?.completed || 0, color: '#3b82f6' },
-    { label: 'Cancelled', value: s.bookingStatus?.cancelled || 0, color: '#ef4444' }
+    { label: 'Confirmed', value: s.bookingStatus?.confirmed || 0, color: 'var(--cp-success)' },
+    { label: 'Pending', value: s.bookingStatus?.pending || 0, color: 'var(--cp-warning)' },
+    { label: 'Completed', value: s.bookingStatus?.completed || 0, color: 'var(--cp-info)' },
+    { label: 'Cancelled', value: s.bookingStatus?.cancelled || 0, color: 'var(--cp-danger)' }
   ].filter(x => x.value > 0)
 
   const paymentSegments = [
-    { label: 'Paid', value: s.paymentStatus?.paid || 0, color: '#10b981' },
-    { label: 'Partial', value: s.paymentStatus?.partial || 0, color: '#f59e0b' },
-    { label: 'Pending', value: s.paymentStatus?.pending || 0, color: '#ef4444' },
-    { label: 'Refunded', value: s.paymentStatus?.refunded || 0, color: '#8b5cf6' },
-    { label: 'Failed', value: s.paymentStatus?.failed || 0, color: '#dc2626' }
+    { label: 'Paid', value: s.paymentStatus?.paid || 0, color: 'var(--cp-success)' },
+    { label: 'Partial', value: s.paymentStatus?.partial || 0, color: 'var(--cp-warning)' },
+    { label: 'Pending', value: s.paymentStatus?.pending || 0, color: 'var(--cp-danger)' },
+    { label: 'Refunded', value: s.paymentStatus?.refunded || 0, color: 'var(--cp-purple)' },
+    { label: 'Failed', value: s.paymentStatus?.failed || 0, color: 'var(--cp-danger)' }
   ].filter(x => x.value > 0)
 
-  const kpis = [
+const kpis = [
     {
-      icon: Ticket, accent: '#4f46e5',
+      icon: Ticket, accent: 'var(--cp-accent)',
       label: 'Total Bookings', value: s.totalBookings ?? 0,
       sub: `${s.rangeBookings || 0} in selected range`,
       trend: s.rangeBookings > 0 ? '+' + s.rangeBookings : '0',
       trendUp: true
     },
     {
-      icon: Wallet, accent: '#10b981',
+      icon: Wallet, accent: 'var(--cp-success)',
       label: 'Total Spent', value: s.totalSpent ?? 0, prefix: '₹',
       sub: formatCurrency(s.rangeSpent || 0) + ' in range',
       trend: s.rangeSpent > 0 ? '+' + Math.round((s.rangeSpent / Math.max(1, s.totalSpent)) * 100) + '%' : '0%',
       trendUp: s.rangeSpent > 0
     },
     {
-      icon: MapPin, accent: '#ec4899',
-      label: 'Destinations Explored', value: s.topDestinations?.length || 0,
+      icon: MapPin, accent: 'var(--cp-purple)',
+      label: 'Destinations', value: s.topDestinations?.length || 0,
       sub: 'Places you have visited',
       trend: s.topDestinations?.length > 0 ? 'Traveler' : 'Beginner',
       trendUp: true
     },
     {
-      icon: Award, accent: '#f59e0b',
+      icon: Award, accent: 'var(--cp-gold)',
       label: 'Loyalty Tier', value: s.loyaltyTier || 'Explorer',
       sub: 'Based on your spending',
       trend: s.loyaltyTier === 'Gold' ? 'Premium' : s.loyaltyTier === 'Silver' ? 'Regular' : 'New',
       trendUp: s.loyaltyTier === 'Gold' || s.loyaltyTier === 'Silver'
     },
     {
-      icon: TrendingUp, accent: '#3b82f6',
+      icon: TrendingUpIcon, accent: 'var(--cp-info)',
       label: 'Avg Trip Value', value: avgTripValue, prefix: '₹',
       sub: 'Per booking average',
       trend: avgTripValue > 0 ? 'Per booking' : 'No trips',
       trendUp: avgTripValue > 0
     },
     {
-      icon: Clock, accent: '#ef4444',
+      icon: Clock, accent: 'var(--cp-danger)',
       label: 'Pending Payments', value: s.paymentStatus?.partial + s.paymentStatus?.pending || 0,
       sub: 'Awaiting confirmation',
       trend: s.alerts?.pendingPayments > 0 ? 'Needs attention' : 'All clear',
@@ -241,7 +262,7 @@ const CustomerDashboard = () => {
   ]
 
   return (
-    <CustomerLayout active="dashboard" title="Dashboard Analytics">
+    <CustomerLayout active="dashboard" title="Dashboard Analytics" subtitle="Track your travel journey and bookings">
       <div className="cd-toolbar">
         <div className="cd-toolbar-left">
           {RANGES.map(r => (

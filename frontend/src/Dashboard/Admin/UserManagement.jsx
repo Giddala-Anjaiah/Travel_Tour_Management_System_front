@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Users, Search, Plus, Pencil as Edit, Trash2, Download, UserCheck, UserX, Mail, Phone } from 'lucide-react'
+import { Users, Search, Plus, Pencil as Edit, Trash2, Download, UserCheck, UserX, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
 import { api, downloadCsv, fetchAllPages, formValues, formatDate, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
@@ -19,9 +19,6 @@ const UserManagement = () => {
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
   const [stats, setStats] = useState(null)
 
-  // The route filters server-side on `search` only. Role/status are not
-  // supported server-side, so when either is active we ask for the full set
-  // and filter the current rows locally instead of paging a partial match.
   const hasLocalFilters = filterRole !== 'all' || filterStatus !== 'all'
 
   const fetchUsers = async (overrides = {}) => {
@@ -58,7 +55,6 @@ const UserManagement = () => {
 
   useEffect(() => {
     Promise.resolve().then(() => fetchUsers())
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit])
 
   useEffect(() => {
@@ -67,7 +63,6 @@ const UserManagement = () => {
       fetchUsers({ page: 1 })
     }, 350)
     return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchTerm, filterRole, filterStatus])
 
   const handlePageChange = (nextPage) => {
@@ -162,14 +157,11 @@ const UserManagement = () => {
       title="User Management"
       actions={
         <>
-          <button
-            onClick={handleExport}
-            className="action-btn"
-          >
+          <button onClick={handleExport} className="action-btn enhanced secondary">
             <Download className="h-4 w-4" />
             Export
           </button>
-          <button onClick={() => setShowAddModal(true)} className="action-btn">
+          <button onClick={() => setShowAddModal(true)} className="action-btn enhanced">
             <Plus className="h-4 w-4" />
             Add User
           </button>
@@ -177,20 +169,20 @@ const UserManagement = () => {
       }
     >
       {error && <div className="error-message">{error}</div>}
-      <div className="filters-section">
-        <div className="search-bar">
+      <div className="filters-section enhanced">
+        <div className="search-bar enhanced">
           <Search className="search-icon" />
           <input type="text" placeholder="Search users by name or email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <div className="filter-controls">
-          <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="filter-select">
+        <div className="filter-controls enhanced">
+          <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="filter-select enhanced">
             <option value="all">All Roles</option>
             <option value="admin">Admin</option>
             <option value="customer">Customer</option>
             <option value="tour_operator">Tour Operator</option>
             <option value="hotel_partner">Hotel Partner</option>
           </select>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select">
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select enhanced">
             <option value="all">All Status</option>
             <option value="active">Active</option>
             <option value="inactive">Inactive</option>
@@ -198,23 +190,23 @@ const UserManagement = () => {
         </div>
       </div>
 
-      <div className="stats-grid">
+      <div className="stats-grid enhanced">
         <div className="stat-card">
-          <Users className="stat-icon" />
+          <div className="stat-icon"><Users /></div>
           <div className="stat-content">
             <h3>Total Users</h3>
             <p className="stat-number">{totalUsers}</p>
           </div>
         </div>
         <div className="stat-card">
-          <UserCheck className="stat-icon" />
+          <div className="stat-icon"><UserCheck /></div>
           <div className="stat-content">
             <h3>Active Users</h3>
             <p className="stat-number">{activeUsers}</p>
           </div>
         </div>
         <div className="stat-card">
-          <UserX className="stat-icon" />
+          <div className="stat-icon"><UserX /></div>
           <div className="stat-content">
             <h3>Inactive Users</h3>
             <p className="stat-number">{inactiveUsers}</p>
@@ -222,13 +214,13 @@ const UserManagement = () => {
         </div>
       </div>
 
-      <div className="section-card full-width">
-        <h3>Users List ({hasLocalFilters ? visibleUsers.length : meta.total})</h3>
+      <div className="section-card enhanced full-width">
+        <h3><Users className="h-5 w-5" /> Users List ({hasLocalFilters ? visibleUsers.length : meta.total})</h3>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>Loading users...</div>
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>Loading users...</div>
         ) : (
-          <div className="table-container">
-            <table className="data-table">
+          <div className="table-container enhanced">
+            <table className="data-table enhanced">
               <thead>
                 <tr>
                   <th>Name</th>
@@ -244,27 +236,29 @@ const UserManagement = () => {
               <tbody>
                 {visibleUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#64748b' }}>No users found</td>
+                    <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
+                      <div className="empty-state enhanced"><Users className="h-12 w-12" /><h3>No users found</h3></div>
+                    </td>
                   </tr>
                 ) : visibleUsers.map((user) => (
                   <tr key={user.id}>
-                    <td className="user-name-cell">
-                      <div className="user-avatar">{user.name.charAt(0)}</div>
+                    <td className="user-name-cell enhanced">
+                      <div className="user-avatar enhanced">{user.name.charAt(0)}</div>
                       <span>{user.name}</span>
                     </td>
                     <td><Mail className="h-4 w-4 inline-icon" />{user.email}</td>
                     <td><Phone className="h-4 w-4 inline-icon" />{user.phone}</td>
-                    <td><span className={`role-badge ${user.role}`}>{user.role.replace('_', ' ')}</span></td>
-                    <td><span className={`status-badge ${user.status}`}>{user.status}</span></td>
+                    <td><span className={`role-badge enhanced ${user.role}`}>{user.role.replace('_', ' ')}</span></td>
+                    <td><span className={`status-badge enhanced ${user.status}`}>{user.status}</span></td>
                     <td>{user.joinDate}</td>
                     <td>{user.lastLogin}</td>
                     <td>
-                      <div className="action-buttons">
-                        <button onClick={() => { setSelectedUser(user); setShowEditModal(true) }} className="icon-btn edit"><Edit className="h-4 w-4" /></button>
-                        <button onClick={() => handleToggleStatus(user.id)} className="icon-btn toggle">
+                      <div className="action-buttons enhanced">
+                        <button onClick={() => { setSelectedUser(user); setShowEditModal(true) }} className="icon-btn enhanced edit" title="Edit"><Edit className="h-4 w-4" /></button>
+                        <button onClick={() => handleToggleStatus(user.id)} className="icon-btn enhanced toggle" title={user.status === 'active' ? 'Deactivate' : 'Activate'}>
                           {user.status === 'active' ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
                         </button>
-                        <button onClick={() => handleDeleteUser(user.id)} className="icon-btn delete"><Trash2 className="h-4 w-4" /></button>
+                        <button onClick={() => handleDeleteUser(user.id)} className="icon-btn enhanced delete" title="Delete"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </td>
                   </tr>
@@ -286,18 +280,18 @@ const UserManagement = () => {
       </div>
 
       {showAddModal && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
+        <div className="modal-overlay enhanced" onClick={() => setShowAddModal(false)}>
+          <div className="modal enhanced" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header enhanced">
               <h3>Add New User</h3>
-              <button onClick={() => setShowAddModal(false)} className="modal-close">×</button>
+              <button onClick={() => setShowAddModal(false)} className="modal-close enhanced">×</button>
             </div>
-            <div className="modal-body">
+            <div className="modal-body enhanced">
               <form className="user-form" onSubmit={handleAddUser}>
-                <div className="form-group"><label>Full Name</label><input name="fullName" type="text" required /></div>
-                <div className="form-group"><label>Email</label><input name="email" type="email" required /></div>
-                <div className="form-group"><label>Phone</label><input name="phone" type="tel" required /></div>
-                <div className="form-group">
+                <div className="form-group enhanced"><label>Full Name</label><input name="fullName" type="text" required /></div>
+                <div className="form-group enhanced"><label>Email</label><input name="email" type="email" required /></div>
+                <div className="form-group enhanced"><label>Phone</label><input name="phone" type="tel" required /></div>
+                <div className="form-group enhanced">
                   <label>Role</label>
                   <select name="role" required defaultValue="customer">
                     <option value="customer">Customer</option>
@@ -306,10 +300,10 @@ const UserManagement = () => {
                     <option value="admin">Admin</option>
                   </select>
                 </div>
-                <div className="form-group"><label>Password</label><input name="password" type="password" required /></div>
-                <div className="form-actions">
-                  <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary">Cancel</button>
-                  <button type="submit" className="btn-primary">Add User</button>
+                <div className="form-group enhanced"><label>Password</label><input name="password" type="password" required /></div>
+                <div className="form-actions enhanced">
+                  <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary enhanced">Cancel</button>
+                  <button type="submit" className="btn-primary enhanced">Add User</button>
                 </div>
               </form>
             </div>
@@ -318,18 +312,18 @@ const UserManagement = () => {
       )}
 
       {showEditModal && selectedUser && (
-        <div className="modal-overlay">
-          <div className="modal">
-            <div className="modal-header">
+        <div className="modal-overlay enhanced" onClick={() => setShowEditModal(false)}>
+          <div className="modal enhanced" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header enhanced">
               <h3>Edit User</h3>
-              <button onClick={() => setShowEditModal(false)} className="modal-close">×</button>
+              <button onClick={() => setShowEditModal(false)} className="modal-close enhanced">×</button>
             </div>
-            <div className="modal-body">
+            <div className="modal-body enhanced">
               <form className="user-form" onSubmit={handleUpdateUser}>
-                <div className="form-group"><label>Full Name</label><input name="fullName" type="text" defaultValue={selectedUser.name} required /></div>
-                <div className="form-group"><label>Email</label><input name="email" type="email" defaultValue={selectedUser.email} required /></div>
-                <div className="form-group"><label>Phone</label><input name="phone" type="tel" defaultValue={selectedUser.phone} required /></div>
-                <div className="form-group">
+                <div className="form-group enhanced"><label>Full Name</label><input name="fullName" type="text" defaultValue={selectedUser.name} required /></div>
+                <div className="form-group enhanced"><label>Email</label><input name="email" type="email" defaultValue={selectedUser.email} required /></div>
+                <div className="form-group enhanced"><label>Phone</label><input name="phone" type="tel" defaultValue={selectedUser.phone} required /></div>
+                <div className="form-group enhanced">
                   <label>Role</label>
                   <select name="role" defaultValue={selectedUser.role} required>
                     <option value="customer">Customer</option>
@@ -338,9 +332,9 @@ const UserManagement = () => {
                     <option value="admin">Admin</option>
                   </select>
                 </div>
-                <div className="form-actions">
-                  <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary">Cancel</button>
-                  <button type="submit" className="btn-primary">Update User</button>
+                <div className="form-actions enhanced">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary enhanced">Cancel</button>
+                  <button type="submit" className="btn-primary enhanced">Update User</button>
                 </div>
               </form>
             </div>

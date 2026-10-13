@@ -1,10 +1,35 @@
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
-import { Building, Ticket, Users, DollarSign, Star, PieChart, TrendingUp } from 'lucide-react'
+import { Building, Ticket, Users, DollarSign, Star, PieChart, TrendingUp, MapPin, Activity, Crown, Loader } from 'lucide-react'
 import OperatorLayout from './OperatorLayout'
 import { api, formatCurrency } from '../../api'
 
+const AnimatedNumber = ({ value, prefix = '', suffix = '', decimals = 0 }) => {
+  const num = Number(value) || 0
+  return <>{prefix}{num.toFixed(decimals)}{suffix}</>
+}
+
+const SkeletonDashboard = () => (
+  <>
+    <div className="cd-skeleton-grid">
+      {[1, 2, 3, 4, 5, 6].map((i) => <div key={i} className="cd-skeleton-card" />)}
+    </div>
+    <div className="dashboard-sections">
+      <div className="section-card full-width">
+        <div className="cd-skeleton-chart" />
+      </div>
+      <div className="section-card">
+        <div className="cd-skeleton-chart" />
+      </div>
+      <div className="section-card">
+        <div className="cd-skeleton-chart" />
+      </div>
+    </div>
+  </>
+)
+
 const OperatorDashboard = () => {
+  const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     totalPackages: 0,
     activePackages: 0,
@@ -64,6 +89,8 @@ const OperatorDashboard = () => {
       setActivities(acts)
     } catch (err) {
       console.error(err)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -73,62 +100,72 @@ const OperatorDashboard = () => {
 
   usePolling(load, 15000)
 
+  if (loading) {
+    return (
+      <OperatorLayout active="dashboard" title="Dashboard Analytics" subtitle="Overview of your tour business performance">
+        <SkeletonDashboard />
+      </OperatorLayout>
+    )
+  }
+
+  const kpis = [
+    { icon: Building, label: 'Total Packages', value: stats.totalPackages, accent: 'var(--cp-accent, #0d9488)', sub: `${stats.activePackages} Active` },
+    { icon: Ticket, label: 'Total Bookings', value: stats.totalBookings, accent: 'var(--cp-info, #3b82f6)', sub: 'All time' },
+    { icon: Users, label: 'Total Customers', value: stats.totalCustomers, accent: 'var(--cp-purple, #8b5cf6)', sub: 'Unique customers' },
+    { icon: DollarSign, label: 'Revenue', value: stats.revenue, prefix: '₹', accent: 'var(--cp-success, #10b981)', sub: 'From paid bookings' },
+    { icon: Star, label: 'Avg Rating', value: stats.avgRating || '—', accent: 'var(--cp-warning, #f59e0b)', sub: 'Approved reviews' },
+    { icon: PieChart, label: 'Pending', value: stats.pending, accent: 'var(--cp-danger, #ef4444)', sub: 'Awaiting confirmation' }
+  ]
+
   return (
-    <OperatorLayout active="dashboard" title="Dashboard Analytics">
-      <div className="stats-grid">
-        <div className="stat-card">
-          <Building className="stat-icon" />
-          <div className="stat-content">
-            <h3>Total Packages</h3>
-            <p className="stat-number">{stats.totalPackages}</p>
-            <span className="stat-change positive">{stats.activePackages} Active</span>
-          </div>
+    <OperatorLayout active="dashboard" title="Dashboard Analytics" subtitle="Overview of your tour business performance">
+      <div className="cd-hero">
+        <div className="cd-hero-copy">
+          <h2>Welcome back, {JSON.parse(localStorage.getItem('user') || '{}').fullName || 'Operator'}</h2>
+          <p>Here is what is happening across your packages, bookings and revenue today.</p>
         </div>
-        <div className="stat-card">
-          <Ticket className="stat-icon" />
-          <div className="stat-content">
-            <h3>Total Bookings</h3>
-            <p className="stat-number">{stats.totalBookings}</p>
-            <span className="stat-change positive">All time</span>
+        <div className="cd-hero-stats">
+          <div className="cd-hero-stat">
+            <span className="cd-hero-stat-value">{formatCurrency(stats.revenue)}</span>
+            <span className="cd-hero-stat-label">Total Revenue</span>
           </div>
-        </div>
-        <div className="stat-card">
-          <Users className="stat-icon" />
-          <div className="stat-content">
-            <h3>Total Customers</h3>
-            <p className="stat-number">{stats.totalCustomers}</p>
-            <span className="stat-change positive">Unique customers</span>
+          <div className="cd-hero-stat">
+            <span className="cd-hero-stat-value">{stats.totalBookings}</span>
+            <span className="cd-hero-stat-label">Bookings</span>
           </div>
-        </div>
-        <div className="stat-card">
-          <DollarSign className="stat-icon" />
-          <div className="stat-content">
-            <h3>Revenue</h3>
-            <p className="stat-number">{formatCurrency(stats.revenue)}</p>
-            <span className="stat-change positive">From paid bookings</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <Star className="stat-icon" />
-          <div className="stat-content">
-            <h3>Avg Rating</h3>
-            <p className="stat-number">{stats.avgRating || '—'}</p>
-            <span className="stat-change positive">Approved reviews</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <PieChart className="stat-icon" />
-          <div className="stat-content">
-            <h3>Pending</h3>
-            <p className="stat-number">{stats.pending}</p>
-            <span className="stat-change neutral">Awaiting confirmation</span>
+          <div className="cd-hero-stat">
+            <span className="cd-hero-stat-value">{stats.avgRating || '—'}</span>
+            <span className="cd-hero-stat-label">Avg Rating</span>
           </div>
         </div>
       </div>
 
+      <div className="stats-grid enhanced">
+        {kpis.map((kpi) => {
+          const Icon = kpi.icon
+          return (
+            <div key={kpi.label} className="stat-card">
+              <span className="stat-icon" style={{ color: kpi.accent }}>
+                <Icon className="h-5 w-5" />
+              </span>
+              <div className="stat-content">
+                <h3>{kpi.label}</h3>
+                <p className="stat-number">
+                  <AnimatedNumber value={kpi.value} prefix={kpi.prefix || ''} />
+                </p>
+                <span className="stat-change positive">{kpi.sub}</span>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
       <div className="dashboard-sections">
-        <div className="section-card full-width">
-          <h3>Revenue Overview</h3>
+        <div className="section-card enhanced full-width">
+          <div className="section-card-head">
+            <h3><TrendingUp className="h-4 w-4" /> Revenue Overview</h3>
+            <span className="section-card-tag">Total: {formatCurrency(stats.revenue)}</span>
+          </div>
           <div className="revenue-chart">
             <div className="chart-placeholder">
               <TrendingUp className="chart-icon" />
@@ -138,9 +175,11 @@ const OperatorDashboard = () => {
           </div>
         </div>
 
-        <div className="section-card">
-          <h3>Recent Activities</h3>
-          <ul className="activity-list">
+        <div className="section-card enhanced">
+          <div className="section-card-head">
+            <h3><Activity className="h-4 w-4" /> Recent Activities</h3>
+          </div>
+          <ul className="activity-list enhanced">
             {activities.length === 0 && <li>No recent activity yet.</li>}
             {activities.map((a, i) => (
               <li key={i}><Ticket className="activity-icon" /> {a}</li>
@@ -148,12 +187,14 @@ const OperatorDashboard = () => {
           </ul>
         </div>
 
-        <div className="section-card">
-          <h3>Top Performing Packages</h3>
-          <ul className="activity-list">
+        <div className="section-card enhanced">
+          <div className="section-card-head">
+            <h3><Crown className="h-4 w-4" /> Top Performing Packages</h3>
+          </div>
+          <ul className="activity-list enhanced">
             {topPackages.length === 0 && <li>No booking data yet.</li>}
             {topPackages.map((p, i) => (
-              <li key={i}>📦 {p.name} - {p.bookings} bookings</li>
+              <li key={i}><MapPin className="activity-icon" /> {p.name} — {p.bookings} bookings</li>
             ))}
           </ul>
         </div>

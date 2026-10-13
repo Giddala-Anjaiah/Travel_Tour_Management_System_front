@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { PieChart, Settings, Plus, Pencil as Edit, Trash2, Search, Download, Users, MapPin, Tag, Bell, Shield, Ticket } from 'lucide-react'
+import { PieChart, Settings, Plus, Pencil as Edit, Trash2, Search, Download, Users, MapPin, Tag, Bell, Shield, Ticket, Power, DollarSign, Save } from 'lucide-react'
 import { api, downloadCsv, formValues, formatCurrency, formatDate, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import AdminLayout from './AdminLayout'
@@ -279,7 +279,7 @@ const ReportsCouponsSettings = () => {
   return (
     <AdminLayout
       active={location.pathname.includes('settings') ? 'settings' : 'reports'}
-      title="Reports, Coupons & Settings"
+      title={location.pathname.includes('settings') ? 'Administration' : 'Reports, Coupons & Settings'}
       actions={
         <button className="action-btn" onClick={() => {
           if (!analytics) return
@@ -292,48 +292,49 @@ const ReportsCouponsSettings = () => {
         }}><Download className="h-4 w-4" /> Export Reports</button>
       }
     >
-      {error && <div className="error-message">{error}</div>}
-      <div className="tabs">
-        <button className={`tab ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => openTab('reports')}><PieChart className="h-4 w-4" /> Reports</button>
-        <button className={`tab ${activeTab === 'coupons' ? 'active' : ''}`} onClick={() => openTab('coupons')}><Tag className="h-4 w-4" /> Coupons</button>
-        <button className={`tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => openTab('settings')}><Settings className="h-4 w-4" /> Settings</button>
-      </div>
+      <div className="reports-page">
+        {error && <div className="error-message">{error}</div>}
+        <div className="tabs enhanced">
+          <button className={`tab ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => openTab('reports')}><PieChart className="h-4 w-4" /> Reports</button>
+          <button className={`tab ${activeTab === 'coupons' ? 'active' : ''}`} onClick={() => openTab('coupons')}><Tag className="h-4 w-4" /> Coupons</button>
+          <button className={`tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => openTab('settings')}><Settings className="h-4 w-4" /> Settings</button>
+        </div>
 
-      {activeTab === 'reports' && (
-        <div className="dashboard-sections">
-          <div className="section-card">
-            <h3>Revenue Reports</h3>
-            <div className="report-placeholder">
-              <PieChart className="chart-icon" />
-              <p>{formatCurrency(analytics?.totalRevenue || 0)}</p>
-              <small>Paid booking revenue from MongoDB</small>
+        {activeTab === 'reports' && (
+          <div className="dashboard-sections">
+            <div className="section-card enhanced">
+              <h3><DollarSign className="h-5 w-5" /> Revenue Reports</h3>
+              <div className="report-placeholder enhanced">
+                <PieChart className="chart-icon" />
+                <p>{formatCurrency(analytics?.totalRevenue || 0)}</p>
+                <small>Paid booking revenue from MongoDB</small>
+              </div>
             </div>
-          </div>
-          <div className="section-card">
-            <h3>Booking Reports</h3>
-            <div className="report-placeholder">
-              <Ticket className="chart-icon" />
-              <p>{analytics?.totalBookings || 0} bookings</p>
-              <small>Confirmed {analytics?.bookingStats?.confirmed || 0} · Pending {analytics?.bookingStats?.pending || 0} · Cancelled {analytics?.bookingStats?.cancelled || 0}</small>
+            <div className="section-card enhanced">
+              <h3><Ticket className="h-5 w-5" /> Booking Reports</h3>
+              <div className="report-placeholder enhanced">
+                <Ticket className="chart-icon" />
+                <p>{analytics?.totalBookings || 0} bookings</p>
+                <small>Confirmed {analytics?.bookingStats?.confirmed || 0} · Pending {analytics?.bookingStats?.pending || 0} · Cancelled {analytics?.bookingStats?.cancelled || 0}</small>
+              </div>
             </div>
-          </div>
-          <div className="section-card">
-            <h3>Customer Reports</h3>
-            <div className="report-placeholder">
-              <Users className="chart-icon" />
-              <p>{analytics?.totalUsers || 0} users</p>
-              <small>New this month: {analytics?.range?.users || 0}</small>
+            <div className="section-card enhanced">
+              <h3><Users className="h-5 w-5" /> Customer Reports</h3>
+              <div className="report-placeholder enhanced">
+                <Users className="chart-icon" />
+                <p>{analytics?.totalUsers || 0} users</p>
+                <small>New this month: {analytics?.range?.users || 0}</small>
+              </div>
             </div>
-          </div>
-          <div className="section-card">
-            <h3>Tour Performance</h3>
-            <div className="report-placeholder">
-              <MapPin className="chart-icon" />
-              <p>{analytics?.activeTours || 0} active tours</p>
-              <small>{(analytics?.topTours || []).map((tour) => tour.name).join(', ') || 'Add packages to see rankings'}</small>
+            <div className="section-card enhanced">
+              <h3><MapPin className="h-5 w-5" /> Tour Performance</h3>
+              <div className="report-placeholder enhanced">
+                <MapPin className="chart-icon" />
+                <p>{analytics?.activeTours || 0} active tours</p>
+                <small>{(analytics?.topTours || []).map((tour) => tour.name).join(', ') || 'Add packages to see rankings'}</small>
+              </div>
             </div>
-          </div>
-          <div className="section-card full-width">
+          <div className="section-card full-width enhanced">
             <h3>Revenue by Package</h3>
             <ChartBar
               type="pie"
@@ -341,7 +342,7 @@ const ReportsCouponsSettings = () => {
               title="Revenue share"
             />
           </div>
-          <div className="section-card full-width">
+          <div className="section-card full-width enhanced">
             <h3>Monthly Revenue Trend</h3>
             <ChartBar
               type="line"
@@ -354,22 +355,22 @@ const ReportsCouponsSettings = () => {
               title="Revenue over the last 6 months"
             />
           </div>
-          <div className="section-card">
+          <div className="section-card enhanced">
             <h3>Booking Status Breakdown</h3>
             <ChartBar type="pie" data={analytics?.bookingStats || {}} />
           </div>
-          <div className="section-card">
+          <div className="section-card enhanced">
             <h3>Booking Payment Status</h3>
             <ChartBar type="pie" data={reportSummary?.bookingsByPayment || {}} />
           </div>
-          <div className="section-card">
+          <div className="section-card enhanced">
             <h3>Revenue by Category</h3>
             <ChartBar
               type="bar"
               data={(reportSummary?.revenueByCategory || []).map(item => ({ label: item.name, value: item.revenue, format: 'currency' }))}
             />
           </div>
-          <div className="section-card">
+          <div className="section-card enhanced">
             <h3>Top Destinations by Revenue</h3>
             <ChartBar
               type="bar"
@@ -381,7 +382,7 @@ const ReportsCouponsSettings = () => {
 
       {activeTab === 'coupons' && (
         <>
-          <div className="filters-section">
+          <div className="filters-section enhanced">
             <div className="search-bar">
               <Search className="search-icon" />
               <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search coupons by code..." />
@@ -395,20 +396,20 @@ const ReportsCouponsSettings = () => {
             </div>
             <button className="action-btn" onClick={() => { setSelectedCoupon(null); setShowAddCouponModal(true) }}><Plus className="h-4 w-4" /> Add Coupon</button>
           </div>
-          <div className="stats-grid">
+          <div className="stats-grid enhanced">
             <div className="stat-card"><Tag className="stat-icon" /><div className="stat-content"><h3>Total Coupons</h3><p className="stat-number">{couponMeta.total}</p></div></div>
             <div className="stat-card"><Tag className="stat-icon" /><div className="stat-content"><h3>Active Coupons</h3><p className="stat-number">{coupons.filter((c) => c.status === 'active').length}</p></div></div>
             <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Total Usage</h3><p className="stat-number">{coupons.reduce((sum, c) => sum + c.usage, 0)}</p></div></div>
           </div>
-          <div className="section-card full-width">
+          <div className="section-card full-width enhanced">
             <h3>Coupons ({hasLocalFilters ? filteredCoupons.length : couponMeta.total})</h3>
             <div className="coupons-grid">
-              {filteredCoupons.length === 0 && <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem' }}>No coupons found</div>}
+              {filteredCoupons.length === 0 && <div className="empty-state enhanced" style={{ gridColumn: '1 / -1' }}><Tag className="h-8 w-8" /><p>No coupons found</p></div>}
               {filteredCoupons.map((coupon) => (
-                <div key={coupon.id} className="coupon-card">
+                <div key={coupon.id} className="coupon-card enhanced">
                   <div className="coupon-header">
                     <div className="coupon-code"><Tag className="h-4 w-4" />{coupon.code}</div>
-                    <span className={`status-badge ${coupon.displayStatus}`}>{coupon.displayStatus}</span>
+                    <span className={`status-badge enhanced ${coupon.displayStatus}`}>{coupon.displayStatus}</span>
                   </div>
                   <div className="coupon-discount">{coupon.type === 'percentage' ? `${coupon.discount}% OFF` : `₹${coupon.discount} OFF`}</div>
                   <div className="coupon-details">
@@ -423,7 +424,7 @@ const ReportsCouponsSettings = () => {
                   </div>
                   <div className="coupon-actions">
                     <button className="icon-btn edit" onClick={() => { setSelectedCoupon(coupon); setShowEditCouponModal(true) }}><Edit className="h-4 w-4" /></button>
-                    <button className="icon-btn toggle" onClick={() => handleToggleCouponStatus(coupon.id)}>{coupon.status === 'active' ? '🔴' : '🟢'}</button>
+                    <button className={`icon-btn toggle ${coupon.status === 'active' ? 'on' : 'off'}`} onClick={() => handleToggleCouponStatus(coupon.id)} title={coupon.status === 'active' ? 'Deactivate' : 'Activate'}><Power className="h-4 w-4" /></button>
                     <button className="icon-btn delete" onClick={() => handleDeleteCoupon(coupon.id)}><Trash2 className="h-4 w-4" /></button>
                   </div>
                 </div>
@@ -443,80 +444,101 @@ const ReportsCouponsSettings = () => {
       )}
 
       {activeTab === 'settings' && (
-        <div className="dashboard-sections">
-          <div className="section-card full-width">
-            <h3>General Settings</h3>
-            <div className="settings-form">
-              <div className="form-row">
-                <div className="form-group"><label>Site Name</label><input value={settings.siteName || ''} onChange={(e) => setSettings({ ...settings, siteName: e.target.value })} /></div>
-                <div className="form-group"><label>Site Email</label><input type="email" value={settings.siteEmail || ''} onChange={(e) => setSettings({ ...settings, siteEmail: e.target.value })} /></div>
-              </div>
-              <div className="form-row">
-                <div className="form-group"><label>Site Phone</label><input value={settings.sitePhone || ''} onChange={(e) => setSettings({ ...settings, sitePhone: e.target.value })} /></div>
+        <>
+          <div className="settings-hero">
+            <div className="settings-hero-icon"><Shield className="h-8 w-8" /></div>
+            <div className="settings-hero-text">
+              <h2>Administration Settings</h2>
+              <p>Configure site preferences, system flags and business rules. Changes apply immediately.</p>
+            </div>
+          </div>
+          <div className="settings-grid">
+            <div className="section-card enhanced settings-half">
+              <h3><span className="card-icon"><Settings className="h-5 w-5" /></span> General Settings</h3>
+              <p className="card-subtitle">Basic site identity and regional preferences</p>
+              <div className="settings-form enhanced">
+                <div className="form-row">
+                  <div className="form-group"><label>Site Name</label><input value={settings.siteName || ''} onChange={(e) => setSettings({ ...settings, siteName: e.target.value })} /></div>
+                  <div className="form-group"><label>Site Email</label><input type="email" value={settings.siteEmail || ''} onChange={(e) => setSettings({ ...settings, siteEmail: e.target.value })} /></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label>Site Phone</label><input value={settings.sitePhone || ''} onChange={(e) => setSettings({ ...settings, sitePhone: e.target.value })} /></div>
+                  <div className="form-group">
+                    <label>Currency</label>
+                    <select value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })}>
+                      <option value="INR">INR (₹)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="form-group">
-                  <label>Currency</label>
-                  <select value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })}>
-                    <option value="INR">INR (₹)</option>
-                    <option value="USD">USD ($)</option>
-                    <option value="EUR">EUR (€)</option>
+                  <label>Timezone</label>
+                  <select value={settings.timezone} onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}>
+                    <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                    <option value="UTC">UTC</option>
+                    <option value="America/New_York">America/New_York (EST)</option>
                   </select>
                 </div>
               </div>
-              <div className="form-group">
-                <label>Timezone</label>
-                <select value={settings.timezone} onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}>
-                  <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
-                  <option value="UTC">UTC</option>
-                  <option value="America/New_York">America/New_York (EST)</option>
-                </select>
+            </div>
+            <div className="section-card enhanced settings-half">
+              <h3><span className="card-icon"><DollarSign className="h-5 w-5" /></span> Business Settings</h3>
+              <p className="card-subtitle">Taxes, cancellation and refund policies</p>
+              <div className="settings-form enhanced">
+                <div className="form-row">
+                  <div className="form-group"><label>Tax Rate (%)</label><input type="number" value={settings.taxRate} onChange={(e) => setSettings({ ...settings, taxRate: parseFloat(e.target.value) || 0 })} /></div>
+                  <div className="form-group"><label>Cancellation Policy</label><input value={settings.cancellationPolicy || ''} onChange={(e) => setSettings({ ...settings, cancellationPolicy: e.target.value })} /></div>
+                </div>
+                <div className="form-group"><label>Refund Policy</label><input value={settings.refundPolicy || ''} onChange={(e) => setSettings({ ...settings, refundPolicy: e.target.value })} /></div>
+              </div>
+            </div>
+            <div className="section-card enhanced full-width">
+              <h3><span className="card-icon"><Shield className="h-5 w-5" /></span> System Settings</h3>
+              <p className="card-subtitle">Control site access, registration and maintenance behaviour</p>
+              <div className="settings-form enhanced">
+                <div className="setting-item">
+                  <div className="setting-info"><Bell className="h-5 w-5" /><div><h4>Maintenance Mode</h4><p>Disable the site for maintenance</p></div></div>
+                  <div className="toggle-wrap">
+                    <label className="toggle-switch"><input type="checkbox" checked={!!settings.maintenanceMode} onChange={(e) => setSettings({ ...settings, maintenanceMode: e.target.checked })} /><span className="toggle-slider"></span></label>
+                    <span className={`toggle-status ${settings.maintenanceMode ? 'on' : 'off'}`}>{settings.maintenanceMode ? 'On' : 'Off'}</span>
+                  </div>
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info"><Users className="h-5 w-5" /><div><h4>Allow Registration</h4><p>Enable new user registration</p></div></div>
+                  <div className="toggle-wrap">
+                    <label className="toggle-switch"><input type="checkbox" checked={!!settings.allowRegistration} onChange={(e) => setSettings({ ...settings, allowRegistration: e.target.checked })} /><span className="toggle-slider"></span></label>
+                    <span className={`toggle-status ${settings.allowRegistration ? 'on' : 'off'}`}>{settings.allowRegistration ? 'On' : 'Off'}</span>
+                  </div>
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info"><Shield className="h-5 w-5" /><div><h4>Require Approval</h4><p>Require admin approval for new users</p></div></div>
+                  <div className="toggle-wrap">
+                    <label className="toggle-switch"><input type="checkbox" checked={!!settings.requireApproval} onChange={(e) => setSettings({ ...settings, requireApproval: e.target.checked })} /><span className="toggle-slider"></span></label>
+                    <span className={`toggle-status ${settings.requireApproval ? 'on' : 'off'}`}>{settings.requireApproval ? 'On' : 'Off'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="section-card enhanced full-width save-card">
+              <div className="form-actions">
+                <button onClick={saveSettings} className="btn-primary"><Save className="h-4 w-4" /> Save Settings</button>
+                {saveMessage && <span className="success-message">{saveMessage}</span>}
               </div>
             </div>
           </div>
-          <div className="section-card full-width">
-            <h3>System Settings</h3>
-            <div className="settings-form">
-              <div className="setting-item">
-                <div className="setting-info"><Bell className="h-5 w-5" /><div><h4>Maintenance Mode</h4><p>Disable the site for maintenance</p></div></div>
-                <label className="toggle-switch"><input type="checkbox" checked={!!settings.maintenanceMode} onChange={(e) => setSettings({ ...settings, maintenanceMode: e.target.checked })} /><span className="toggle-slider"></span></label>
-              </div>
-              <div className="setting-item">
-                <div className="setting-info"><Users className="h-5 w-5" /><div><h4>Allow Registration</h4><p>Enable new user registration</p></div></div>
-                <label className="toggle-switch"><input type="checkbox" checked={!!settings.allowRegistration} onChange={(e) => setSettings({ ...settings, allowRegistration: e.target.checked })} /><span className="toggle-slider"></span></label>
-              </div>
-              <div className="setting-item">
-                <div className="setting-info"><Shield className="h-5 w-5" /><div><h4>Require Approval</h4><p>Require admin approval for new users</p></div></div>
-                <label className="toggle-switch"><input type="checkbox" checked={!!settings.requireApproval} onChange={(e) => setSettings({ ...settings, requireApproval: e.target.checked })} /><span className="toggle-slider"></span></label>
-              </div>
-            </div>
-          </div>
-          <div className="section-card full-width">
-            <h3>Business Settings</h3>
-            <div className="settings-form">
-              <div className="form-row">
-                <div className="form-group"><label>Tax Rate (%)</label><input type="number" value={settings.taxRate} onChange={(e) => setSettings({ ...settings, taxRate: parseFloat(e.target.value) || 0 })} /></div>
-                <div className="form-group"><label>Cancellation Policy</label><input value={settings.cancellationPolicy || ''} onChange={(e) => setSettings({ ...settings, cancellationPolicy: e.target.value })} /></div>
-              </div>
-              <div className="form-group"><label>Refund Policy</label><input value={settings.refundPolicy || ''} onChange={(e) => setSettings({ ...settings, refundPolicy: e.target.value })} /></div>
-            </div>
-          </div>
-          <div className="section-card full-width">
-            <div className="form-actions">
-              <button onClick={saveSettings} className="btn-primary">Save Settings</button>
-              {saveMessage && <span className="success-message">{saveMessage}</span>}
-            </div>
-          </div>
-        </div>
+        </>
       )}
 
       {(showAddCouponModal || showEditCouponModal) && (
-        <div className="modal-overlay">
-          <div className="modal">
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
             <div className="modal-header">
               <h3>{showAddCouponModal ? 'Add New Coupon' : 'Edit Coupon'}</h3>
               <button className="modal-close" onClick={() => { setShowAddCouponModal(false); setShowEditCouponModal(false) }}>×</button>
             </div>
             <div className="modal-body">
-              <form className="coupon-form" onSubmit={showAddCouponModal ? handleAddCoupon : handleUpdateCoupon}>
+              <form className="coupon-form enhanced" onSubmit={showAddCouponModal ? handleAddCoupon : handleUpdateCoupon}>
                 <div className="form-group"><label>Coupon Code</label><input name="code" defaultValue={selectedCoupon?.code} required /></div>
                 <div className="form-group"><label>Description</label><textarea name="description" defaultValue={selectedCoupon?.description} rows={2} /></div>
                 <div className="form-row">
@@ -568,7 +590,8 @@ const ReportsCouponsSettings = () => {
             </div>
           </div>
         </div>
-      )}
+       )}
+      </div>
     </AdminLayout>
   )
 }
