@@ -1325,14 +1325,17 @@ async function refreshPackageRating(packageName) {
 console.log('User collection name:', User.collection.name);
 
 // --- Google OAuth ---
-passport.use(new GoogleStrategy(
-  {
-    clientID: process.env.GOOGLE_CLIENT_ID,
-    clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
-    proxy: true,
-  },
-  async (accessToken, refreshToken, profile, done) => {
+// Only initialize Google OAuth if credentials are provided; otherwise
+// skip it so the server can start in development without Google credentials.
+if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+  passport.use(new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback',
+      proxy: true,
+    },
+    async (accessToken, refreshToken, profile, done) => {
     try {
       const email = profile.emails?.[0]?.value;
       if (!email) return done(new Error('No email from Google'));
@@ -1353,6 +1356,7 @@ passport.use(new GoogleStrategy(
     }
   }
 ));
+}
 
 // The OAuth callback redirects with the JWT in the query string, so the
 // frontend origin that starts the flow must be resolved against an allowlist.
