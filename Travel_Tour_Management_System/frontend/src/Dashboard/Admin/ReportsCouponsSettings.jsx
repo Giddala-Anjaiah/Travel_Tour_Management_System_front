@@ -1,0 +1,605 @@
+import { useEffect, useState, useCallback } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { PieChart, Settings, Plus, Pencil as Edit, Trash2, Search, Download, Users, MapPin, Tag, Bell, Shield, Ticket, Power, DollarSign, Save } from 'lucide-react'
+import { api, downloadCsv, formValues, formatCurrency, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
+import AdminLayout from './AdminLayout'
+import ChartBar from './ChartBar'
+
+const mapCoupon = (coupon) => {
+  const now = new Date()
+  const start = coupon.startDate ? new Date(coupon.startDate) : null
+  const expiry = coupon.expiry ? new Date(coupon.expiry) : null
+  let displayStatus = coupon.status
+  if (coupon.status === 'active') {
+    if (expiry && now > expiry) displayStatus = 'expired'
+    else if (start && now < start) displayStatus = 'upcoming'
+    else if ((coupon.usage || 0) >= (coupon.maxUsage || 0)) displayStatus = 'limit-reached'
+  }
+  return {
+    id: coupon._id,
+    code: coupon.code,
+    description: coupon.description || '',
+    discount: coupon.discount,
+    type: coupon.type,
+    minPurchase: coupon.minPurchase,
+    maxDiscount: coupon.maxDiscount || coupon.discount,
+    applicableTo: coupon.applicableTo || 'both',
+    packageIds: coupon.packageIds || [],
+    startDate: formatDate(coupon.startDate),
+    expiry: formatDate(coupon.expiry),
+    usage: coupon.usage || 0,
+    maxUsage: coupon.maxUsage,
+    perUserLimit: coupon.perUserLimit ?? 1,
+    status: coupon.status,
+    displayStatus
+  }
+}
+
+const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
+const defaultTabPaging = {
+  reports: { page: 1, limit: 10 },
+  coupons: { page: 1, limit: 10 },
+  settings: { page: 1, limit: 10 }
+}
+
+const ReportsCouponsSettings = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const tabFromRoute = useCallback(() => {
+    if (location.pathname.includes('settings')) return 'settings'
+    return new URLSearchParams(location.search).get('tab') || 'reports'
+  }, [location.pathname, location.search])
+
+  const [activeTab, setActiveTab] = useState(tabFromRoute)
+  const [coupons, setCoupons] = useState([])
+  const [analytics, setAnalytics] = useState(null)
+  const [reportSummary, setReportSummary] = useState(null)
+  const [settings, setSettings] = useState({
+    siteName: 'Travel Tour Management System',
+    siteEmail: '',
+    sitePhone: '',
+    currency: 'INR',
+    timezone: 'Asia/Kolkata',
+    maintenanceMode: false,
+    allowRegistration: true,
+    requireApproval: false,
+    taxRate: 18,
+    cancellationPolicy: '',
+    refundPolicy: ''
+  })
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [packages, setPackages] = useState([])
+  const [showAddCouponModal, setShowAddCouponModal] = useState(false)
+  const [showEditCouponModal, setShowEditCouponModal] = useState(false)
+  const [selectedCoupon, setSelectedCoupon] = useState(null)
+  const [error, setError] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
+  // Each tab owns its own page/limit so switching tabs never shares a page.
+  const [tabPaging, setTabPaging] = useState(defaultTabPaging)
+  const [couponMeta, setCouponMeta] = useState(emptyMeta)
+
+  useEffect(() => {
+    Promise.resolve().then(() => setActiveTab(tabFromRoute()))
+  }, [tabFromRoute])
+
+  useEffect(() => {
+    const loadPackages = async () => {
+      try {
+        const data = await api('/packages', { params: { limit: 'all' } })
+        setPackages(data.packages || [])
+      } catch {
+        // packages dropdown will be empty if fetch fails
+      }
+    }
+    loadPackages()
+  }, [])
+
+  const openTab = (tab) => {
+    if (tab === 'settings') navigate('/admin/settings')
+    else if (tab === 'coupons') navigate('/admin/reports?tab=coupons')
+    else navigate('/admin/reports')
+  }
+
+  // /admin/coupons honours `search` but not the status select, so an active
+  // status filter pulls the whole set and filters it locally.
+  const hasLocalFilters = filterStatus !== 'all'
+  const couponPaging = tabPaging.coupons
+
+  const load = async (overrides = {}) => {
+    const nextCouponPage = overrides.couponPage ?? couponPaging.page
+    const nextCouponLimit = overrides.couponLimit ?? couponPaging.limit
+    try {
+      setError('')
+      const [couponData, analyticsData, summaryData, settingsData] = await Promise.all([
+        api('/admin/coupons', {
+          params: {
+            page: hasLocalFilters ? undefined : nextCouponPage,
+            limit: hasLocalFilters ? 'all' : nextCouponLimit,
+            search: searchTerm
+          }
+        }),
+        api('/admin/analytics', { params: { range: 'month' } }),
+        api('/admin/reports/summary', { params: { range: 'month' } }),
+        api('/admin/settings')
+      ])
+      const mapped = (couponData.coupons || []).map(mapCoupon)
+      setCoupons(mapped)
+      setCouponMeta(readPagination(couponData, mapped.length))
+      setAnalytics(analyticsData)
+      setReportSummary(summaryData)
+      if (settingsData.settings) {
+        setSettings((current) => ({ ...current, ...settingsData.settings }))
+      }
+    } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  useEffect(() => {
+    Promise.resolve().then(() => load())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabPaging.coupons.page, tabPaging.coupons.limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setTabPaging((current) => ({ ...current, coupons: { ...current.coupons, page: 1 } }))
+      if (couponPaging.page === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterStatus])
+
+  const handleCouponPageChange = (nextPage) => {
+    setTabPaging((current) => ({ ...current, coupons: { ...current.coupons, page: nextPage } }))
+  }
+
+  const handleCouponLimitChange = (nextLimit) => {
+    setTabPaging((current) => ({ ...current, coupons: { ...current.coupons, limit: nextLimit, page: 1 } }))
+  }
+
+  const filteredCoupons = hasLocalFilters
+    ? coupons.filter((coupon) => filterStatus === 'all' || coupon.status === filterStatus)
+    : coupons
+
+  const handleDeleteCoupon = async (id) => {
+    if (!window.confirm('Delete this coupon?')) return
+    try {
+      await api(`/admin/coupons/${id}`, { method: 'DELETE' })
+      if (filteredCoupons.length <= 1 && couponPaging.page > 1) {
+        setTabPaging((current) => ({ ...current, coupons: { ...current.coupons, page: current.coupons.page - 1 } }))
+      } else {
+        load()
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleToggleCouponStatus = async (id) => {
+    const coupon = coupons.find((item) => item.id === id)
+    const status = coupon.status === 'active' ? 'inactive' : 'active'
+    try {
+      await api(`/admin/coupons/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const couponPayload = (values) => {
+    let packageIds = values.packageIds
+    if (packageIds) {
+      if (Array.isArray(packageIds)) {
+        packageIds = packageIds.map((id) => String(id).trim()).filter(Boolean)
+      } else {
+        packageIds = String(packageIds).split(',').map((id) => id.trim()).filter(Boolean)
+      }
+    } else {
+      packageIds = []
+    }
+    return {
+      code: values.code.toUpperCase(),
+      description: values.description || '',
+      type: values.type,
+      discount: Number(values.discount),
+      minPurchase: Number(values.minPurchase),
+      maxDiscount: values.maxDiscount ? Number(values.maxDiscount) : Number(values.discount),
+      applicableTo: values.applicableTo || 'both',
+      packageIds,
+      startDate: values.startDate || new Date().toISOString().split('T')[0],
+      expiry: values.expiry,
+      maxUsage: Number(values.maxUsage),
+      perUserLimit: Number(values.perUserLimit ?? 1),
+      status: values.status || 'active'
+    }
+  }
+
+  const handleAddCoupon = async (e) => {
+    e.preventDefault()
+    try {
+      await api('/admin/coupons', { method: 'POST', body: JSON.stringify(couponPayload(formValues(e.target))) })
+      setShowAddCouponModal(false)
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleUpdateCoupon = async (e) => {
+    e.preventDefault()
+    const values = formValues(e.target)
+    try {
+      let packageIds = values.packageIds
+      if (packageIds) {
+        if (Array.isArray(packageIds)) {
+          packageIds = packageIds.map((id) => String(id).trim()).filter(Boolean)
+        } else {
+          packageIds = String(packageIds).split(',').map((id) => id.trim()).filter(Boolean)
+        }
+      } else {
+        packageIds = []
+      }
+      const payload = {
+        code: values.code.toUpperCase(),
+        description: values.description || '',
+        type: values.type,
+        discount: Number(values.discount),
+        minPurchase: Number(values.minPurchase),
+        maxDiscount: values.maxDiscount ? Number(values.maxDiscount) : Number(values.discount),
+        applicableTo: values.applicableTo || 'both',
+        packageIds,
+        startDate: values.startDate,
+        expiry: values.expiry,
+        maxUsage: Number(values.maxUsage),
+        perUserLimit: Number(values.perUserLimit ?? 1)
+      }
+      await api(`/admin/coupons/${selectedCoupon.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      })
+      setShowEditCouponModal(false)
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const saveSettings = async () => {
+    try {
+      setSaveMessage('')
+      await api('/admin/settings', { method: 'PUT', body: JSON.stringify(settings) })
+      setSaveMessage('Settings saved to the database.')
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleExportReports = () => {
+    if (!analytics) return
+    downloadCsv('reports.csv', ['Metric', 'Value'], [
+      ['Users', analytics.totalUsers],
+      ['Bookings', analytics.totalBookings],
+      ['Revenue', analytics.totalRevenue],
+      ['Active Tours', analytics.activeTours]
+    ])
+  }
+
+  return (
+    <AdminLayout
+      active={location.pathname.includes('settings') ? 'settings' : 'reports'}
+      title={location.pathname.includes('settings') ? 'Administration' : 'Reports, Coupons & Settings'}
+    >
+      <div className="reports-page">
+        {error && <div className="error-message">{error}</div>}
+        <div className="tabs enhanced">
+          <button className={`tab ${activeTab === 'reports' ? 'active' : ''}`} onClick={() => openTab('reports')}><PieChart className="h-4 w-4" /> Reports</button>
+          <button className={`tab ${activeTab === 'coupons' ? 'active' : ''}`} onClick={() => openTab('coupons')}><Tag className="h-4 w-4" /> Coupons</button>
+          <button className={`tab ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => openTab('settings')}><Settings className="h-4 w-4" /> Settings</button>
+        </div>
+
+        {activeTab === 'reports' && (
+          <>
+            <div className="page-actions">
+              <button className="action-btn enhanced" onClick={handleExportReports} disabled={!analytics}>
+                <Download className="h-4 w-4" /> Export Reports
+              </button>
+            </div>
+            <div className="dashboard-sections">
+            <div className="section-card enhanced">
+              <h3><DollarSign className="h-5 w-5" /> Revenue Reports</h3>
+              <div className="report-placeholder enhanced">
+                <PieChart className="chart-icon" />
+                <p>{formatCurrency(analytics?.totalRevenue || 0)}</p>
+                <small>Paid booking revenue from MongoDB</small>
+              </div>
+            </div>
+            <div className="section-card enhanced">
+              <h3><Ticket className="h-5 w-5" /> Booking Reports</h3>
+              <div className="report-placeholder enhanced">
+                <Ticket className="chart-icon" />
+                <p>{analytics?.totalBookings || 0} bookings</p>
+                <small>Confirmed {analytics?.bookingStats?.confirmed || 0} · Pending {analytics?.bookingStats?.pending || 0} · Cancelled {analytics?.bookingStats?.cancelled || 0}</small>
+              </div>
+            </div>
+            <div className="section-card enhanced">
+              <h3><Users className="h-5 w-5" /> Customer Reports</h3>
+              <div className="report-placeholder enhanced">
+                <Users className="chart-icon" />
+                <p>{analytics?.totalUsers || 0} users</p>
+                <small>New this month: {analytics?.range?.users || 0}</small>
+              </div>
+            </div>
+            <div className="section-card enhanced">
+              <h3><MapPin className="h-5 w-5" /> Tour Performance</h3>
+              <div className="report-placeholder enhanced">
+                <MapPin className="chart-icon" />
+                <p>{analytics?.activeTours || 0} active tours</p>
+                <small>{(analytics?.topTours || []).map((tour) => tour.name).join(', ') || 'Add packages to see rankings'}</small>
+              </div>
+            </div>
+          <div className="section-card full-width enhanced">
+            <h3>Revenue by Package</h3>
+            <ChartBar
+              type="pie"
+              data={Object.fromEntries((analytics?.topTours || []).map((tour) => [tour.name, tour.revenue || 0]))}
+              title="Revenue share"
+            />
+          </div>
+          <div className="section-card full-width enhanced">
+            <h3>Monthly Revenue Trend</h3>
+            <ChartBar
+              type="line"
+              data={(analytics?.monthlyRevenue || []).map((value, index) => {
+                const date = new Date()
+                date.setMonth(date.getMonth() - ((analytics.monthlyRevenue?.length || 1) - 1 - index))
+                return { label: date.toLocaleString('en-US', { month: 'short' }), value, format: 'currency' }
+              })}
+              height={240}
+              title="Revenue over the last 6 months"
+            />
+          </div>
+          <div className="section-card enhanced">
+            <h3>Booking Status Breakdown</h3>
+            <ChartBar type="pie" data={analytics?.bookingStats || {}} />
+          </div>
+          <div className="section-card enhanced">
+            <h3>Booking Payment Status</h3>
+            <ChartBar type="pie" data={reportSummary?.bookingsByPayment || {}} />
+          </div>
+          <div className="section-card enhanced">
+            <h3>Revenue by Category</h3>
+            <ChartBar
+              type="bar"
+              data={(reportSummary?.revenueByCategory || []).map(item => ({ label: item.name, value: item.revenue, format: 'currency' }))}
+            />
+          </div>
+          <div className="section-card enhanced">
+            <h3>Top Destinations by Revenue</h3>
+            <ChartBar
+              type="bar"
+              data={(reportSummary?.revenueByDestination || []).map(item => ({ label: item.name, value: item.revenue, format: 'currency' }))}
+            />
+          </div>
+          </div>
+          </>
+        )}
+
+      {activeTab === 'coupons' && (
+        <>
+          <div className="filters-section enhanced">
+            <div className="search-bar">
+              <Search className="search-icon" />
+              <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search coupons by code..." />
+            </div>
+            <div className="filter-controls">
+              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select">
+                <option value="all">All Status</option>
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <button className="action-btn" onClick={() => { setSelectedCoupon(null); setShowAddCouponModal(true) }}><Plus className="h-4 w-4" /> Add Coupon</button>
+          </div>
+          <div className="stats-grid enhanced">
+            <div className="stat-card"><Tag className="stat-icon" /><div className="stat-content"><h3>Total Coupons</h3><p className="stat-number">{couponMeta.total}</p></div></div>
+            <div className="stat-card"><Tag className="stat-icon" /><div className="stat-content"><h3>Active Coupons</h3><p className="stat-number">{coupons.filter((c) => c.status === 'active').length}</p></div></div>
+            <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Total Usage</h3><p className="stat-number">{coupons.reduce((sum, c) => sum + c.usage, 0)}</p></div></div>
+          </div>
+          <div className="section-card full-width enhanced">
+            <h3>Coupons ({hasLocalFilters ? filteredCoupons.length : couponMeta.total})</h3>
+            <div className="coupons-grid">
+              {filteredCoupons.length === 0 && <div className="empty-state enhanced" style={{ gridColumn: '1 / -1' }}><Tag className="h-8 w-8" /><p>No coupons found</p></div>}
+              {filteredCoupons.map((coupon) => (
+                <div key={coupon.id} className="coupon-card enhanced">
+                  <div className="coupon-header">
+                    <div className="coupon-code"><Tag className="h-4 w-4" />{coupon.code}</div>
+                    <span className={`status-badge enhanced ${coupon.displayStatus}`}>{coupon.displayStatus}</span>
+                  </div>
+                  <div className="coupon-discount">{coupon.type === 'percentage' ? `${coupon.discount}% OFF` : `₹${coupon.discount} OFF`}</div>
+                  <div className="coupon-details">
+                    <p>Applicable: {coupon.applicableTo === 'both' ? 'Packages & Hotels' : coupon.applicableTo === 'package' ? 'Packages only' : 'Hotels only'}</p>
+                    <p>Min Purchase: ₹{coupon.minPurchase.toLocaleString()}</p>
+                    <p>Start: {coupon.startDate} · Expires: {coupon.expiry}</p>
+                    <p>Per user limit: {coupon.perUserLimit}</p>
+                  </div>
+                  <div className="coupon-usage">
+                    <div className="usage-bar"><div className="usage-fill" style={{ width: `${coupon.maxUsage ? (coupon.usage / coupon.maxUsage) * 100 : 0}%` }}></div></div>
+                    <span>{coupon.usage}/{coupon.maxUsage} used</span>
+                  </div>
+                  <div className="coupon-actions">
+                    <button className="icon-btn edit" onClick={() => { setSelectedCoupon(coupon); setShowEditCouponModal(true) }}><Edit className="h-4 w-4" /></button>
+                    <button className={`icon-btn toggle ${coupon.status === 'active' ? 'on' : 'off'}`} onClick={() => handleToggleCouponStatus(coupon.id)} title={coupon.status === 'active' ? 'Deactivate' : 'Activate'}><Power className="h-4 w-4" /></button>
+                    <button className="icon-btn delete" onClick={() => handleDeleteCoupon(coupon.id)}><Trash2 className="h-4 w-4" /></button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Pagination
+              page={couponPaging.page}
+              totalPages={couponMeta.totalPages}
+              total={couponMeta.total}
+              limit={couponMeta.limit}
+              onPageChange={handleCouponPageChange}
+              onLimitChange={handleCouponLimitChange}
+              itemLabel="coupons"
+            />
+          </div>
+        </>
+      )}
+
+      {activeTab === 'settings' && (
+        <>
+          <div className="settings-hero">
+            <div className="settings-hero-icon"><Shield className="h-8 w-8" /></div>
+            <div className="settings-hero-text">
+              <h2>Administration Settings</h2>
+              <p>Configure site preferences, system flags and business rules. Changes apply immediately.</p>
+            </div>
+          </div>
+          <div className="settings-grid">
+            <div className="section-card enhanced settings-half">
+              <h3><span className="card-icon"><Settings className="h-5 w-5" /></span> General Settings</h3>
+              <p className="card-subtitle">Basic site identity and regional preferences</p>
+              <div className="settings-form enhanced">
+                <div className="form-row">
+                  <div className="form-group"><label>Site Name</label><input value={settings.siteName || ''} onChange={(e) => setSettings({ ...settings, siteName: e.target.value })} /></div>
+                  <div className="form-group"><label>Site Email</label><input type="email" value={settings.siteEmail || ''} onChange={(e) => setSettings({ ...settings, siteEmail: e.target.value })} /></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label>Site Phone</label><input value={settings.sitePhone || ''} onChange={(e) => setSettings({ ...settings, sitePhone: e.target.value })} /></div>
+                  <div className="form-group">
+                    <label>Currency</label>
+                    <select value={settings.currency} onChange={(e) => setSettings({ ...settings, currency: e.target.value })}>
+                      <option value="INR">INR (₹)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Timezone</label>
+                  <select value={settings.timezone} onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}>
+                    <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+                    <option value="UTC">UTC</option>
+                    <option value="America/New_York">America/New_York (EST)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="section-card enhanced settings-half">
+              <h3><span className="card-icon"><DollarSign className="h-5 w-5" /></span> Business Settings</h3>
+              <p className="card-subtitle">Taxes, cancellation and refund policies</p>
+              <div className="settings-form enhanced">
+                <div className="form-row">
+                  <div className="form-group"><label>Tax Rate (%)</label><input type="number" value={settings.taxRate} onChange={(e) => setSettings({ ...settings, taxRate: parseFloat(e.target.value) || 0 })} /></div>
+                  <div className="form-group"><label>Cancellation Policy</label><input value={settings.cancellationPolicy || ''} onChange={(e) => setSettings({ ...settings, cancellationPolicy: e.target.value })} /></div>
+                </div>
+                <div className="form-group"><label>Refund Policy</label><input value={settings.refundPolicy || ''} onChange={(e) => setSettings({ ...settings, refundPolicy: e.target.value })} /></div>
+              </div>
+            </div>
+            <div className="section-card enhanced full-width">
+              <h3><span className="card-icon"><Shield className="h-5 w-5" /></span> System Settings</h3>
+              <p className="card-subtitle">Control site access, registration and maintenance behaviour</p>
+              <div className="settings-form enhanced">
+                <div className="setting-item">
+                  <div className="setting-info"><Bell className="h-5 w-5" /><div><h4>Maintenance Mode</h4><p>Disable the site for maintenance</p></div></div>
+                  <div className="toggle-wrap">
+                    <label className="toggle-switch"><input type="checkbox" checked={!!settings.maintenanceMode} onChange={(e) => setSettings({ ...settings, maintenanceMode: e.target.checked })} /><span className="toggle-slider"></span></label>
+                    <span className={`toggle-status ${settings.maintenanceMode ? 'on' : 'off'}`}>{settings.maintenanceMode ? 'On' : 'Off'}</span>
+                  </div>
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info"><Users className="h-5 w-5" /><div><h4>Allow Registration</h4><p>Enable new user registration</p></div></div>
+                  <div className="toggle-wrap">
+                    <label className="toggle-switch"><input type="checkbox" checked={!!settings.allowRegistration} onChange={(e) => setSettings({ ...settings, allowRegistration: e.target.checked })} /><span className="toggle-slider"></span></label>
+                    <span className={`toggle-status ${settings.allowRegistration ? 'on' : 'off'}`}>{settings.allowRegistration ? 'On' : 'Off'}</span>
+                  </div>
+                </div>
+                <div className="setting-item">
+                  <div className="setting-info"><Shield className="h-5 w-5" /><div><h4>Require Approval</h4><p>Require admin approval for new users</p></div></div>
+                  <div className="toggle-wrap">
+                    <label className="toggle-switch"><input type="checkbox" checked={!!settings.requireApproval} onChange={(e) => setSettings({ ...settings, requireApproval: e.target.checked })} /><span className="toggle-slider"></span></label>
+                    <span className={`toggle-status ${settings.requireApproval ? 'on' : 'off'}`}>{settings.requireApproval ? 'On' : 'Off'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="section-card enhanced full-width save-card">
+              <div className="form-actions">
+                <button onClick={saveSettings} className="btn-primary"><Save className="h-4 w-4" /> Save Settings</button>
+                {saveMessage && <span className="success-message">{saveMessage}</span>}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {(showAddCouponModal || showEditCouponModal) && (
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
+            <div className="modal-header">
+              <h3>{showAddCouponModal ? 'Add New Coupon' : 'Edit Coupon'}</h3>
+              <button className="modal-close" onClick={() => { setShowAddCouponModal(false); setShowEditCouponModal(false) }}>×</button>
+            </div>
+            <div className="modal-body">
+              <form className="coupon-form enhanced" onSubmit={showAddCouponModal ? handleAddCoupon : handleUpdateCoupon}>
+                <div className="form-group"><label>Coupon Code</label><input name="code" defaultValue={selectedCoupon?.code} required /></div>
+                <div className="form-group"><label>Description</label><textarea name="description" defaultValue={selectedCoupon?.description} rows={2} /></div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Discount Type</label>
+                    <select name="type" defaultValue={selectedCoupon?.type || 'percentage'}>
+                      <option value="percentage">Percentage</option>
+                      <option value="flat">Flat Amount</option>
+                    </select>
+                  </div>
+                  <div className="form-group"><label>Discount Value</label><input name="discount" type="number" defaultValue={selectedCoupon?.discount} required /></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label>Min Purchase (₹)</label><input name="minPurchase" type="number" defaultValue={selectedCoupon?.minPurchase} required /></div>
+                  <div className="form-group"><label>Max Discount (₹)</label><input name="maxDiscount" type="number" defaultValue={selectedCoupon?.maxDiscount || selectedCoupon?.discount} /></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Applicable To</label>
+                    <select name="applicableTo" defaultValue={selectedCoupon?.applicableTo || 'both'}>
+                      <option value="both">Both</option>
+                      <option value="package">Package</option>
+                      <option value="hotel">Hotel</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label>Packages</label>
+                    <select name="packageIds" multiple defaultValue={selectedCoupon?.packageIds || []} style={{ minHeight: '120px' }}>
+                      {packages.map(pkg => (
+                        <option key={pkg._id} value={pkg._id}>{pkg.name}</option>
+                      ))}
+                    </select>
+                    <small>Hold Ctrl/Cmd to select multiple</small>
+                  </div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label>Start Date</label><input name="startDate" type="date" defaultValue={selectedCoupon?.startDate} /></div>
+                  <div className="form-group"><label>Expiry Date</label><input name="expiry" type="date" defaultValue={selectedCoupon?.expiry} required /></div>
+                </div>
+                <div className="form-row">
+                  <div className="form-group"><label>Max Usage</label><input name="maxUsage" type="number" defaultValue={selectedCoupon?.maxUsage} required /></div>
+                  <div className="form-group"><label>Per User Limit</label><input name="perUserLimit" type="number" defaultValue={selectedCoupon?.perUserLimit ?? 1} /></div>
+                </div>
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => { setShowAddCouponModal(false); setShowEditCouponModal(false) }}>Cancel</button>
+                  <button type="submit" className="btn-primary">{showAddCouponModal ? 'Add Coupon' : 'Update Coupon'}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+       )}
+      </div>
+    </AdminLayout>
+  )
+}
+
+export default ReportsCouponsSettings

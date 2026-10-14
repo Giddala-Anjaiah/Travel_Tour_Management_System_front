@@ -1,0 +1,20 @@
+# Dependencies
+node_modules
+
+# Environment variables (keep secrets out of git)
+.env
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editor
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

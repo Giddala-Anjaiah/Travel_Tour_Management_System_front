@@ -1,0 +1,346 @@
+import { useEffect, useState } from 'react'
+import { Users, Search, Plus, Pencil as Edit, Trash2, Download, UserCheck, UserX, Mail, Phone, ChevronLeft, ChevronRight } from 'lucide-react'
+import { api, downloadCsv, fetchAllPages, formValues, formatDate, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
+import AdminLayout from './AdminLayout'
+
+const UserManagement = () => {
+  const [users, setUsers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterRole, setFilterRole] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedUser, setSelectedUser] = useState(null)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+  const [stats, setStats] = useState(null)
+
+  const hasLocalFilters = filterRole !== 'all' || filterStatus !== 'all'
+
+  const fetchUsers = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setError('')
+      const data = await api('/admin/users', {
+        params: {
+          page: hasLocalFilters ? undefined : nextPage,
+          limit: hasLocalFilters ? 'all' : nextLimit,
+          search: searchTerm
+        }
+      })
+      const mapped = (data.users || []).map((user) => ({
+        id: user._id,
+        name: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        status: user.status || 'active',
+        joinDate: formatDate(user.createdAt),
+        lastLogin: user.lastLogin ? formatDate(user.lastLogin) : 'Never'
+      }))
+      setUsers(mapped)
+      setMeta(readPagination(data, mapped.length))
+      if (data.stats) setStats(data.stats)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    Promise.resolve().then(() => fetchUsers())
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      fetchUsers({ page: 1 })
+    }, 350)
+    return () => clearTimeout(timer)
+  }, [searchTerm, filterRole, filterStatus])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
+  const handleExport = async () => {
+    const rows = await fetchAllPages('/admin/users', {
+      key: 'users',
+      params: { search: searchTerm, role: filterRole, status: filterStatus }
+    })
+    const mapped = rows.map((user) => ({
+      name: user.fullName,
+      email: user.email,
+      phone: user.phone,
+      role: user.role,
+      status: user.status || 'active',
+      joinDate: formatDate(user.createdAt),
+      lastLogin: user.lastLogin ? formatDate(user.lastLogin) : 'Never'
+    }))
+    downloadCsv('users.csv', ['Name', 'Email', 'Phone', 'Role', 'Status', 'Join Date', 'Last Login'], mapped.map((u) => [u.name, u.email, u.phone, u.role, u.status, u.joinDate, u.lastLogin]))
+  }
+
+  const visibleUsers = hasLocalFilters
+    ? users.filter((user) =>
+        (filterRole === 'all' || user.role === filterRole) &&
+        (filterStatus === 'all' || user.status === filterStatus))
+    : users
+
+  const totalUsers = stats?.total ?? meta.total
+  const activeUsers = stats?.active ?? users.filter((u) => u.status === 'active').length
+  const inactiveUsers = stats?.inactive ?? users.filter((u) => u.status === 'inactive').length
+
+  const handleDeleteUser = async (userId) => {
+    if (!window.confirm('Are you sure you want to delete this user?')) return
+    try {
+      await api(`/admin/users/${userId}`, { method: 'DELETE' })
+      fetchUsers()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleToggleStatus = async (userId) => {
+    const user = users.find((item) => item.id === userId)
+    const newStatus = user.status === 'active' ? 'inactive' : 'active'
+    try {
+      await api(`/admin/users/${userId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: newStatus })
+      })
+      setUsers(users.map((item) => item.id === userId ? { ...item, status: newStatus } : item))
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleAddUser = async (e) => {
+    e.preventDefault()
+    const values = formValues(e.target)
+    try {
+      await api('/admin/users', { method: 'POST', body: JSON.stringify(values) })
+      setShowAddModal(false)
+      fetchUsers()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleUpdateUser = async (e) => {
+    e.preventDefault()
+    const values = formValues(e.target)
+    try {
+      await api(`/admin/users/${selectedUser.id}`, { method: 'PUT', body: JSON.stringify(values) })
+      setShowEditModal(false)
+      fetchUsers()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  return (
+    <AdminLayout
+      active="users"
+      title="User Management"
+    >
+      {error && <div className="error-message">{error}</div>}
+      <div className="filters-section enhanced">
+        <div className="search-bar enhanced">
+          <Search className="search-icon" />
+          <input type="text" placeholder="Search users by name or email..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+        </div>
+        <div className="filter-controls enhanced">
+          <select value={filterRole} onChange={(e) => setFilterRole(e.target.value)} className="filter-select enhanced">
+            <option value="all">All Roles</option>
+            <option value="admin">Admin</option>
+            <option value="customer">Customer</option>
+            <option value="tour_operator">Tour Operator</option>
+            <option value="hotel_partner">Hotel Partner</option>
+          </select>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-select enhanced">
+            <option value="all">All Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+        <div className="page-actions">
+          <button onClick={handleExport} className="action-btn enhanced secondary">
+            <Download className="h-4 w-4" />
+            Export
+          </button>
+          <button onClick={() => setShowAddModal(true)} className="action-btn enhanced">
+            <Plus className="h-4 w-4" />
+            Add User
+          </button>
+        </div>
+      </div>
+
+      <div className="stats-grid enhanced">
+        <div className="stat-card">
+          <div className="stat-icon"><Users /></div>
+          <div className="stat-content">
+            <h3>Total Users</h3>
+            <p className="stat-number">{totalUsers}</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon"><UserCheck /></div>
+          <div className="stat-content">
+            <h3>Active Users</h3>
+            <p className="stat-number">{activeUsers}</p>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon"><UserX /></div>
+          <div className="stat-content">
+            <h3>Inactive Users</h3>
+            <p className="stat-number">{inactiveUsers}</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="section-card enhanced full-width">
+        <h3><Users className="h-5 w-5" /> Users List ({hasLocalFilters ? visibleUsers.length : meta.total})</h3>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-tertiary)' }}>Loading users...</div>
+        ) : (
+          <div className="table-container enhanced">
+            <table className="data-table enhanced">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Join Date</th>
+                  <th>Last Login</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan="8" style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-tertiary)' }}>
+                      <div className="empty-state enhanced"><Users className="h-12 w-12" /><h3>No users found</h3></div>
+                    </td>
+                  </tr>
+                ) : visibleUsers.map((user) => (
+                  <tr key={user.id}>
+                    <td className="user-name-cell enhanced">
+                      <div className="user-avatar enhanced">{user.name.charAt(0)}</div>
+                      <span>{user.name}</span>
+                    </td>
+                    <td><Mail className="h-4 w-4 inline-icon" />{user.email}</td>
+                    <td><Phone className="h-4 w-4 inline-icon" />{user.phone}</td>
+                    <td><span className={`role-badge enhanced ${user.role}`}>{user.role.replace('_', ' ')}</span></td>
+                    <td><span className={`status-badge enhanced ${user.status}`}>{user.status}</span></td>
+                    <td>{user.joinDate}</td>
+                    <td>{user.lastLogin}</td>
+                    <td>
+                      <div className="action-buttons enhanced">
+                        <button onClick={() => { setSelectedUser(user); setShowEditModal(true) }} className="icon-btn enhanced edit" title="Edit"><Edit className="h-4 w-4" /></button>
+                        <button onClick={() => handleToggleStatus(user.id)} className="icon-btn enhanced toggle" title={user.status === 'active' ? 'Deactivate' : 'Activate'}>
+                          {user.status === 'active' ? <UserX className="h-4 w-4" /> : <UserCheck className="h-4 w-4" />}
+                        </button>
+                        <button onClick={() => handleDeleteUser(user.id)} className="icon-btn enhanced delete" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <Pagination
+              page={page}
+              totalPages={meta.totalPages}
+              total={meta.total}
+              limit={meta.limit}
+              onPageChange={handlePageChange}
+              onLimitChange={handleLimitChange}
+              itemLabel="users"
+              disabled={loading}
+            />
+          </div>
+        )}
+      </div>
+
+      {showAddModal && (
+        <div className="modal-overlay enhanced" onClick={() => setShowAddModal(false)}>
+          <div className="modal enhanced" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header enhanced">
+              <h3>Add New User</h3>
+              <button onClick={() => setShowAddModal(false)} className="modal-close enhanced">×</button>
+            </div>
+            <div className="modal-body enhanced">
+              <form className="user-form" onSubmit={handleAddUser}>
+                <div className="form-group enhanced"><label>Full Name</label><input name="fullName" type="text" required /></div>
+                <div className="form-group enhanced"><label>Email</label><input name="email" type="email" required /></div>
+                <div className="form-group enhanced"><label>Phone</label><input name="phone" type="tel" required /></div>
+                <div className="form-group enhanced">
+                  <label>Role</label>
+                  <select name="role" required defaultValue="customer">
+                    <option value="customer">Customer</option>
+                    <option value="tour_operator">Tour Operator</option>
+                    <option value="hotel_partner">Hotel Partner</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div className="form-group enhanced"><label>Password</label><input name="password" type="password" required /></div>
+                <div className="form-actions enhanced">
+                  <button type="button" onClick={() => setShowAddModal(false)} className="btn-secondary enhanced">Cancel</button>
+                  <button type="submit" className="btn-primary enhanced">Add User</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && selectedUser && (
+        <div className="modal-overlay enhanced" onClick={() => setShowEditModal(false)}>
+          <div className="modal enhanced" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header enhanced">
+              <h3>Edit User</h3>
+              <button onClick={() => setShowEditModal(false)} className="modal-close enhanced">×</button>
+            </div>
+            <div className="modal-body enhanced">
+              <form className="user-form" onSubmit={handleUpdateUser}>
+                <div className="form-group enhanced"><label>Full Name</label><input name="fullName" type="text" defaultValue={selectedUser.name} required /></div>
+                <div className="form-group enhanced"><label>Email</label><input name="email" type="email" defaultValue={selectedUser.email} required /></div>
+                <div className="form-group enhanced"><label>Phone</label><input name="phone" type="tel" defaultValue={selectedUser.phone} required /></div>
+                <div className="form-group enhanced">
+                  <label>Role</label>
+                  <select name="role" defaultValue={selectedUser.role} required>
+                    <option value="customer">Customer</option>
+                    <option value="tour_operator">Tour Operator</option>
+                    <option value="hotel_partner">Hotel Partner</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+                <div className="form-actions enhanced">
+                  <button type="button" onClick={() => setShowEditModal(false)} className="btn-secondary enhanced">Cancel</button>
+                  <button type="submit" className="btn-primary enhanced">Update User</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </AdminLayout>
+  )
+}
+
+export default UserManagement

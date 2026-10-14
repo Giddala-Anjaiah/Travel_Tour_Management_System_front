@@ -1,0 +1,354 @@
+import { useEffect, useState } from 'react'
+import { Bed, Plus, Minus, Pencil as Edit, Trash2, Search, Download, Building, Users, DollarSign, Power } from 'lucide-react'
+import { api, downloadCsv, fetchAllPages, formValues, formatCurrency, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
+import AdminLayout from './AdminLayout'
+
+const mapRoom = (room) => ({
+  id: room._id,
+  hotel: room.hotel,
+  type: room.type,
+  total: room.total,
+  available: room.available,
+  booked: room.booked || 0,
+  price: room.price,
+  status: room.status || 'active'
+})
+
+const RoomsManagement = () => {
+  const [rooms, setRooms] = useState([])
+  const [hotels, setHotels] = useState([])
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterHotel, setFilterHotel] = useState('all')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedRoom, setSelectedRoom] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [page, setPage] = useState(1)
+  const [limit, setLimit] = useState(10)
+  const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
+
+  // `search` is honoured server-side on /admin/rooms. The hotel select is not,
+  // so an active hotel filter pulls the whole set and filters it locally.
+  const hasLocalFilters = filterHotel !== 'all'
+
+  const load = async (overrides = {}) => {
+    const nextPage = overrides.page ?? page
+    const nextLimit = overrides.limit ?? limit
+    try {
+      setError('')
+      const [roomData, hotelData] = await Promise.all([
+        api('/admin/rooms', {
+          params: {
+            page: hasLocalFilters ? undefined : nextPage,
+            limit: hasLocalFilters ? 'all' : nextLimit,
+            search: searchTerm
+          }
+        }),
+        api('/admin/hotels', { params: { limit: 'all' } })
+      ])
+      const mapped = (roomData.rooms || []).map(mapRoom)
+      setRooms(mapped)
+      setMeta(readPagination(roomData, mapped.length))
+      setHotels(hotelData.hotels || [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    Promise.resolve().then(() => load())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+      if (page === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm, filterHotel])
+
+  const handlePageChange = (nextPage) => {
+    setPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleLimitChange = (nextLimit) => {
+    setLimit(nextLimit)
+    setPage(1)
+    setLoading(true)
+  }
+
+  const hotelNames = [...new Set([
+    ...hotels.map((hotel) => hotel.name),
+    ...rooms.map((room) => room.hotel)
+  ].filter(Boolean))]
+
+  const filteredRooms = hasLocalFilters
+    ? rooms.filter((room) => filterHotel === 'all' || room.hotel === filterHotel)
+    : rooms
+
+  const persistRoom = async (id, payload) => {
+    await api(`/admin/rooms/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
+  }
+
+  const handleDeleteRoom = async (id) => {
+    if (!window.confirm('Delete this room type?')) return
+    try {
+      await api(`/admin/rooms/${id}`, { method: 'DELETE' })
+      if (filteredRooms.length <= 1 && page > 1) {
+        setPage(page - 1)
+        setLoading(true)
+      } else {
+        load()
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleToggleStatus = async (id) => {
+    const room = rooms.find((item) => item.id === id)
+    const status = room.status === 'active' ? 'inactive' : 'active'
+    try {
+      await persistRoom(id, { status })
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const updateAvailability = async (id, change) => {
+    const room = rooms.find((item) => item.id === id)
+    const available = Math.min(room.total, Math.max(0, room.available + change))
+    const booked = room.total - available
+    try {
+      await persistRoom(id, { available, booked })
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleExport = async () => {
+    const rows = await fetchAllPages('/admin/rooms', {
+      key: 'rooms',
+      params: { search: searchTerm }
+    })
+    const mapped = rows.map(mapRoom)
+    const exported = hasLocalFilters
+      ? mapped.filter((room) => filterHotel === 'all' || room.hotel === filterHotel)
+      : mapped
+    downloadCsv('rooms.csv', ['Hotel', 'Type', 'Total', 'Available', 'Booked', 'Price', 'Status'], exported.map((r) => [r.hotel, r.type, r.total, r.available, r.booked, r.price, r.status]))
+  }
+
+  const handleAddRoom = async (e) => {
+    e.preventDefault()
+    const values = formValues(e.target)
+    try {
+      await api('/admin/rooms', {
+        method: 'POST',
+        body: JSON.stringify({
+          hotel: values.hotel,
+          type: values.type,
+          total: Number(values.total),
+          available: Number(values.available),
+          booked: Math.max(0, Number(values.total) - Number(values.available)),
+          price: Number(values.price),
+          status: 'active'
+        })
+      })
+      setShowAddModal(false)
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleUpdateRoom = async (e) => {
+    e.preventDefault()
+    const values = formValues(e.target)
+    const total = Number(values.total)
+    const available = Number(values.available)
+    try {
+      await persistRoom(selectedRoom.id, {
+        type: values.type,
+        total,
+        available,
+        booked: Math.max(0, total - available),
+        price: Number(values.price)
+      })
+      setShowEditModal(false)
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  return (
+    <AdminLayout
+      active="rooms"
+      title="Rooms & Availability"
+    >
+      <div className="rooms-page">
+        {error && <div className="error-message">{error}</div>}
+        <div className="filters-section enhanced">
+          <div className="search-bar enhanced">
+            <Search className="search-icon" />
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Search rooms by type or hotel..." />
+          </div>
+          <div className="filter-controls enhanced">
+            <select value={filterHotel} onChange={(e) => setFilterHotel(e.target.value)} className="filter-select enhanced">
+              <option value="all">All Hotels</option>
+              {hotelNames.map((hotel) => <option key={hotel} value={hotel}>{hotel}</option>)}
+            </select>
+          </div>
+          <div className="page-actions">
+            <button className="action-btn secondary" onClick={handleExport}>
+              <Download className="h-4 w-4" /> Export
+            </button>
+            <button className="action-btn" onClick={() => setShowAddModal(true)}><Plus className="h-4 w-4" /> Add Room Type</button>
+          </div>
+        </div>
+
+        <div className="stats-grid enhanced">
+          <div className="stat-card"><Bed className="stat-icon" /><div className="stat-content"><h3>Total Rooms</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.total, 0)}</p></div></div>
+          <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Available</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.available, 0)}</p></div></div>
+          <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Booked</h3><p className="stat-number">{rooms.reduce((sum, room) => sum + room.booked, 0)}</p></div></div>
+          <div className="stat-card"><DollarSign className="stat-icon" /><div className="stat-content"><h3>Booked Value</h3><p className="stat-number">{formatCurrency(rooms.reduce((sum, room) => sum + room.booked * room.price, 0))}</p></div></div>
+        </div>
+
+        <div className="section-card enhanced full-width">
+          <h3><Bed className="h-5 w-5" /> Room Types ({hasLocalFilters ? filteredRooms.length : meta.total})</h3>
+          {loading ? (
+            <div className="rooms-grid enhanced">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="skeleton-card">
+                  <div className="skeleton-bar" style={{ width: '55%' }} />
+                  <div className="skeleton-bar" style={{ width: '85%' }} />
+                  <div className="skeleton-bar" style={{ width: '70%' }} />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <>
+              <div className="rooms-grid enhanced">
+                {filteredRooms.length === 0 ? (
+                  <div className="empty-state enhanced full-width">
+                    <Bed className="h-8 w-8" />
+                    <h3>No rooms found</h3>
+                    <p>Add a hotel first, then a room type.</p>
+                  </div>
+                ) : filteredRooms.map((room) => (
+                  <div key={room.id} className="room-card enhanced">
+                    <div className="room-header">
+                      <div className="room-type-info">
+                        <h4>{room.type}</h4>
+                        <span className="room-hotel"><Building className="h-4 w-4" />{room.hotel}</span>
+                      </div>
+                      <span className={`status-badge enhanced ${room.status}`}>{room.status}</span>
+                    </div>
+                    <div className="room-stats">
+                      <div className="room-stat"><span className="stat-label">Total</span><span className="stat-value">{room.total}</span></div>
+                      <div className="room-stat"><span className="stat-label">Available</span><span className="stat-value available">{room.available}</span></div>
+                      <div className="room-stat"><span className="stat-label">Booked</span><span className="stat-value booked">{room.booked}</span></div>
+                    </div>
+                    <div className="room-availability-bar">
+                      <div className="availability-fill" style={{ width: `${room.total ? (room.available / room.total) * 100 : 0}%` }}></div>
+                    </div>
+                    <div className="availability-meta">
+                      <span>{room.total ? Math.round((room.available / room.total) * 100) : 0}% available</span>
+                      <span>{room.booked} of {room.total} booked</span>
+                    </div>
+                    <div className="room-footer">
+                      <span className="room-price">₹{room.price.toLocaleString()}<small>/night</small></span>
+                      <div className="room-actions">
+                        <button onClick={() => updateAvailability(room.id, -1)} className="availability-btn decrease" disabled={room.available === 0} title="Decrease availability"><Minus className="h-3 w-3" /></button>
+                        <button onClick={() => updateAvailability(room.id, 1)} className="availability-btn increase" disabled={room.available === room.total} title="Increase availability"><Plus className="h-3 w-3" /></button>
+                        <button onClick={() => { setSelectedRoom(room); setShowEditModal(true) }} className="icon-btn enhanced edit" title="Edit"><Edit className="h-4 w-4" /></button>
+                        <button onClick={() => handleToggleStatus(room.id)} className={`icon-btn enhanced toggle ${room.status === 'active' ? 'on' : 'off'}`} title={room.status === 'active' ? 'Deactivate' : 'Activate'}><Power className="h-4 w-4" /></button>
+                        <button onClick={() => handleDeleteRoom(room.id)} className="icon-btn enhanced delete" title="Delete"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        <Pagination
+          page={page}
+          totalPages={meta.totalPages}
+          total={meta.total}
+          limit={meta.limit}
+          onPageChange={handlePageChange}
+          onLimitChange={handleLimitChange}
+          itemLabel="room types"
+          disabled={loading}
+        />
+      </div>
+
+      {showAddModal && (
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
+            <div className="modal-header"><h3>Add Room Type</h3><button className="modal-close" onClick={() => setShowAddModal(false)}>×</button></div>
+            <div className="modal-body">
+              <form className="room-form enhanced" onSubmit={handleAddRoom}>
+                <div className="form-group">
+                  <label>Hotel</label>
+                  {hotelNames.length > 0 ? (
+                    <select name="hotel" required>
+                      <option value="">Select Hotel</option>
+                      {hotelNames.map((hotel) => <option key={hotel} value={hotel}>{hotel}</option>)}
+                    </select>
+                  ) : (
+                    <input name="hotel" placeholder="Add a hotel first, or type a hotel name" required />
+                  )}
+                </div>
+                <div className="form-group"><label>Room Type</label><input name="type" required /></div>
+                <div className="form-row">
+                  <div className="form-group"><label>Total Rooms</label><input name="total" type="number" required /></div>
+                  <div className="form-group"><label>Available</label><input name="available" type="number" required /></div>
+                </div>
+                <div className="form-group"><label>Price per Night (₹)</label><input name="price" type="number" required /></div>
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setShowAddModal(false)}>Cancel</button>
+                  <button type="submit" className="btn-primary">Add Room Type</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditModal && selectedRoom && (
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
+            <div className="modal-header"><h3>Edit Room Type</h3><button className="modal-close" onClick={() => setShowEditModal(false)}>×</button></div>
+            <div className="modal-body">
+              <form className="room-form enhanced" onSubmit={handleUpdateRoom}>
+                <div className="form-group"><label>Room Type</label><input name="type" defaultValue={selectedRoom.type} required /></div>
+                <div className="form-row">
+                  <div className="form-group"><label>Total Rooms</label><input name="total" type="number" defaultValue={selectedRoom.total} required /></div>
+                  <div className="form-group"><label>Available</label><input name="available" type="number" defaultValue={selectedRoom.available} required /></div>
+                </div>
+                <div className="form-group"><label>Price per Night (₹)</label><input name="price" type="number" defaultValue={selectedRoom.price} required /></div>
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => setShowEditModal(false)}>Cancel</button>
+                  <button type="submit" className="btn-primary">Update Room Type</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
+    </AdminLayout>
+  )
+}
+
+export default RoomsManagement

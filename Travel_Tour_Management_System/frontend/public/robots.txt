@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+# Sitemap location
+Sitemap: https://travel-tour-management-system-front.vercel.app/sitemap.xml
+
+# Disallow authenticated/admin routes from being indexed
+Disallow: /admin/
+Disallow: /customer/
+Disallow: /tour-operator/
+Disallow: /hotel-partner/
+Disallow: /api/

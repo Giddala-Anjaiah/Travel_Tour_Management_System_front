@@ -1,0 +1,375 @@
+import { useEffect, useState } from 'react'
+import { Calendar, Building, Plus, Pencil as Edit, Trash2, Search, Download, MapPin, Clock, Users, Star, Power } from 'lucide-react'
+import { api, downloadCsv, fetchAllPages, formValues, readPagination } from '../../api'
+import Pagination from '../../components/Pagination'
+import AdminLayout from './AdminLayout'
+
+const mapItinerary = (it) => ({
+  id: it._id, name: it.name, package: it.packageName || '', days: it.days, hotels: it.hotels || 0, status: it.status || 'active'
+})
+
+const mapHotel = (hotel) => ({
+  id: hotel._id, name: hotel.name, location: hotel.location, rooms: hotel.rooms, rating: hotel.rating || 0, partner: hotel.partner, status: hotel.status || 'active'
+})
+
+const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
+
+const ItineraryManagement = () => {
+  const [itineraries, setItineraries] = useState([])
+  const [hotels, setHotels] = useState([])
+  const [packages, setPackages] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState('itineraries')
+  const [searchTerm, setSearchTerm] = useState('')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [selectedItem, setSelectedItem] = useState(null)
+  // Each tab owns its own page/limit/meta so switching tabs never shares a page.
+  const [itineraryPage, setItineraryPage] = useState(1)
+  const [itineraryLimit, setItineraryLimit] = useState(10)
+  const [itineraryMeta, setItineraryMeta] = useState(emptyMeta)
+  const [itineraryStats, setItineraryStats] = useState(null)
+  const [hotelPage, setHotelPage] = useState(1)
+  const [hotelLimit, setHotelLimit] = useState(10)
+  const [hotelMeta, setHotelMeta] = useState(emptyMeta)
+
+  // Both routes only filter server-side on `search`; there are no extra
+  // selects on this page, so the server page is rendered as-is.
+  const load = async (overrides = {}) => {
+    const nextItineraryPage = overrides.itineraryPage ?? itineraryPage
+    const nextItineraryLimit = overrides.itineraryLimit ?? itineraryLimit
+    const nextHotelPage = overrides.hotelPage ?? hotelPage
+    const nextHotelLimit = overrides.hotelLimit ?? hotelLimit
+    try {
+      setError('')
+      const [itineraryData, hotelData, packageData] = await Promise.all([
+        api('/admin/itineraries', { params: { page: nextItineraryPage, limit: nextItineraryLimit, search: searchTerm } }),
+        api('/admin/hotels', { params: { page: nextHotelPage, limit: nextHotelLimit, search: searchTerm } }),
+        api('/admin/packages', { params: { limit: 'all' } })
+      ])
+      const mappedItineraries = (itineraryData.itineraries || []).map(mapItinerary)
+      setItineraries(mappedItineraries)
+      setItineraryMeta(readPagination(itineraryData, mappedItineraries.length))
+      if (itineraryData.stats) setItineraryStats(itineraryData.stats)
+      const mappedHotels = (hotelData.hotels || []).map(mapHotel)
+      setHotels(mappedHotels)
+      setHotelMeta(readPagination(hotelData, mappedHotels.length))
+      setPackages(packageData.packages || [])
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    Promise.resolve().then(() => load())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itineraryPage, itineraryLimit, hotelPage, hotelLimit])
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setItineraryPage(1)
+      setHotelPage(1)
+      if (itineraryPage === 1 && hotelPage === 1) Promise.resolve().then(() => load())
+    }, 350)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchTerm])
+
+  const handleItineraryPageChange = (nextPage) => {
+    setItineraryPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleItineraryLimitChange = (nextLimit) => {
+    setItineraryLimit(nextLimit)
+    setItineraryPage(1)
+    setLoading(true)
+  }
+
+  const handleHotelPageChange = (nextPage) => {
+    setHotelPage(nextPage)
+    setLoading(true)
+  }
+
+  const handleHotelLimitChange = (nextLimit) => {
+    setHotelLimit(nextLimit)
+    setHotelPage(1)
+    setLoading(true)
+  }
+
+  const handleDelete = async (id, type) => {
+    if (!window.confirm(`Delete this ${type}?`)) return
+    const endpoint = type === 'itinerary' ? 'itineraries' : 'hotels'
+    const visible = type === 'itinerary' ? itineraries : hotels
+    const currentPage = type === 'itinerary' ? itineraryPage : hotelPage
+    try {
+      await api(`/admin/${endpoint}/${id}`, { method: 'DELETE' })
+      if (visible.length <= 1 && currentPage > 1) {
+        if (type === 'itinerary') {
+          setItineraryPage(currentPage - 1)
+        } else {
+          setHotelPage(currentPage - 1)
+        }
+        setLoading(true)
+      } else {
+        load()
+      }
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleToggle = async (id, type) => {
+    const items = type === 'itinerary' ? itineraries : hotels
+    const item = items.find((entry) => entry.id === id)
+    const status = item.status === 'active' ? 'inactive' : 'active'
+    const endpoint = type === 'itinerary' ? 'itineraries' : 'hotels'
+    try {
+      await api(`/admin/${endpoint}/${id}`, { method: 'PUT', body: JSON.stringify({ status }) })
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    const values = formValues(e.target)
+    try {
+      if (activeTab === 'itineraries' || selectedItem?.type === 'itinerary') {
+        const payload = { name: values.name, packageName: values.packageName, days: Number(values.days), hotels: Number(values.hotels), status: selectedItem?.status || 'active' }
+        if (showEditModal) await api(`/admin/itineraries/${selectedItem.id}`, { method: 'PUT', body: JSON.stringify(payload) })
+        else await api('/admin/itineraries', { method: 'POST', body: JSON.stringify(payload) })
+      } else {
+        const payload = { name: values.name, location: values.location, rooms: Number(values.rooms), rating: Number(values.rating), partner: values.partner, status: selectedItem?.status || 'active' }
+        if (showEditModal) await api(`/admin/hotels/${selectedItem.id}`, { method: 'PUT', body: JSON.stringify(payload) })
+        else await api('/admin/hotels', { method: 'POST', body: JSON.stringify(payload) })
+      }
+      setShowAddModal(false)
+      setShowEditModal(false)
+      setSelectedItem(null)
+      load()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  const handleExport = async () => {
+    if (activeTab === 'itineraries') {
+      const rows = await fetchAllPages('/admin/itineraries', { key: 'itineraries', params: { search: searchTerm } })
+      const mapped = rows.map(mapItinerary)
+      downloadCsv('itineraries.csv', ['Name', 'Package', 'Days', 'Hotels', 'Status'], mapped.map((i) => [i.name, i.package, i.days, i.hotels, i.status]))
+    } else {
+      const rows = await fetchAllPages('/admin/hotels', { key: 'hotels', params: { search: searchTerm } })
+      const mapped = rows.map(mapHotel)
+      downloadCsv('hotels.csv', ['Name', 'Location', 'Rooms', 'Rating', 'Partner', 'Status'], mapped.map((h) => [h.name, h.location, h.rooms, h.rating, h.partner, h.status]))
+    }
+  }
+
+  const avgRating = hotels.length ? (hotels.reduce((sum, hotel) => sum + hotel.rating, 0) / hotels.length).toFixed(1) : '0.0'
+  const editingItinerary = selectedItem?.type === 'itinerary'
+  const showItineraryForm = showAddModal ? activeTab === 'itineraries' : editingItinerary
+
+  return (
+    <AdminLayout
+      active="itinerary"
+      title="Itinerary & Hotel Management"
+    >
+      <div className="itinerary-page">
+        {error && <div className="error-message">{error}</div>}
+        <div className="tabs enhanced">
+          <button className={`tab ${activeTab === 'itineraries' ? 'active' : ''}`} onClick={() => setActiveTab('itineraries')}><Calendar className="h-4 w-4" /> Itineraries</button>
+          <button className={`tab ${activeTab === 'hotels' ? 'active' : ''}`} onClick={() => setActiveTab('hotels')}><Building className="h-4 w-4" /> Hotels</button>
+        </div>
+        <div className="filters-section enhanced">
+          <div className="search-bar enhanced">
+            <Search className="search-icon" />
+            <input value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder={`Search ${activeTab}...`} />
+          </div>
+          <div className="page-actions">
+            <button className="action-btn secondary" onClick={handleExport}><Download className="h-4 w-4" /> Export</button>
+            <button className="action-btn" onClick={() => { setSelectedItem(null); setShowAddModal(true) }}>
+              <Plus className="h-4 w-4" /> Add {activeTab === 'itineraries' ? 'Itinerary' : 'Hotel'}
+            </button>
+          </div>
+        </div>
+
+      {activeTab === 'itineraries' && (
+        <>
+          <div className="stats-grid enhanced">
+            <div className="stat-card"><Calendar className="stat-icon" /><div className="stat-content"><h3>Total Itineraries</h3><p className="stat-number">{itineraryStats?.total ?? itineraryMeta.total}</p></div></div>
+            <div className="stat-card"><Clock className="stat-icon" /><div className="stat-content"><h3>Total Days</h3><p className="stat-number">{itineraries.reduce((sum, i) => sum + i.days, 0)}</p></div></div>
+            <div className="stat-card"><Building className="stat-icon" /><div className="stat-content"><h3>Listed Hotels</h3><p className="stat-number">{hotelMeta.total}</p></div></div>
+          </div>
+          <div className="section-card enhanced full-width">
+            <h3><Calendar className="h-5 w-5" /> Itineraries ({itineraryMeta.total})</h3>
+            {loading ? (
+              <div className="skeleton-wrap">
+                {[0, 1, 2, 3, 4].map((i) => <div key={i} className="skeleton-bar" style={{ width: `${96 - i * 7}%` }} />)}
+              </div>
+            ) : (
+              <div className="table-container enhanced">
+                <table className="data-table enhanced">
+                  <thead><tr><th>Name</th><th>Package</th><th>Duration</th><th>Hotels</th><th>Status</th><th>Actions</th></tr></thead>
+                  <tbody>
+                    {itineraries.length === 0 ? (
+                      <tr><td colSpan="6">
+                        <div className="empty-state enhanced">
+                          <Calendar className="h-8 w-8" />
+                          <h3>No itineraries found</h3>
+                          <p>Try adjusting your search or add a new itinerary.</p>
+                        </div>
+                      </td></tr>
+                    ) : itineraries.map((item) => (
+                      <tr key={item.id}>
+                        <td className="cell-strong">{item.name}</td>
+                        <td>{item.package}</td>
+                        <td><span className="duration-pill"><Clock className="h-3 w-3" /> {item.days} Days</span></td>
+                        <td>{item.hotels} Hotels</td>
+                        <td><span className={`status-badge enhanced ${item.status}`}>{item.status}</span></td>
+                        <td>
+                          <div className="action-buttons enhanced">
+                            <button className="icon-btn enhanced edit" onClick={() => { setSelectedItem({ ...item, type: 'itinerary' }); setShowEditModal(true) }} title="Edit"><Edit className="h-4 w-4" /></button>
+                            <button className={`icon-btn enhanced toggle ${item.status === 'active' ? 'on' : 'off'}`} onClick={() => handleToggle(item.id, 'itinerary')} title={item.status === 'active' ? 'Deactivate' : 'Activate'}><Power className="h-4 w-4" /></button>
+                            <button className="icon-btn enhanced delete" onClick={() => handleDelete(item.id, 'itinerary')} title="Delete"><Trash2 className="h-4 w-4" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <Pagination
+                  page={itineraryPage}
+                  totalPages={itineraryMeta.totalPages}
+                  total={itineraryMeta.total}
+                  limit={itineraryMeta.limit}
+                  onPageChange={handleItineraryPageChange}
+                  onLimitChange={handleItineraryLimitChange}
+                  itemLabel="itineraries"
+                  disabled={loading}
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {activeTab === 'hotels' && (
+        <>
+          <div className="stats-grid enhanced">
+            <div className="stat-card"><Building className="stat-icon" /><div className="stat-content"><h3>Total Hotels</h3><p className="stat-number">{hotelMeta.total}</p></div></div>
+            <div className="stat-card"><Users className="stat-icon" /><div className="stat-content"><h3>Total Rooms</h3><p className="stat-number">{hotels.reduce((sum, h) => sum + h.rooms, 0)}</p></div></div>
+            <div className="stat-card"><Star className="stat-icon" /><div className="stat-content"><h3>Avg Rating</h3><p className="stat-number">{avgRating}</p></div></div>
+          </div>
+          <div className="section-card enhanced full-width">
+            <h3><Building className="h-5 w-5" /> Hotels ({hotelMeta.total})</h3>
+            {loading ? (
+              <div className="hotels-grid enhanced">
+                {[0, 1, 2].map((i) => (
+                  <div key={i} className="skeleton-card">
+                    <div className="skeleton-bar" style={{ width: '65%' }} />
+                    <div className="skeleton-bar" style={{ width: '90%' }} />
+                    <div className="skeleton-bar" style={{ width: '45%' }} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="hotels-grid enhanced">
+                  {hotels.length === 0 ? (
+                    <div className="empty-state enhanced full-width">
+                      <Building className="h-8 w-8" />
+                      <h3>No hotels found</h3>
+                      <p>Try adjusting your search or add a new hotel.</p>
+                    </div>
+                  ) : hotels.map((hotel) => (
+                    <div key={hotel.id} className="hotel-card enhanced">
+                      <div className="hotel-header enhanced">
+                        <div className="hotel-info"><h3>{hotel.name}</h3></div>
+                        <span className={`status-badge enhanced ${hotel.status}`}>{hotel.status}</span>
+                      </div>
+                      <div className="hotel-content enhanced">
+                        <p className="hotel-location enhanced"><MapPin className="h-4 w-4" />{hotel.location}</p>
+                        <div className="hotel-stats">
+                          <span className="hotel-rooms"><Users className="h-4 w-4" />{hotel.rooms} rooms</span>
+                          <span className="hotel-rating"><Star className="h-4 w-4 fill" />{hotel.rating}</span>
+                        </div>
+                        <p className="hotel-partner">Partner: <strong>{hotel.partner}</strong></p>
+                        <div className="hotel-actions">
+                          <button className="icon-btn enhanced edit" onClick={() => { setSelectedItem({ ...hotel, type: 'hotel' }); setShowEditModal(true) }} title="Edit"><Edit className="h-4 w-4" /></button>
+                          <button className={`icon-btn enhanced toggle ${hotel.status === 'active' ? 'on' : 'off'}`} onClick={() => handleToggle(hotel.id, 'hotel')} title={hotel.status === 'active' ? 'Deactivate' : 'Activate'}><Power className="h-4 w-4" /></button>
+                          <button className="icon-btn enhanced delete" onClick={() => handleDelete(hotel.id, 'hotel')} title="Delete"><Trash2 className="h-4 w-4" /></button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+            <Pagination
+              page={hotelPage}
+              totalPages={hotelMeta.totalPages}
+              total={hotelMeta.total}
+              limit={hotelMeta.limit}
+              onPageChange={handleHotelPageChange}
+              onLimitChange={handleHotelLimitChange}
+              itemLabel="hotels"
+              disabled={loading}
+            />
+            </>
+            )}
+          </div>
+        </>
+      )}
+
+      {(showAddModal || showEditModal) && (
+        <div className="modal-overlay enhanced">
+          <div className="modal enhanced">
+            <div className="modal-header">
+              <h3>{showAddModal ? 'Add' : 'Edit'} {showItineraryForm ? 'Itinerary' : 'Hotel'}</h3>
+              <button className="modal-close" onClick={() => { setShowAddModal(false); setShowEditModal(false) }}>×</button>
+            </div>
+            <div className="modal-body">
+              <form className="item-form enhanced" onSubmit={handleSubmit}>
+                {showItineraryForm ? (
+                  <>
+                    <div className="form-group"><label>Itinerary Name</label><input name="name" defaultValue={selectedItem?.name} required /></div>
+                    <div className="form-group">
+                      <label>Package</label>
+                      <select name="packageName" defaultValue={selectedItem?.package || ''} required>
+                        <option value="">Select Package</option>
+                        {packages.map((pkg) => <option key={pkg._id} value={pkg.name}>{pkg.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-row">
+                      <div className="form-group"><label>Duration (Days)</label><input name="days" type="number" defaultValue={selectedItem?.days} required /></div>
+                      <div className="form-group"><label>Number of Hotels</label><input name="hotels" type="number" defaultValue={selectedItem?.hotels} required /></div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="form-group"><label>Hotel Name</label><input name="name" defaultValue={selectedItem?.name} required /></div>
+                    <div className="form-group"><label>Location</label><input name="location" defaultValue={selectedItem?.location} required /></div>
+                    <div className="form-row">
+                      <div className="form-group"><label>Total Rooms</label><input name="rooms" type="number" defaultValue={selectedItem?.rooms} required /></div>
+                      <div className="form-group"><label>Rating</label><input name="rating" type="number" step="0.1" min="1" max="5" defaultValue={selectedItem?.rating} required /></div>
+                    </div>
+                    <div className="form-group"><label>Partner</label><input name="partner" defaultValue={selectedItem?.partner} required /></div>
+                  </>
+                )}
+                <div className="form-actions">
+                  <button type="button" className="btn-secondary" onClick={() => { setShowAddModal(false); setShowEditModal(false) }}>Cancel</button>
+                  <button type="submit" className="btn-primary">{showAddModal ? 'Add' : 'Update'}</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+      </div>
+    </AdminLayout>
+  )
+}
+
+export default ItineraryManagement

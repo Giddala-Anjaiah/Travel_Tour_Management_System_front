@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: travel-tour-backend
+    region: oregon
+    plan: free
+    runtime: nodejs
+    # The service lives in backend/, not at the repo root. Without this,
+    # `npm install`/`npm start` run against the root package.json, which has
+    # no start script.
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Set these in the Render dashboard (or leave sync:false to be prompted)
+      - key: MONGODB_URI
+        sync: false
+      # MONGODB_URI and JWT_SECRET are secrets -> set them as Secret env vars
+      # in the Render dashboard. The app falls back to an ephemeral JWT_SECRET
+      # at runtime if unset, but sessions will reset on every restart.
+      - key: JWT_SECRET
+        sync: false
+      # Non-secret: your public Vercel frontend origin (sets CORS precisely).
+      - key: FRONTEND_URL
+        value: https://travel-tour-management-system-front.vercel.app
+      # Set in Render dashboard as Secret env vars
+      - key: BREVO_API_KEY
+        sync: false
+      # Optional: customize the sender email/name shown in received emails
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        value: Travel Tour
