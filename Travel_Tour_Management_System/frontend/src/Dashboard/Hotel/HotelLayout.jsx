@@ -20,7 +20,7 @@ const navItems = [
   { to: '/hotel-partner/settings', match: 'settings', label: 'Settings', icon: Settings }
 ]
 
-const HotelLayout = ({ active, title, actions, children }) => {
+const HotelLayout = ({ active, actions, children }) => {
   const navigate = useNavigate()
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
   const [sidebarOpen, setSidebarOpen] = useState(false)
