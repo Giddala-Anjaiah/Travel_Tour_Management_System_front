@@ -1,0 +1,12 @@
+{
+  "install": "cd Travel_Tour_Management_System/frontend && npm install --include=dev",
+  "buildCommand": "cd Travel_Tour_Management_System/frontend && npx vite build",
+  "outputDirectory": "Travel_Tour_Management_System/frontend/dist",
+  "rewrites": [
+    { "source": "/robots.txt", "destination": "/Travel_Tour_Management_System/frontend/dist/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "/Travel_Tour_Management_System/frontend/dist/sitemap.xml" },
+    { "source": "/llms.txt", "destination": "/Travel_Tour_Management_System/frontend/dist/llms.txt" },
+    { "source": "/ai-catalog.json", "destination": "/Travel_Tour_Management_System/frontend/dist/ai-catalog.json" },
+    { "source": "/(.*)", "destination": "/Travel_Tour_Management_System/frontend/dist/index.html" }
+  ]
+}
