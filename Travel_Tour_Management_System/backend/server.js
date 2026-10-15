@@ -92,6 +92,10 @@ const userSchema = new mongoose.Schema({
   }
 });
 
+userSchema.index({ email: 1 });
+userSchema.index({ role: 1 });
+userSchema.index({ createdAt: 1 });
+
 const User = mongoose.model('User', userSchema);
 
 // Destination/Package Schema
@@ -183,6 +187,13 @@ const packageSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+packageSchema.index({ status: 1, publishedStatus: 1 });
+packageSchema.index({ operatorId: 1, status: 1 });
+packageSchema.index({ destination: 1, status: 1 });
+packageSchema.index({ bookings: -1, price: -1 });
+packageSchema.index({ category: 1, status: 1 });
+packageSchema.index({ createdAt: 1 });
 
 const Package = mongoose.model('Package', packageSchema);
 
@@ -426,10 +437,18 @@ const bookingSchema = new mongoose.Schema({
     discountValue: Number,
     discountAmount: Number
   },
-  originalAmount: Number,
-  discountAmount: Number,
-  finalAmount: Number
+   originalAmount: Number,
+   discountAmount: Number,
+   finalAmount: Number
 });
+
+bookingSchema.index({ customerId: 1, bookingDate: -1 });
+bookingSchema.index({ paymentStatus: 1, bookingDate: -1 });
+bookingSchema.index({ status: 1, bookingDate: -1 });
+bookingSchema.index({ packageId: 1, status: 1 });
+bookingSchema.index({ bookingDate: 1 });
+bookingSchema.index({ operatorId: 1, status: 1 });
+bookingSchema.index({ hotelId: 1, checkInDate: 1 });
 
 const Booking = mongoose.model('Booking', bookingSchema);
 
@@ -468,8 +487,12 @@ const invoiceSchema = new mongoose.Schema({
   dueDate: {
     type: Date,
     required: true
-  }
+   }
 });
+
+invoiceSchema.index({ customer: 1, date: -1 });
+invoiceSchema.index({ status: 1, date: -1 });
+invoiceSchema.index({ date: 1 });
 
 const Invoice = mongoose.model('Invoice', invoiceSchema);
 
@@ -514,11 +537,16 @@ const reviewSchema = new mongoose.Schema({
     enum: ['approved', 'pending', 'rejected'],
     default: 'pending'
   },
-  date: {
-    type: Date,
-    default: Date.now
-  }
+   date: {
+     type: Date,
+     default: Date.now
+   }
 });
+
+reviewSchema.index({ packageId: 1, status: 1 });
+reviewSchema.index({ customerId: 1, status: 1 });
+reviewSchema.index({ status: 1, date: -1 });
+reviewSchema.index({ packageId: 1, rating: -1 });
 
 const Review = mongoose.model('Review', reviewSchema);
 
@@ -2510,17 +2538,34 @@ app.get('/api/admin/analytics', async (req, res) => {
     const activeTours = await Package.countDocuments({ status: 'active' });
     const partnerHotels = await Hotel.countDocuments({ status: 'active' });
     const totalBookings = await Booking.countDocuments();
-    const paidBookings = await Booking.find({ paymentStatus: 'paid' }).lean();
-    const totalRevenue = paidBookings.reduce((sum, b) => sum + (b.amount || 0), 0);
-    const totalDiscount = paidBookings.reduce((sum, b) => sum + (b.discountAmount || 0), 0);
-    const grossRevenue = paidBookings.reduce((sum, b) => sum + (b.originalAmount || b.amount || 0), 0);
-    const reviews = await Review.find({});
-    const avgRating = reviews.length > 0 ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length : 0;
 
+    // Use aggregation instead of loading all documents into memory
+    const revenueAgg = await Booking.aggregate([
+      { $match: { paymentStatus: 'paid' } },
+      { $group: {
+          _id: null,
+          totalRevenue: { $sum: { $ifNull: ['$amount', 0] } },
+          totalDiscount: { $sum: { $ifNull: ['$discountAmount', 0] } },
+          grossRevenue: { $sum: { $ifNull: ['$originalAmount', { $ifNull: ['$amount', 0] }] } }
+      }
+      }
+    ]);
+    const { totalRevenue = 0, totalDiscount = 0, grossRevenue = 0 } = revenueAgg[0] || {};
+
+    // Average rating via aggregation
+    const ratingAgg = await Review.aggregate([
+      { $group: { _id: null, avgRating: { $avg: '$rating' } } }
+    ]);
+    const avgRating = ratingAgg[0]?.avgRating || 0;
+
+    // Booking status counts via single aggregation
+    const bookingStatusAgg = await Booking.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } }
+    ]);
     const bookingStats = {
-      confirmed: await Booking.countDocuments({ status: 'confirmed' }),
-      pending: await Booking.countDocuments({ status: 'pending' }),
-      cancelled: await Booking.countDocuments({ status: 'cancelled' })
+      confirmed: bookingStatusAgg.find((b) => b._id === 'confirmed')?.count || 0,
+      pending: bookingStatusAgg.find((b) => b._id === 'pending')?.count || 0,
+      cancelled: bookingStatusAgg.find((b) => b._id === 'cancelled')?.count || 0
     };
 
     const topTours = await Package.find({}).sort({ bookings: -1, price: -1 }).limit(5).lean();
@@ -2532,6 +2577,25 @@ app.get('/api/admin/analytics', async (req, res) => {
       { $group: { _id: null, total: { $sum: '$total' }, available: { $sum: '$available' }, booked: { $sum: '$booked' } } }
     ]);
 
+    // Monthly revenue and user growth via single aggregation each (replaces 12 queries)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5, 1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const monthlyRevenueAgg = await Booking.aggregate([
+      { $match: { paymentStatus: 'paid', bookingDate: { $gte: sixMonthsAgo } } },
+      { $group: {
+          _id: {
+            year: { $year: '$bookingDate' },
+            month: { $month: '$bookingDate' }
+          },
+          revenue: { $sum: { $ifNull: ['$amount', 0] } }
+      }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
+    // Fill in all 6 months, including empty months
     const monthlyRevenue = [];
     const userGrowth = [];
     for (let i = 5; i >= 0; i--) {
@@ -2540,15 +2604,21 @@ app.get('/api/admin/analytics', async (req, res) => {
       start.setHours(0, 0, 0, 0);
       const end = new Date(start);
       end.setMonth(end.getMonth() + 1);
-      const monthPaid = await Booking.find({ paymentStatus: 'paid', bookingDate: { $gte: start, $lt: end } });
-      monthlyRevenue.push(monthPaid.reduce((sum, b) => sum + (b.amount || 0), 0));
+
+      const monthData = monthlyRevenueAgg.find(
+        (m) => m._id.year === start.getFullYear() && m._id.month === (start.getMonth() + 1)
+      );
+      monthlyRevenue.push(monthData ? monthData.revenue : 0);
       userGrowth.push(await User.countDocuments({ createdAt: { $lt: end } }));
     }
 
     const rangeBookings = await Booking.countDocuments({ bookingDate: { $gte: since } });
     const rangeUsers = await User.countDocuments({ createdAt: { $gte: since } });
-    const rangeRevenue = (await Booking.find({ paymentStatus: 'paid', bookingDate: { $gte: since } }))
-      .reduce((sum, b) => sum + (b.amount || 0), 0);
+    const rangeRevenueAgg = await Booking.aggregate([
+      { $match: { paymentStatus: 'paid', bookingDate: { $gte: since } } },
+      { $group: { _id: null, revenue: { $sum: { $ifNull: ['$amount', 0] } } } }
+    ]);
+    const rangeRevenue = rangeRevenueAgg[0]?.revenue || 0;
 
     res.status(200).json({
       totalUsers,
@@ -2598,13 +2668,13 @@ app.get('/api/admin/reports/summary', async (req, res) => {
     const range = req.query.range || 'month';
     const since = rangeStart(range);
 
-    const allBookings = await Booking.find({});
-
-    const bookingsByPayment = {};
-    allBookings.forEach(b => {
-      const status = b.paymentStatus || 'pending';
-      bookingsByPayment[status] = (bookingsByPayment[status] || 0) + 1;
-    });
+    // Use aggregation instead of loading all bookings into memory
+    const bookingsByPaymentAgg = await Booking.aggregate([
+      { $group: { _id: '$paymentStatus', count: { $sum: 1 } } }
+    ]);
+    const bookingsByPayment = Object.fromEntries(
+      bookingsByPaymentAgg.map((b) => [b._id, b.count])
+    );
 
     const revenueByCategory = await Package.aggregate([
       {
@@ -2646,17 +2716,20 @@ app.get('/api/admin/reports/summary', async (req, res) => {
       { $limit: 10 }
     ]);
 
-    const rangeBookings = allBookings.filter(b => new Date(b.bookingDate) >= since);
+    const rangeRevenue = await Booking.aggregate([
+      { $match: { bookingDate: { $gte: since } } },
+      { $group: { _id: null, revenue: { $sum: { $ifNull: ['$amount', 0] } }, count: { $sum: 1 } } }
+    ]);
 
-    res.status(200).json({
-      bookingsByPayment,
-      revenueByCategory,
-      revenueByDestination,
-      range: {
-        bookings: rangeBookings.length,
-        revenue: rangeBookings.reduce((sum, b) => sum + (b.amount || 0), 0)
-      }
-    });
+     res.status(200).json({
+       bookingsByPayment,
+       revenueByCategory,
+       revenueByDestination,
+       range: {
+         bookings: rangeRevenue[0]?.count || 0,
+         revenue: rangeRevenue[0]?.revenue || 0
+       }
+     });
   } catch (error) {
     console.error('Reports summary error:', error);
     res.status(500).json({ message: 'Error fetching reports summary' });
@@ -3513,7 +3586,7 @@ app.get('/api/packages', async (req, res) => {
 
 app.get('/api/packages/:id', async (req, res) => {
   try {
-    const pkg = await Package.findById(req.params.id).populate('operatorId', 'companyName');
+    const pkg = await Package.findById(req.params.id).populate('operatorId', 'companyName').lean();
     if (!pkg) {
       return res.status(404).json({ message: 'Package not found' });
     }
@@ -3539,15 +3612,24 @@ app.get('/api/public/hotels', async (req, res) => {
       query: req.query,
       sort: { createdAt: -1 }
     });
-    const hotelsWithMinPrice = await Promise.all(docs.map(async (hotel) => {
-      const rooms = await Room.find({ hotel: hotel.name });
-      const minPrice = rooms.length > 0 ? Math.min(...rooms.map(r => r.price)) : 0;
+
+    // Batch-fetch all rooms for matched hotels in a single query (N+1 fix)
+    const allRooms = await Room.find({ hotel: { $in: docs.map((h) => h.name) } }).lean();
+    const roomsByHotel = {};
+    allRooms.forEach((r) => {
+      if (!roomsByHotel[r.hotel]) roomsByHotel[r.hotel] = [];
+      roomsByHotel[r.hotel].push(r);
+    });
+
+    const hotelsWithMinPrice = docs.map((hotel) => {
+      const rooms = roomsByHotel[hotel.name] || [];
+      const minPrice = rooms.length > 0 ? Math.min(...rooms.map((r) => r.price)) : 0;
       return {
         ...hotel,
         minPrice,
         rooms
       };
-    }));
+    });
     pagedResponse(res, 'hotels', { docs: hotelsWithMinPrice, total, page, limit, totalPages, hasNext, hasPrev });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching hotels' });
@@ -3560,8 +3642,8 @@ app.get('/api/public/hotels/:id', async (req, res) => {
     if (!hotel) {
       return res.status(404).json({ message: 'Hotel not found' });
     }
-    const rooms = await Room.find({ hotel: hotel.name });
-    const minPrice = rooms.length > 0 ? Math.min(...rooms.map(r => r.price)) : 0;
+    const rooms = await Room.find({ hotel: hotel.name }).lean();
+    const minPrice = rooms.length > 0 ? Math.min(...rooms.map((r) => r.price)) : 0;
     res.status(200).json({ hotel: { ...hotel.toObject(), minPrice, rooms } });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching hotel' });
