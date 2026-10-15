@@ -284,8 +284,12 @@ const hotelSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
-  }
+   }
 });
+
+hotelSchema.index({ status: 1, location: 1 });
+hotelSchema.index({ status: 1, rating: -1 });
+hotelSchema.index({ partner: 1 });
 
 const Hotel = mongoose.model('Hotel', hotelSchema);
 
@@ -325,6 +329,9 @@ const roomSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+roomSchema.index({ hotel: 1, price: 1 });
+roomSchema.index({ hotel: 1, roomType: 1 });
 
 const Room = mongoose.model('Room', roomSchema);
 
@@ -449,6 +456,9 @@ bookingSchema.index({ packageId: 1, status: 1 });
 bookingSchema.index({ bookingDate: 1 });
 bookingSchema.index({ operatorId: 1, status: 1 });
 bookingSchema.index({ hotelId: 1, checkInDate: 1 });
+bookingSchema.index({ hotelName: 1, paymentStatus: 1 });
+bookingSchema.index({ hotelName: 1, bookingDate: -1 });
+bookingSchema.index({ operatorId: 1, paymentStatus: 1, bookingDate: -1 });
 
 const Booking = mongoose.model('Booking', bookingSchema);
 
@@ -3435,60 +3445,71 @@ app.get('/api/operator/revenue', async (req, res) => {
   try {
     const range = req.query.range || 'month';
     const since = rangeStart(range);
-    
-    const bookings = await Booking.find({ operatorId: req.user.userId, paymentStatus: 'paid' });
-    const totalRevenue = bookings.reduce((sum, b) => sum + (b.paidAmount || b.amount), 0);
-    
-    const rangeBookings = await Booking.find({ 
-      operatorId: req.user.userId, 
-      paymentStatus: 'paid',
-      bookingDate: { $gte: since } 
-    });
-    const rangeRevenue = rangeBookings.reduce((sum, b) => sum + (b.paidAmount || b.amount), 0);
-    
-    const pendingBookings = await Booking.find({ 
-      operatorId: req.user.userId, 
-      paymentStatus: { $in: ['pending', 'partial'] } 
-    });
-    const pendingRevenue = pendingBookings.reduce((sum, b) => sum + (b.amount - (b.paidAmount || 0)), 0);
-    
-    const refundedBookings = await Booking.find({ 
-      operatorId: req.user.userId, 
-      paymentStatus: 'refunded' 
-    });
-    const refundedRevenue = refundedBookings.reduce((sum, b) => sum + b.amount, 0);
-    
+    const operatorId = new mongoose.Types.ObjectId(req.user.userId);
+
+    // Single aggregation for all payment-status-based revenue sums
+    const revenueAgg = await Booking.aggregate([
+      { $match: { operatorId } },
+      { $group: {
+          _id: null,
+          totalRevenue: { $sum: { $ifNull: ['$paidAmount', '$amount'] } },
+          totalBookings: { $sum: 1 },
+          rangeRevenue: { $sum: { $cond: [{ $gte: ['$bookingDate', since] }, { $ifNull: ['$paidAmount', '$amount'] }, 0] } },
+          rangeBookings: { $sum: { $cond: [{ $gte: ['$bookingDate', since] }, 1, 0] } },
+          pendingRevenue: { $sum: { $cond: [{ $in: ['$paymentStatus', ['pending', 'partial']] }, { $subtract: ['$amount', { $ifNull: ['$paidAmount', 0] }] }, 0] } },
+          refundedRevenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'refunded'] }, '$amount', 0] } }
+      }
+      }
+    ]);
+    const agg = revenueAgg[0] || {};
+    const totalRevenue = agg.totalRevenue || 0;
+    const rangeRevenue = agg.rangeRevenue || 0;
+    const pendingRevenue = agg.pendingRevenue || 0;
+    const refundedRevenue = agg.refundedRevenue || 0;
+    const totalBookings = agg.totalBookings || 0;
+    const rangeBookings = agg.rangeBookings || 0;
+
     // Revenue by package
     const revenueByPackage = await Booking.aggregate([
-      { $match: { operatorId: new mongoose.Types.ObjectId(req.user.userId), paymentStatus: 'paid' } },
+      { $match: { operatorId, paymentStatus: 'paid' } },
       { $group: { _id: '$package', revenue: { $sum: '$amount' }, count: { $sum: 1 } } },
       { $sort: { revenue: -1 } }
     ]);
-    
-    // Monthly revenue
+
+    // Monthly revenue via single aggregation (12 months)
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 11, 1);
+    twelveMonthsAgo.setHours(0, 0, 0, 0);
+
+    const monthlyRevenueAgg = await Booking.aggregate([
+      { $match: { operatorId, paymentStatus: 'paid', bookingDate: { $gte: twelveMonthsAgo } } },
+      { $group: {
+          _id: { year: { $year: '$bookingDate' }, month: { $month: '$bookingDate' } },
+          revenue: { $sum: { $ifNull: ['$paidAmount', '$amount'] } }
+      }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
+
     const monthlyRevenue = [];
     for (let i = 11; i >= 0; i--) {
       const start = new Date();
       start.setMonth(start.getMonth() - i, 1);
       start.setHours(0, 0, 0, 0);
-      const end = new Date(start);
-      end.setMonth(end.getMonth() + 1);
-      const monthRevenue = await Booking.find({
-        operatorId: req.user.userId,
-        paymentStatus: 'paid',
-        bookingDate: { $gte: start, $lt: end }
-      });
-      monthlyRevenue.push(monthRevenue.reduce((sum, b) => sum + (b.paidAmount || b.amount), 0));
+      const monthData = monthlyRevenueAgg.find(
+        (m) => m._id.year === start.getFullYear() && m._id.month === (start.getMonth() + 1)
+      );
+      monthlyRevenue.push(monthData ? monthData.revenue : 0);
     }
-    
+
     res.status(200).json({
       totalRevenue,
       rangeRevenue,
       pendingRevenue,
       refundedRevenue,
-      totalBookings: bookings.length,
-      rangeBookings: rangeBookings.length,
-      averageBookingValue: bookings.length > 0 ? totalRevenue / bookings.length : 0,
+      totalBookings,
+      rangeBookings,
+      averageBookingValue: totalBookings > 0 ? totalRevenue / totalBookings : 0,
       revenueByPackage,
       monthlyRevenue
     });
@@ -5346,10 +5367,13 @@ app.get('/api/hotel/reviews', async (req, res) => {
       // for. Reviews are attached to packages, so this is the only link a
       // hotel has to them - scoping on it stops the route leaking every
       // review in the database.
-      const packageIds = await Booking.find({ hotelName })
-        .select('packageId')
-        .lean()
-        .then((rows) => [...new Set(rows.map((row) => String(row.packageId)).filter(Boolean))]);
+      // Use aggregation with $lookup instead of N+1 Booking.find
+      const pkgIdAgg = await Booking.aggregate([
+        { $match: { hotelName, packageId: { $exists: true, $ne: null } } },
+        { $group: { _id: null, ids: { $addToSet: '$packageId' } } },
+        { $project: { _id: 0, ids: 1 } }
+      ]);
+      const packageIds = pkgIdAgg[0]?.ids || [];
       if (packageIds.length === 0) return pagedResponse(res, 'reviews', { docs: [], total: 0, page: 1, limit: getPagination(req.query).limit, totalPages: 1, hasNext: false, hasPrev: false });
       filter.packageId = { $in: packageIds };
     } else {
@@ -5439,20 +5463,46 @@ app.get('/api/hotel/revenue', async (req, res) => {
     const { hotelName } = req.query;
     const filter = hotelName ? { hotelName } : { hotelName: { $exists: true, $ne: '' } };
 
-    const totalBookings = await Booking.countDocuments(filter);
-    const revenueBookings = await Booking.find({ ...filter, paymentStatus: 'paid' });
-    const totalRevenue = revenueBookings.reduce((sum, b) => sum + (b.amount || 0), 0);
-    const rangeBookings = await Booking.find({ ...filter, paymentStatus: 'paid', bookingDate: { $gte: since } });
-    const rangeRevenue = rangeBookings.reduce((sum, b) => sum + (b.amount || 0), 0);
+    // Single aggregation replaces countDocuments + find + 6 monthly queries
+    const revenueAgg = await Booking.aggregate([
+      { $match: { ...filter } },
+      { $group: {
+          _id: null,
+          totalBookings: { $sum: 1 },
+          totalRevenue: { $sum: { $cond: [{ $eq: ['$paymentStatus', 'paid'] }, '$amount', 0] } },
+          rangeRevenue: { $sum: { $cond: [{ $and: [{ $eq: ['$paymentStatus', 'paid'] }, { $gte: ['$bookingDate', since] }] }, '$amount', 0] } }
+      }
+      }
+    ]);
+    const agg = revenueAgg[0] || {};
+    const totalBookings = agg.totalBookings || 0;
+    const totalRevenue = agg.totalRevenue || 0;
+    const rangeRevenue = agg.rangeRevenue || 0;
+
+    // Monthly revenue via single aggregation (6 months)
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5, 1);
+    sixMonthsAgo.setHours(0, 0, 0, 0);
+
+    const monthlyRevenueAgg = await Booking.aggregate([
+      { $match: { ...filter, paymentStatus: 'paid', bookingDate: { $gte: sixMonthsAgo } } },
+      { $group: {
+          _id: { year: { $year: '$bookingDate' }, month: { $month: '$bookingDate' } },
+          revenue: { $sum: '$amount' }
+      }
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } }
+    ]);
 
     const monthlyRevenue = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date();
       d.setMonth(d.getMonth() - i, 1);
       d.setHours(0, 0, 0, 0);
-      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      const monthBookings = await Booking.find({ ...filter, paymentStatus: 'paid', bookingDate: { $gte: d, $lte: end } });
-      monthlyRevenue.push(monthBookings.reduce((sum, b) => sum + (b.amount || 0), 0));
+      const monthData = monthlyRevenueAgg.find(
+        (m) => m._id.year === d.getFullYear() && m._id.month === (d.getMonth() + 1)
+      );
+      monthlyRevenue.push(monthData ? monthData.revenue : 0);
     }
 
     res.status(200).json({
