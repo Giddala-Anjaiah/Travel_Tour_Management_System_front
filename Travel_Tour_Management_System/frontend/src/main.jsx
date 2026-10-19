@@ -49,8 +49,10 @@ const TourPackages = lazy(() => import('./Dashboard/Customer/TourPackages.jsx'))
 const Itineraries = lazy(() => import('./Dashboard/Customer/Itineraries.jsx'))
 const HotelSearchAvailability = lazy(() => import('./Dashboard/Customer/HotelSearchAvailability.jsx'))
 const BookingsPayments = lazy(() => import('./Dashboard/Customer/BookingsPayments.jsx'))
+const BookingTracker = lazy(() => import('./Dashboard/Customer/BookingTracker.jsx'))
 const InvoicesBookingHistory = lazy(() => import('./Dashboard/Customer/InvoicesBookingHistory.jsx'))
 const WishlistReviewsNotifications = lazy(() => import('./Dashboard/Customer/WishlistReviewsNotifications.jsx'))
+const ReferralRewards = lazy(() => import('./Dashboard/Customer/ReferralRewards.jsx'))
 
 // Lightweight loading fallback so LCP isn't blocked by a heavy spinner
 const LoadingFallback = () => null
@@ -208,6 +210,14 @@ createRoot(document.getElementById('root')).render(
           } 
         />
         <Route 
+          path="/customer/bookings/:id/tracker" 
+          element={
+            <ProtectedRoute allowedRoles={['customer']}>
+              <BookingTracker />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
           path="/customer/invoices" 
           element={
             <ProtectedRoute allowedRoles={['customer']}>
@@ -228,6 +238,14 @@ createRoot(document.getElementById('root')).render(
           element={
             <ProtectedRoute allowedRoles={['customer']}>
               <ProfileManagement />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/customer/referral" 
+          element={
+            <ProtectedRoute allowedRoles={['customer']}>
+              <ReferralRewards />
             </ProtectedRoute>
           } 
         />

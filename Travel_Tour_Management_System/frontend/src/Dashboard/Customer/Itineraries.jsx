@@ -102,6 +102,21 @@ const Itineraries = () => {
     return DIFFICULTY_COLORS[difficulty] || 'var(--cp-muted)'
   }
 
+  const getActivityLabel = (activity) => {
+    if (typeof activity === 'string') return activity.trim() || 'Untitled Activity'
+    if (activity && typeof activity === 'object') {
+      return (
+        activity.name ||
+        activity.title ||
+        activity.description ||
+        activity.time ||
+        activity.location ||
+        'Untitled Activity'
+      )
+    }
+    return 'Untitled Activity'
+  }
+
   const getCategoryBadge = (category) => {
     return CATEGORY_BADGES[category] || { label: 'Tour', color: 'var(--cp-type-tour)' }
   }
@@ -311,28 +326,77 @@ const Itineraries = () => {
                 </div>
 
                 <div className="itinerary-timeline">
-                  {selectedItinerary.schedule.map((day, idx) => (
-                    <div key={idx} className="day-schedule enhanced" style={{ borderColor: 'var(--cp-line)', background: 'var(--cp-card)' }}>
-                      <div className="day-header enhanced" style={{ borderBottomColor: 'var(--cp-line)' }}>
-                        <div className="day-number-badge" style={{ background: 'var(--cp-accent)' }}>Day {day.day}</div>
-                        <h4 style={{ color: 'var(--cp-ink)' }}>{day.title}</h4>
-                        {day.meals && (
-                          <div className="meals-info" style={{ color: 'var(--cp-muted)' }}>
-                            <Info className="h-4 w-4" style={{ color: 'var(--cp-info)' }} />
-                            <span>Meals: {day.meals.join(', ')}</span>
-                          </div>
+                  {(selectedItinerary.schedule || []).map((day, idx) => (
+                    <div key={idx} className="day-schedule enhanced" style={{ borderColor: 'var(--cp-line)', background: 'var(--cp-card)', marginBottom: '1.5rem', overflow: 'hidden' }}>
+                      <div className="day-header enhanced" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.25rem', borderBottom: '1px solid var(--cp-line)', background: 'var(--cp-surface)' }}>
+                        <div className="day-number-badge" style={{ background: 'var(--cp-accent)', color: '#fff', fontWeight: '700', padding: '0.25rem 0.75rem', borderRadius: '6px', fontSize: '0.875rem' }}>Day {day.day ?? idx + 1}</div>
+                        <h4 style={{ color: 'var(--cp-ink)', margin: 0, fontSize: '1.125rem', flex: 1 }}>{day.title || 'Untitled Day'}</h4>
+                        {day.date && (
+                          <span style={{ fontSize: '0.875rem', color: 'var(--cp-muted)', whiteSpace: 'nowrap' }}>
+                            {new Date(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+                          </span>
                         )}
                       </div>
-                      <div className="activities-list enhanced">
-                        {day.activities.map((activity, actIdx) => (
-                          <div key={actIdx} className="activity-item" style={{ borderLeftColor: 'var(--cp-line)' }}>
-                            <div className="activity-dot" style={{ background: 'var(--cp-accent)' }}></div>
-                            <span style={{ color: 'var(--cp-ink)' }}>{activity}</span>
+                      <div style={{ padding: '1rem 1.25rem' }}>
+                        {day.meals && (
+                          <div className="meals-info" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--cp-muted)', fontSize: '0.875rem' }}>
+                            <Info className="h-4 w-4" style={{ color: 'var(--cp-info)' }} />
+                            <span>Meals: {Array.isArray(day.meals) ? day.meals.join(', ') : day.meals}</span>
                           </div>
-                        ))}
+                        )}
+                        <div className="activities-list enhanced" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                          {(day.activities || []).length === 0 ? (
+                            <div style={{ padding: '1rem', color: 'var(--cp-muted)', fontSize: '0.875rem', textAlign: 'center', background: 'var(--cp-surface)', borderRadius: '8px', border: '1px dashed var(--cp-line)' }}>
+                              No activities scheduled for this day.
+                            </div>
+                          ) : (
+                            (day.activities || []).map((activity, actIdx) => {
+                              const isStr = typeof activity === 'string'
+                              const actName = getActivityLabel(activity)
+                              const actTime = isStr ? '' : activity?.time
+                              const actDesc = isStr ? '' : activity?.description
+                              const actLoc = isStr ? '' : activity?.location
+                              const actType = isStr ? '' : (activity?.type && activity?.type !== 'activity' ? activity?.type : '')
+                              return (
+                                <div key={actIdx} className="activity-item" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.75rem', background: '#fff', border: '1px solid var(--cp-line)', borderRadius: '10px' }}>
+                                  <div className="activity-dot" style={{ background: 'var(--cp-accent)', width: '8px', height: '8px', borderRadius: '50%', marginTop: '0.25rem', flexShrink: 0 }} />
+                                  <div style={{ flex: 1 }}>
+                                    {actTime && (
+                                      <span style={{ display: 'inline-block', fontSize: '0.75rem', fontWeight: '600', color: 'var(--cp-accent)', background: 'rgba(16, 185, 129, 0.1)', padding: '0.125rem 0.5rem', borderRadius: '4px', marginBottom: '0.25rem' }}>
+                                        {actTime}
+                                      </span>
+                                    )}
+                                    <span style={{ color: 'var(--cp-ink)', fontWeight: '600', fontSize: '0.95rem', display: 'block', marginBottom: actDesc ? '0.25rem' : 0 }}>
+                                      {actName}
+                                    </span>
+                                    {actDesc && (
+                                      <span style={{ color: 'var(--cp-muted)', fontSize: '0.875rem', lineHeight: '1.4', display: 'block' }}>{actDesc}</span>
+                                    )}
+                                    {actLoc && (
+                                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.5rem', color: 'var(--cp-muted)', fontSize: '0.8rem' }}>
+                                        <MapPin className="h-3 w-3" />
+                                        {actLoc}
+                                      </span>
+                                    )}
+                                    {actType && (
+                                      <span style={{ display: 'inline-block', fontSize: '0.7rem', fontWeight: '600', color: 'var(--cp-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', border: '1px solid var(--cp-accent)', padding: '0.125rem 0.5rem', borderRadius: '4px', marginTop: '0.5rem' }}>
+                                        {actType}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              )
+                            })
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
+                  {(selectedItinerary.schedule || []).length === 0 && (
+                    <div style={{ padding: '2rem', color: 'var(--cp-muted)', textAlign: 'center', background: 'var(--cp-surface)', borderRadius: '12px', border: '1px solid var(--cp-line)' }}>
+                      No daily schedule available for this itinerary.
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

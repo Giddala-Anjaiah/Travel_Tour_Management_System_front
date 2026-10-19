@@ -1,4 +1,4 @@
-import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon } from 'lucide-react'
+import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon, Gift } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import '../Dashboard.css'
@@ -12,7 +12,8 @@ const navItems = [
   { to: '/customer/bookings', match: 'bookings', label: 'Bookings', icon: CreditCard },
   { to: '/customer/invoices', match: 'invoices', label: 'Invoices', icon: FileText },
   { to: '/customer/wishlist', match: 'wishlist', label: 'Wishlist', icon: Heart },
-  { to: '/customer/profile', match: 'profile', label: 'Profile', icon: User }
+  { to: '/customer/profile', match: 'profile', label: 'Profile', icon: User },
+  { to: '/customer/referral', match: 'referral', label: 'Referral', icon: Gift }
 ]
 
 const CustomerLayout = ({ active, actions, children }) => {

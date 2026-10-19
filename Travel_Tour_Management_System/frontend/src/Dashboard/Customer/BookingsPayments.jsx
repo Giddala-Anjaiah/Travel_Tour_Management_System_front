@@ -594,6 +594,9 @@ const totalCount = stats?.total ?? meta.total
                 <button className="icon-btn" onClick={() => handleViewDetails(booking)}>
                   <Eye className="h-4 w-4" />
                 </button>
+                <Link className="icon-btn" to={`/customer/bookings/${booking._id}/tracker`} title="Track">
+                  <Clock className="h-4 w-4" />
+                </Link>
                 <button className="icon-btn" onClick={() => handleDownloadInvoice(booking)}>
                   <Download className="h-4 w-4" />
                 </button>

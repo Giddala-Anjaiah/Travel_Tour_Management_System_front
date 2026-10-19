@@ -233,13 +233,49 @@ const itinerarySchema = new mongoose.Schema({
     date: Date,
     description: String,
     location: String,
-    activities: [String],
+    activities: [{
+      time: String,
+      name: String,
+      description: String,
+      location: String,
+      type: { type: String, enum: ['activity', 'meal', 'transport', 'hotel', 'sightseeing', 'other'], default: 'activity' }
+    }],
     meals: [String],
-    accommodation: String,
-    transportation: String,
+    accommodation: {
+      name: String,
+      hotelName: String,
+      checkInTime: String,
+      checkOutTime: String,
+      roomType: String,
+      location: String,
+      notes: String
+    },
+    transportation: {
+      mode: String,
+      vehicle: String,
+      departureTime: String,
+      arrivalTime: String,
+      departureLocation: String,
+      arrivalLocation: String,
+      details: String
+    },
+    hotel: {
+      name: String,
+      checkIn: String,
+      checkOut: String,
+      address: String
+    },
+    transport: [{
+      time: String,
+      mode: String,
+      from: String,
+      to: String,
+      details: String
+    }],
     images: [String],
     notes: String
   }],
+
   createdAt: {
     type: Date,
     default: Date.now
@@ -2174,7 +2210,13 @@ app.put('/api/admin/bookings/:id', async (req, res) => {
     if (updates.paymentStatus === 'paid' && !updates.status) {
       updates.status = 'confirmed';
     }
+    const prev = await Booking.findById(req.params.id);
     const booking = await Booking.findByIdAndUpdate(req.params.id, updates, { new: true });
+    if (booking && prev && updates.status && updates.status !== prev.status) {
+      booking.timeline = booking.timeline || [];
+      booking.timeline.push({ status: updates.status, date: new Date(), note: 'Status updated by admin' });
+      await booking.save();
+    }
     if (!booking) {
       return res.status(404).json({ message: 'Booking not found' });
     }
@@ -4298,7 +4340,8 @@ app.get('/api/customer/itineraries', async (req, res) => {
       bookingDate: b.bookingDate
     }));
     const itinerariesWithDetails = await Promise.all(itineraries.map(async (it) => {
-      const itinerary = await Itinerary.findOne({ packageId: bookings.find(b => b.packageId && b.packageId._id.toString() === it.packageId?.toString() || b.package) });
+      const pkgId = it.packageId && it.packageId._id ? it.packageId._id : (it.packageId || null);
+      const itinerary = await Itinerary.findOne({ packageId: pkgId });
       return {
         ...it,
         dayDetails: itinerary?.dayDetails || [],
@@ -4309,6 +4352,49 @@ app.get('/api/customer/itineraries', async (req, res) => {
   } catch (error) {
     console.error('Error fetching itineraries:', error);
     res.status(500).json({ message: 'Error fetching itineraries' });
+  }
+});
+
+// --- Referral & Rewards ---
+app.get('/api/customer/referral-rewards', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    const allBookings = await Booking.find({ customerId: req.user.userId });
+    const paidBookings = allBookings.filter(b => b.paymentStatus === 'paid');
+    const totalSpent = paidBookings.reduce((sum, b) => sum + (b.paidAmount || 0), 0);
+    const pointsPerBooking = allBookings.length * 10;
+    const pointsPerAmount = Math.floor(totalSpent / 1000) * 10;
+    const points = pointsPerBooking + pointsPerAmount;
+    const tier = totalSpent >= 100000 ? 'Gold' : totalSpent >= 50000 ? 'Silver' : 'Explorer';
+    const referralCode = String(user.email || 'user').split('@')[0].toUpperCase() + 'TRAVEL';
+
+    res.status(200).json({
+      points,
+      tier,
+      referralCode,
+      referrals: [],
+      rewards: [
+        { id: 'r1', title: '₹500 Off', cost: 500, type: 'discount', minBooking: 2000, redeemed: false },
+        { id: 'r2', title: '₹1000 Off', cost: 1000, type: 'discount', minBooking: 5000, redeemed: false },
+        { id: 'r3', title: 'Free Upgrade', cost: 1500, type: 'upgrade', minBooking: 0, redeemed: false }
+      ],
+      earnings: [
+        { label: 'Points per booking', value: '10 pts per booking + 10 pts / ₹1000 spent' },
+        { label: 'Referral bonus', value: '200 pts per friend' },
+        { label: 'Friend bonus', value: '100 pts on signup' }
+      ]
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching referral rewards' });
+  }
+});
+
+app.post('/api/customer/rewards/redeem', async (req, res) => {
+  try {
+    const { rewardId } = req.body || {};
+    res.status(200).json({ success: true, message: 'Reward redeemed successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error redeeming reward' });
   }
 });
 
@@ -5729,6 +5815,8 @@ app.get('/api/hotel/analytics', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+
 
 
 
