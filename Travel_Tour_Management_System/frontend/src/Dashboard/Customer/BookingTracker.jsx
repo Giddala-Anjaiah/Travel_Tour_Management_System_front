@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Package, Calendar, Users, Clock, CreditCard, AlertCircle,
@@ -23,23 +23,24 @@ const BookingTracker = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
+      setError('')
       const data = await api(`/customer/bookings/${id}`)
       setBooking(data.booking)
       setError('')
-    } catch (e) {
+    } catch {
       setError('Failed to load booking')
     } finally {
       setLoading(false)
     }
-  }
+  }, [id])
 
   useEffect(() => {
-    load()
+    Promise.resolve().then(() => load())
     const t = setInterval(load, 10000)
     return () => clearInterval(t)
-  }, [id])
+  }, [id, load])
 
   if (loading) return (
     <CustomerLayout>
