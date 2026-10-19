@@ -1,5 +1,4 @@
 {
-  "install": "cd frontend && npm install --include=dev",
   "buildCommand": "npx vite build",
   "outputDirectory": "frontend/dist",
   "rewrites": [

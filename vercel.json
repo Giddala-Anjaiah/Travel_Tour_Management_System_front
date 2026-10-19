@@ -1,5 +1,4 @@
 {
-  "install": "cd Travel_Tour_Management_System/frontend && npm install --include=dev",
   "buildCommand": "cd Travel_Tour_Management_System/frontend && npx vite build",
   "outputDirectory": "Travel_Tour_Management_System/frontend/dist",
   "rewrites": [
