@@ -1,11 +1,29 @@
 import { Navigate } from 'react-router-dom'
 
+// Reads the expiry out of the stored JWT so an expired token is treated as a
+// missing one instead of sending the user into a dashboard that will fail.
+function isTokenExpired(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]))
+    if (!payload.exp) return false
+    return payload.exp * 1000 <= Date.now()
+  } catch {
+    return true
+  }
+}
+
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const token = localStorage.getItem('token')
   const user = JSON.parse(localStorage.getItem('user') || '{}')
 
   if (!token) {
     return <Navigate to="/login" replace />
+  }
+
+  if (isTokenExpired(token)) {
+    localStorage.removeItem('token')
+    localStorage.removeItem('user')
+    return <Navigate to="/login?reason=expired" replace />
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) {

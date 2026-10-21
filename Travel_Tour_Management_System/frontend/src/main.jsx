@@ -17,6 +17,7 @@ const OperatorDashboard = lazy(() => import('./Dashboard/Operator/OperatorDashbo
 const OperatorProfilePage = lazy(() => import('./Dashboard/Operator/OperatorProfilePage.jsx'))
 const OperatorPackagesPage = lazy(() => import('./Dashboard/Operator/OperatorPackagesPage.jsx'))
 const OperatorItinerariesPage = lazy(() => import('./Dashboard/Operator/OperatorItinerariesPage.jsx'))
+const OperatorItineraryBuilderPage = lazy(() => import('./Dashboard/Operator/OperatorItineraryBuilderPage.jsx'))
 const OperatorPricingPage = lazy(() => import('./Dashboard/Operator/OperatorPricingPage.jsx'))
 const OperatorBookingsPage = lazy(() => import('./Dashboard/Operator/OperatorBookingsPage.jsx'))
 const OperatorCustomersPage = lazy(() => import('./Dashboard/Operator/OperatorCustomersPage.jsx'))
@@ -52,6 +53,7 @@ const BookingsPayments = lazy(() => import('./Dashboard/Customer/BookingsPayment
 const BookingTracker = lazy(() => import('./Dashboard/Customer/BookingTracker.jsx'))
 const InvoicesBookingHistory = lazy(() => import('./Dashboard/Customer/InvoicesBookingHistory.jsx'))
 const WishlistReviewsNotifications = lazy(() => import('./Dashboard/Customer/WishlistReviewsNotifications.jsx'))
+const TripAlerts = lazy(() => import('./Dashboard/Customer/TripAlerts.jsx'))
 const ReferralRewards = lazy(() => import('./Dashboard/Customer/ReferralRewards.jsx'))
 
 // Lightweight loading fallback so LCP isn't blocked by a heavy spinner
@@ -226,10 +228,18 @@ createRoot(document.getElementById('root')).render(
           } 
         />
         <Route 
-          path="/customer/wishlist" 
+          path="/customer/wishlist"  
           element={
             <ProtectedRoute allowedRoles={['customer']}>
               <WishlistReviewsNotifications />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/customer/trip-alerts"  
+          element={
+            <ProtectedRoute allowedRoles={['customer']}>
+              <TripAlerts />
             </ProtectedRoute>
           } 
         />
@@ -275,13 +285,29 @@ createRoot(document.getElementById('root')).render(
             </ProtectedRoute>
           } 
         />
-        <Route 
-          path="/tour-operator/itineraries" 
+        <Route
+          path="/tour-operator/itineraries"
           element={
             <ProtectedRoute allowedRoles={['tour_operator']}>
               <OperatorItinerariesPage />
             </ProtectedRoute>
-          } 
+          }
+        />
+        <Route
+          path="/tour-operator/itineraries/builder"
+          element={
+            <ProtectedRoute allowedRoles={['tour_operator']}>
+              <OperatorItineraryBuilderPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/tour-operator/itineraries/builder/:id"
+          element={
+            <ProtectedRoute allowedRoles={['tour_operator']}>
+              <OperatorItineraryBuilderPage />
+            </ProtectedRoute>
+          }
         />
         <Route 
           path="/tour-operator/pricing" 

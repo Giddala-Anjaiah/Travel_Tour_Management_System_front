@@ -1,6 +1,7 @@
 import { API_BASE } from '../../api'
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
+import AccountSecurityPanel from '../../components/AccountSecurityPanel'
 import { Save, Camera, CheckCircle, Pencil as Edit, X, Clock, XCircle } from 'lucide-react'
 import '../Dashboard.css'
 
@@ -24,9 +25,7 @@ const OperatorProfileContent = () => {
     businessRegNumber: '',
     alternatePhone: '',
     licenseNumber: '',
-    taxId: '',
-    password: '',
-    confirmPassword: ''
+    taxId: ''
   })
   const [profile, setProfile] = useState(null)
 
@@ -331,33 +330,9 @@ const OperatorProfileContent = () => {
             />
           </div>
         </div>
-
-        {isEditing && (
-          <div className="form-section">
-            <h3>Security</h3>
-            <div className="form-grid">
-              <div className="form-group">
-                <label>New Password</label>
-                <input
-                  type="password"
-                  value={profileData.password}
-                  onChange={(e) => setProfileData({ ...profileData, password: e.target.value })}
-                  placeholder="Leave blank to keep current password"
-                />
-              </div>
-              <div className="form-group">
-                <label>Confirm Password</label>
-                <input
-                  type="password"
-                  value={profileData.confirmPassword}
-                  onChange={(e) => setProfileData({ ...profileData, confirmPassword: e.target.value })}
-                  placeholder="Confirm new password"
-                />
-              </div>
-            </div>
-          </div>
-        )}
       </form>
+
+      <AccountSecurityPanel basePath="/operator" />
     </div>
   )
 }

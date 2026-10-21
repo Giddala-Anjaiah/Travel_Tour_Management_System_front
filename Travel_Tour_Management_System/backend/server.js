@@ -83,6 +83,15 @@ const userSchema = new mongoose.Schema({
     enum: ['active', 'inactive'],
     default: 'active'
   },
+  // Contact details that can be edited from the profile screen.
+  alternatePhone: String,
+  address: String,
+  avatar: String,
+  // Timestamp of the last password change, used to invalidate older sessions.
+  passwordChangedAt: {
+    type: Date,
+    default: Date.now
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -97,6 +106,46 @@ userSchema.index({ role: 1 });
 userSchema.index({ createdAt: 1 });
 
 const User = mongoose.model('User', userSchema);
+
+// Session Schema — one record per signed-in device, so a user can review and
+// revoke the sessions that are active on their account.
+const sessionSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  // JWT id, so a presented token maps back to exactly one session.
+  tokenId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  userAgent: String,
+  ip: String,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  lastSeenAt: {
+    type: Date,
+    default: Date.now
+  },
+  // Snapshot of the account's passwordChangedAt when the session was created.
+  // A later password change moves the account marker forward, which makes every
+  // session with an older snapshot stale.
+  passwordChangedAt: Date,
+  expiresAt: {
+    type: Date,
+    required: true
+  },
+  revokedAt: Date
+});
+
+sessionSchema.index({ userId: 1, revokedAt: 1, lastSeenAt: -1 });
+sessionSchema.index({ expiresAt: 1 });
+
+const Session = mongoose.model('Session', sessionSchema);
 
 // Destination/Package Schema
 const packageSchema = new mongoose.Schema({
@@ -233,37 +282,46 @@ const itinerarySchema = new mongoose.Schema({
     date: Date,
     description: String,
     location: String,
-    activities: [{
-      time: String,
-      name: String,
-      description: String,
-      location: String,
-      type: { type: String, enum: ['activity', 'meal', 'transport', 'hotel', 'sightseeing', 'other'], default: 'activity' }
-    }],
+    // Activities are kept as mixed values so an activity that was stored as a
+    // plain string (older itineraries) is still readable. The setter turns
+    // anything that comes in as text into the full activity object.
+    activities: {
+      type: [mongoose.Schema.Types.Mixed],
+      set: value => normalizeActivities(value)
+    },
     meals: [String],
     accommodation: {
-      name: String,
-      hotelName: String,
-      checkInTime: String,
-      checkOutTime: String,
-      roomType: String,
-      location: String,
-      notes: String
+      type: {
+        name: String,
+        hotelName: String,
+        checkInTime: String,
+        checkOutTime: String,
+        roomType: String,
+        location: String,
+        notes: String
+      },
+      set: value => (typeof value === 'string' ? { name: value } : value)
     },
     transportation: {
-      mode: String,
-      vehicle: String,
-      departureTime: String,
-      arrivalTime: String,
-      departureLocation: String,
-      arrivalLocation: String,
-      details: String
+      type: {
+        mode: String,
+        vehicle: String,
+        departureTime: String,
+        arrivalTime: String,
+        departureLocation: String,
+        arrivalLocation: String,
+        details: String
+      },
+      set: value => (typeof value === 'string' ? { mode: value } : value)
     },
     hotel: {
-      name: String,
-      checkIn: String,
-      checkOut: String,
-      address: String
+      type: {
+        name: String,
+        checkIn: String,
+        checkOut: String,
+        address: String
+      },
+      set: value => (typeof value === 'string' ? { name: value } : value)
     },
     transport: [{
       time: String,
@@ -806,23 +864,75 @@ const notificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['booking', 'payment', 'review', 'system', 'offer', 'availability'],
+    enum: ['booking', 'payment', 'review', 'system', 'offer', 'availability', 'itinerary_change', 'departure_reminder', 'disruption'],
     required: true
   },
   title: String,
   message: String,
   relatedId: mongoose.Schema.Types.ObjectId,
+  // Set when the alert belongs to a specific trip so the customer trip-alert
+  // feed can scope every alert to the booking that triggered it.
+  bookingId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Booking'
+  },
+  severity: {
+    type: String,
+    enum: ['info', 'warning', 'critical'],
+    default: 'info'
+  },
+  // Frontend route the alert links to (e.g. /customer/bookings/:id/tracker).
+  actionUrl: String,
+  // Stable key used to make automated alerts idempotent, so a scheduler run
+  // never produces the same reminder twice.
+  dedupeKey: String,
+  acknowledged: {
+    type: Boolean,
+    default: false
+  },
+  acknowledgedAt: Date,
   read: {
     type: Boolean,
     default: false
   },
+  readAt: Date,
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
 
+notificationSchema.index({ userId: 1, read: 1, createdAt: -1 });
+notificationSchema.index({ userId: 1, type: 1, createdAt: -1 });
+notificationSchema.index({ dedupeKey: 1 });
+notificationSchema.index({ bookingId: 1, createdAt: -1 });
+
 const Notification = mongoose.model('Notification', notificationSchema);
+
+// Notification Preference Schema — lets a traveller choose which classes of
+// alert they actually want to receive (in-app and/or email).
+const notificationPreferenceSchema = new mongoose.Schema({
+  userId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    unique: true
+  },
+  booking: { type: Boolean, default: true },
+  payment: { type: Boolean, default: true },
+  itinerary_change: { type: Boolean, default: true },
+  departure_reminder: { type: Boolean, default: true },
+  disruption: { type: Boolean, default: true },
+  offer: { type: Boolean, default: true },
+  inApp: { type: Boolean, default: true },
+  email: { type: Boolean, default: true },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+const NotificationPreference = mongoose.model('NotificationPreference', notificationPreferenceSchema);
 
 // Pricing Schema
 const pricingSchema = new mongoose.Schema({
@@ -1030,11 +1140,100 @@ function authenticate(req, res, next) {
     return res.status(401).json({ message: 'Unauthorized' });
   }
   try {
-    req.user = jwt.verify(token, jwtSecret);
-    next();
-  } catch {
-    return res.status(401).json({ message: 'Invalid or expired token' });
+    const payload = jwt.verify(token, jwtSecret);
+    req.user = payload;
+    req.token = token;
+
+    // Tokens issued before session tracking existed carry no jti, so they are
+    // accepted as-is; every new token is bound to a revocable session.
+    if (!payload.jti) {
+      return next();
+    }
+
+    return checkSession(payload, req, res, next);
+  } catch (error) {
+    const message = error.name === 'TokenExpiredError'
+      ? 'Your session has expired. Please sign in again.'
+      : 'Invalid or expired token';
+    return res.status(401).json({ message });
   }
+}
+
+// Confirms the session behind a token is still alive: not revoked, not
+// expired, the account is still active, and the password has not been changed
+// since the session was created.
+async function checkSession(payload, req, res, next) {
+  try {
+    const session = await Session.findOne({ tokenId: payload.jti }).lean();
+    if (!session) {
+      return res.status(401).json({ message: 'Session not found. Please sign in again.' });
+    }
+    if (session.revokedAt) {
+      return res.status(401).json({ message: 'This session has been signed out. Please sign in again.' });
+    }
+    if (session.expiresAt && session.expiresAt.getTime() <= Date.now()) {
+      return res.status(401).json({ message: 'Your session has expired. Please sign in again.' });
+    }
+
+    const security = await getUserSecurityState(payload.userId);
+    if (security?.status === 'inactive') {
+      return res.status(403).json({ message: 'Account is inactive. Contact an administrator.' });
+    }
+    // The session carries the password marker it was created with. When the
+    // password changes, the account marker moves forward and every session with
+    // an older marker (or, for sessions predating this field, an older start
+    // time) is no longer allowed to authenticate.
+    const sessionMarker = session.passwordChangedAt || session.createdAt;
+    if (security?.passwordChangedAt && sessionMarker < security.passwordChangedAt) {
+      return res.status(401).json({ message: 'Your password was changed. Please sign in again.' });
+    }
+
+    req.session = session;
+    touchSession(session.tokenId);
+    return next();
+  } catch (error) {
+    console.error('Session check failed:', error.message);
+    return res.status(500).json({ message: 'Session check failed' });
+  }
+}
+
+// Cached so the hot path of every authenticated request does not need two
+// extra database round trips.
+const securityStateCache = new Map();
+const SECURITY_STATE_TTL_MS = 30 * 1000;
+
+async function getUserSecurityState(userId) {
+  const cached = securityStateCache.get(String(userId));
+  if (cached && Date.now() - cached.at < SECURITY_STATE_TTL_MS) {
+    return cached.state;
+  }
+  try {
+    const user = await User.findById(userId).select('status passwordChangedAt').lean();
+    const state = user ? { status: user.status, passwordChangedAt: user.passwordChangedAt } : null;
+    securityStateCache.set(String(userId), { state, at: Date.now() });
+    return state;
+  } catch (error) {
+    console.error('Failed to load user security state:', error.message);
+    return null;
+  }
+}
+
+function invalidateSecurityStateCache(userId) {
+  if (userId) {
+    securityStateCache.delete(String(userId));
+  } else {
+    securityStateCache.clear();
+  }
+}
+
+// Records that a session is still in use, at most once every five minutes.
+const sessionTouchCache = new Map();
+function touchSession(tokenId) {
+  const now = Date.now();
+  const last = sessionTouchCache.get(tokenId) || 0;
+  if (now - last < 5 * 60 * 1000) return;
+  sessionTouchCache.set(tokenId, now);
+  Session.updateOne({ tokenId }, { $set: { lastSeenAt: new Date() } }).catch(() => {});
 }
 
 function requireAdmin(req, res, next) {
@@ -1063,6 +1262,272 @@ function requireHotelPartner(req, res, next) {
     return res.status(403).json({ message: 'Hotel partner access required' });
   }
   next();
+}
+
+// --- Account security -----------------------------------------------------
+
+const AUTH_TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const PHONE_PATTERN = /^[+]?[\d][\d\s-]{7,19}$/;
+
+// Shared password policy: at least 8 characters with an uppercase letter, a
+// lowercase letter and a digit.
+function validatePasswordStrength(password) {
+  const value = String(password ?? '');
+  if (!value) {
+    return { valid: false, message: 'Password is required' };
+  }
+  if (value.length < 8) {
+    return { valid: false, message: 'Password must be at least 8 characters long' };
+  }
+  if (value.length > 128) {
+    return { valid: false, message: 'Password must be under 128 characters' };
+  }
+  if (!/[A-Z]/.test(value)) {
+    return { valid: false, message: 'Password must include an uppercase letter' };
+  }
+  if (!/[a-z]/.test(value)) {
+    return { valid: false, message: 'Password must include a lowercase letter' };
+  }
+  if (!/\d/.test(value)) {
+    return { valid: false, message: 'Password must include a number' };
+  }
+  return { valid: true, message: 'Password is strong enough' };
+}
+
+function validateContactDetails({ fullName, email, phone }) {
+  if (fullName !== undefined && !String(fullName).trim()) {
+    return { valid: false, message: 'Full name cannot be empty' };
+  }
+  if (email !== undefined && !EMAIL_PATTERN.test(String(email).trim())) {
+    return { valid: false, message: 'Enter a valid email address' };
+  }
+  if (phone !== undefined && !PHONE_PATTERN.test(String(phone).trim())) {
+    return { valid: false, message: 'Enter a valid phone number' };
+  }
+  return { valid: true };
+}
+
+// Turns a raw user-agent into something a person can recognise in the
+// "active sessions" list.
+function describeDevice(userAgent = '') {
+  const ua = String(userAgent);
+  const browser =
+    /Edg\//.test(ua) ? 'Edge'
+      : /OPR\//.test(ua) ? 'Opera'
+        : /Chrome\//.test(ua) ? 'Chrome'
+          : /Safari\//.test(ua) ? 'Safari'
+            : /Firefox\//.test(ua) ? 'Firefox'
+              : 'Browser';
+  const platform =
+    /Windows/.test(ua) ? 'Windows'
+      : /Android/.test(ua) ? 'Android'
+        : /iPhone|iPad|iPod/.test(ua) ? 'iOS'
+          : /Mac OS X/.test(ua) ? 'macOS'
+            : /Linux/.test(ua) ? 'Linux'
+              : 'Unknown OS';
+  const mobile = /Mobile|Android|iPhone|iPad/.test(ua) ? 'mobile' : 'desktop';
+  return { browser, platform, device: `${browser} on ${platform}`, type: mobile };
+}
+
+// Signs a token and records the session it belongs to, so the session can be
+// reviewed and revoked later. The session record is written before the caller
+// responds, otherwise the first request after signing in could arrive before
+// the record exists and be rejected as an unknown session.
+async function issueAuthToken(user, req) {
+  const tokenId = crypto.randomUUID();
+  const token = jwt.sign(
+    { userId: String(user._id), email: user.email, role: user.role, jti: tokenId },
+    jwtSecret,
+    { expiresIn: '24h' }
+  );
+
+  try {
+    await Session.create({
+      userId: user._id,
+      tokenId,
+      userAgent: String(req?.headers?.['user-agent'] || '').slice(0, 500),
+      ip: req?.ip ? String(req.ip) : '',
+      passwordChangedAt: user.passwordChangedAt || undefined,
+      expiresAt: new Date(Date.now() + AUTH_TOKEN_TTL_MS)
+    });
+  } catch (err) {
+    console.error('Failed to record session:', err.message);
+  }
+
+  return token;
+}
+
+async function revokeOtherSessions(userId, keepTokenId) {
+  const filter = { userId, revokedAt: { $exists: false } };
+  if (keepTokenId) filter.tokenId = { $ne: keepTokenId };
+  const result = await Session.updateMany(filter, { $set: { revokedAt: new Date() } });
+  return result.modifiedCount || 0;
+}
+
+async function revokeAllSessions(userId) {
+  const result = await Session.updateMany(
+    { userId, revokedAt: { $exists: false } },
+    { $set: { revokedAt: new Date() } }
+  );
+  return result.modifiedCount || 0;
+}
+
+// Shapes a session document for the client.
+function serializeSession(session, currentTokenId) {
+  const device = describeDevice(session.userAgent);
+  return {
+    id: String(session._id),
+    tokenId: session.tokenId,
+    device: device.device,
+    browser: device.browser,
+    platform: device.platform,
+    type: device.type,
+    ip: session.ip || 'Unknown',
+    createdAt: session.createdAt,
+    lastSeenAt: session.lastSeenAt || session.createdAt,
+    expiresAt: session.expiresAt,
+    current: session.tokenId === currentTokenId
+  };
+}
+
+// Registers the account-security endpoints for a role group. The group's
+// auth middleware is already mounted, so every route below is protected.
+function registerAccountSecurityRoutes(prefix) {
+  // Changes the password for the signed-in user. Every other session is
+  // revoked and the current session is kept so the user is not signed out of
+  // the device they are working on.
+  app.post(`${prefix}/account/password`, async (req, res) => {
+    try {
+      const { currentPassword, newPassword, confirmPassword } = req.body || {};
+
+      if (!currentPassword) {
+        return res.status(400).json({ message: 'Enter your current password' });
+      }
+      if (!newPassword) {
+        return res.status(400).json({ message: 'Enter a new password' });
+      }
+      if (confirmPassword !== undefined && confirmPassword !== newPassword) {
+        return res.status(400).json({ message: 'New password and confirmation do not match' });
+      }
+      if (newPassword === currentPassword) {
+        return res.status(400).json({ message: 'New password must be different from the current one' });
+      }
+
+      const strength = validatePasswordStrength(newPassword);
+      if (!strength.valid) {
+        return res.status(400).json({ message: strength.message });
+      }
+
+      const user = await User.findById(req.user.userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+
+      const matches = await bcrypt.compare(currentPassword, user.password);
+      if (!matches) {
+        return res.status(401).json({ message: 'Current password is incorrect' });
+      }
+
+      user.password = await bcrypt.hash(newPassword, 12);
+      user.passwordChangedAt = new Date();
+      await user.save();
+      invalidateSecurityStateCache(req.user.userId);
+
+      const revoked = await revokeOtherSessions(req.user.userId, req.user.jti);
+
+      // The device that made the change keeps working, so the marker it was
+      // created with is moved forward to the new password. Every other device
+      // is signed out by the marker move and by the revocation above.
+      if (req.user.jti) {
+        await Session.updateOne(
+          { tokenId: req.user.jti },
+          { $set: { passwordChangedAt: user.passwordChangedAt } }
+        );
+      }
+
+      await sendNotificationEmail(
+        user.email,
+        'Your password was changed',
+        `The password for your TravelTour account was changed${revoked ? ` and ${revoked} other session(s) were signed out` : ''}. If this was not you, contact support immediately.`
+      ).catch(err => console.error('Password change email failed:', err.message));
+
+      res.status(200).json({ message: 'Password changed successfully', revokedSessions: revoked });
+    } catch (error) {
+      console.error('Error changing password:', error);
+      res.status(500).json({ message: 'Error changing password' });
+    }
+  });
+
+  // Lists the devices that are currently signed in to the account.
+  app.get(`${prefix}/account/sessions`, async (req, res) => {
+    try {
+      const sessions = await Session.find({
+        userId: req.user.userId,
+        revokedAt: { $exists: false },
+        expiresAt: { $gt: new Date() }
+      }).sort({ lastSeenAt: -1 });
+
+      const serialized = sessions.map(session => serializeSession(session, req.user.jti));
+      res.status(200).json({
+        sessions: serialized,
+        activeCount: serialized.length,
+        currentTokenId: req.user.jti || null
+      });
+    } catch (error) {
+      console.error('Error fetching sessions:', error);
+      res.status(500).json({ message: 'Error fetching sessions' });
+    }
+  });
+
+  // Signs a single device out.
+  app.delete(`${prefix}/account/sessions/:id`, async (req, res) => {
+    try {
+      const session = await Session.findOne({ _id: req.params.id, userId: req.user.userId });
+      if (!session) {
+        return res.status(404).json({ message: 'Session not found' });
+      }
+      if (session.tokenId === req.user.jti) {
+        return res.status(400).json({ message: 'Use sign out to end the session you are currently using' });
+      }
+
+      session.revokedAt = new Date();
+      await session.save();
+
+      res.status(200).json({ message: 'Session signed out' });
+    } catch (error) {
+      console.error('Error revoking session:', error);
+      res.status(500).json({ message: 'Error revoking session' });
+    }
+  });
+
+  // Signs every other device out, keeping the current one alive.
+  app.post(`${prefix}/account/sessions/revoke-others`, async (req, res) => {
+    try {
+      const revoked = await revokeOtherSessions(req.user.userId, req.user.jti);
+      res.status(200).json({ message: 'Other sessions signed out', revokedSessions: revoked });
+    } catch (error) {
+      console.error('Error revoking sessions:', error);
+      res.status(500).json({ message: 'Error revoking sessions' });
+    }
+  });
+
+  // Ends the session that made the request.
+  app.post(`${prefix}/account/logout`, async (req, res) => {
+    try {
+      if (req.user?.jti) {
+        await Session.updateOne(
+          { tokenId: req.user.jti },
+          { $set: { revokedAt: new Date() } }
+        );
+      }
+      res.status(200).json({ message: 'Signed out' });
+    } catch (error) {
+      console.error('Error signing out:', error);
+      res.status(500).json({ message: 'Error signing out' });
+    }
+  });
 }
 
 const DEFAULT_PAGE_SIZE = 20;
@@ -1476,12 +1941,8 @@ app.get('/api/auth/google', (req, res, next) => {
 app.get(
   '/api/auth/google/callback',
   passport.authenticate('google', { session: false, failureRedirect: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/login?error=oauth` }),
-  (req, res) => {
-    const token = jwt.sign(
-      { userId: req.user._id, email: req.user.email, role: req.user.role },
-      jwtSecret,
-      { expiresIn: '24h' }
-    );
+  async (req, res) => {
+    const token = await issueAuthToken(req.user, req);
     // The state carries the frontend origin from the start of the flow; it is
     // allowlist-checked so the token is never redirected to an untrusted host.
     const frontend = resolveFrontendOrigin(req.query.state);
@@ -1506,6 +1967,16 @@ app.post('/api/signup', async (req, res) => {
       return res.status(400).json({ message: 'User already exists with this email' });
     }
 
+    const contactCheck = validateContactDetails({ fullName, email, phone });
+    if (!contactCheck.valid) {
+      return res.status(400).json({ message: contactCheck.message });
+    }
+
+    const strength = validatePasswordStrength(password);
+    if (!strength.valid) {
+      return res.status(400).json({ message: strength.message });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
     const newUser = new User({
       fullName,
@@ -1513,7 +1984,8 @@ app.post('/api/signup', async (req, res) => {
       phone,
       password: hashedPassword,
       role,
-      status: settings?.requireApproval ? 'inactive' : 'active'
+      status: settings?.requireApproval ? 'inactive' : 'active',
+      passwordChangedAt: new Date()
     });
 
     await newUser.save();
@@ -1554,12 +2026,8 @@ app.post('/api/login', async (req, res) => {
     await user.save();
     console.log(`User ${email} logged in successfully at ${user.lastLogin}`);
 
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
-      jwtSecret,
-      { expiresIn: '24h' }
-    );
+    // Generate JWT token and record the session it belongs to
+    const token = await issueAuthToken(user, req);
 
     res.status(200).json({
       message: 'Login successful',
@@ -1583,10 +2051,17 @@ const otpStore = new Map();
 
 // Helper: send email via Brevo (REST API or SMTP)
 
+// Tracks a broken Brevo credential so a rejected API key is reported once
+// instead of failing (and logging) on every single alert.
+let brevoAuthFailure = null;
+
 async function sendEmailViaBrevo(to, subject, htmlContent) {
   const brevoKey = process.env.BREVO_API_KEY;
   if (!brevoKey) {
     throw new Error('BREVO_API_KEY not configured');
+  }
+  if (brevoAuthFailure) {
+    throw new Error(brevoAuthFailure);
   }
   const senderEmail = process.env.BREVO_SENDER_EMAIL || 'anjaiahgiddala@gmail.com';
   const senderName = process.env.BREVO_SENDER_NAME || 'Teja.com';
@@ -1606,6 +2081,10 @@ async function sendEmailViaBrevo(to, subject, htmlContent) {
   });
   if (!resp.ok) {
     const txt = await resp.text();
+    if (resp.status === 401 || resp.status === 403) {
+      brevoAuthFailure = `Brevo API error ${resp.status}: ${txt}`;
+      console.error(`[EMAIL DISABLED] ${brevoAuthFailure} — check BREVO_API_KEY in backend/.env`);
+    }
     throw new Error(`Brevo API error ${resp.status}: ${txt}`);
   }
   return resp.json();
@@ -1678,6 +2157,324 @@ async function sendEmailWithAttachment(to, subject, htmlContent, attachments) {
     throw new Error(`Brevo API error ${resp.status}: ${txt}`);
   }
   return resp.json();
+}
+
+// --- Notification service -------------------------------------------------
+// Central place that decides whether an alert should reach a traveller, so
+// booking/payment/itinerary/departure/disruption alerts all respect the same
+// preferences, de-duplication and email rules.
+
+const NOTIFICATION_TYPES = [
+  'booking',
+  'payment',
+  'review',
+  'system',
+  'offer',
+  'availability',
+  'itinerary_change',
+  'departure_reminder',
+  'disruption'
+];
+
+const TRIP_ALERT_TYPES = [
+  'booking',
+  'payment',
+  'itinerary_change',
+  'departure_reminder',
+  'disruption'
+];
+
+async function getNotificationPreference(userId) {
+  try {
+    let pref = await NotificationPreference.findOne({ userId });
+    if (!pref) {
+      pref = await NotificationPreference.create({ userId });
+    }
+    return pref;
+  } catch (error) {
+    console.error('Failed to load notification preferences:', error.message);
+    return null;
+  }
+}
+
+function isNotificationTypeEnabled(pref, type) {
+  if (!pref) return true;
+  const source = typeof pref.toObject === 'function' ? pref.toObject() : pref;
+  if (Object.prototype.hasOwnProperty.call(source, type)) {
+    return source[type] !== false;
+  }
+  return true;
+}
+
+// Creates a notification for a user. Returns the stored document, or null when
+// the alert was suppressed (preference off or already delivered).
+async function createNotification({
+  userId,
+  type,
+  title,
+  message,
+  relatedId,
+  bookingId,
+  severity = 'info',
+  actionUrl,
+  dedupeKey,
+  email = true,
+  emailSubject
+}) {
+  if (!userId || !type) return null;
+
+  try {
+    const pref = await getNotificationPreference(userId);
+    const typeEnabled = isNotificationTypeEnabled(pref, type);
+    const emailEnabled = email && pref?.email !== false;
+    const inAppEnabled = pref?.inApp !== false;
+
+    // A muted alert class (or in-app channel) still reaches the traveller by
+    // email when that channel is on — only the channel that is off is skipped.
+    if (!typeEnabled || !inAppEnabled) {
+      if (emailEnabled) {
+        const user = await User.findById(userId).select('email fullName');
+        if (user?.email) {
+          await sendNotificationEmail(user.email, emailSubject || title || 'TravelTour Alert', message || '')
+            .catch(err => console.error('Notification email failed:', err.message));
+        }
+      }
+      return null;
+    }
+
+    if (dedupeKey) {
+      const existing = await Notification.findOne({ userId, dedupeKey }).select('_id');
+      if (existing) return null;
+    }
+
+    const notification = await Notification.create({
+      userId,
+      type,
+      title,
+      message,
+      relatedId,
+      bookingId,
+      severity,
+      actionUrl,
+      dedupeKey,
+      read: false,
+      acknowledged: false
+    });
+
+    if (emailEnabled) {
+      const user = await User.findById(userId).select('email fullName');
+      if (user?.email) {
+        await sendNotificationEmail(user.email, emailSubject || title || 'TravelTour Alert', message || '')
+          .catch(err => console.error('Notification email failed:', err.message));
+      }
+    }
+
+    return notification;
+  } catch (error) {
+    console.error('Failed to create notification:', error.message);
+    return null;
+  }
+}
+
+// Creates the same alert for many users at once.
+async function createNotificationsForUsers(userIds, payload) {
+  const unique = [...new Set((userIds || []).filter(Boolean).map(String))];
+  const created = [];
+  for (const userId of unique) {
+    const notification = await createNotification({ ...payload, userId });
+    if (notification) created.push(notification);
+  }
+  return created;
+}
+
+function statusChangedLabel(status) {
+  const labels = {
+    confirmed: 'Booking Confirmed',
+    cancelled: 'Booking Cancelled',
+    rejected: 'Booking Rejected',
+    completed: 'Trip Completed',
+    pending: 'Booking Awaiting Confirmation'
+  };
+  return labels[status] || 'Booking Status Updated';
+}
+
+// --- Trip date helpers ----------------------------------------------------
+
+// Resolves the date a trip starts. Package bookings store a plain "YYYY-MM-DD"
+// travel date, hotel bookings store a check-in date, and a package whose
+// booking has no date falls back to day 1 of its itinerary.
+function parseTripStart(booking) {
+  if (!booking) return null;
+
+  if (booking.checkInDate) {
+    const checkIn = new Date(booking.checkInDate);
+    if (!Number.isNaN(checkIn.getTime())) return checkIn;
+  }
+
+  if (booking.dates) {
+    const raw = String(booking.dates).trim();
+    const iso = raw.match(/(\d{4}-\d{2}-\d{2})/);
+    if (iso) {
+      const parsed = new Date(iso[1]);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    const direct = new Date(raw);
+    if (!Number.isNaN(direct.getTime())) return direct;
+    const ddmmyyyy = raw.match(/(\d{1,2})[/-](\d{1,2})[/-](\d{4})/);
+    if (ddmmyyyy) {
+      const parsed = new Date(
+        Number(ddmmyyyy[3]),
+        Number(ddmmyyyy[2]) - 1,
+        Number(ddmmyyyy[1])
+      );
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+  }
+
+  return null;
+}
+
+function startOfDay(value) {
+  const date = new Date(value);
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function daysUntil(value) {
+  const diff = startOfDay(value).getTime() - startOfDay(new Date()).getTime();
+  return Math.round(diff / (1000 * 60 * 60 * 24));
+}
+
+function formatTripDate(value) {
+  return new Date(value).toLocaleDateString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  });
+}
+
+// ISO "YYYY-MM-DD" is the format the travel-date input stores, so string
+// comparison against it is safe for range queries.
+function formatIsoDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+}
+
+async function resolveTripStarts(bookings) {
+  const starts = new Map();
+  const packageIds = [];
+
+  for (const booking of bookings) {
+    const parsed = parseTripStart(booking);
+    if (parsed) {
+      starts.set(String(booking._id), parsed);
+    } else if (booking.packageId) {
+      packageIds.push(booking.packageId);
+    }
+  }
+
+  if (packageIds.length) {
+    const itineraries = await Itinerary.find({ packageId: { $in: packageIds } }).select('packageId dayDetails');
+    const firstDayByPackage = new Map();
+    for (const itinerary of itineraries) {
+      const first = [...(itinerary.dayDetails || [])]
+        .sort((a, b) => (a.dayNumber || 0) - (b.dayNumber || 0))[0];
+      if (first?.date) {
+        firstDayByPackage.set(String(itinerary.packageId), new Date(first.date));
+      }
+    }
+    for (const booking of bookings) {
+      if (starts.has(String(booking._id))) continue;
+      const fallback = firstDayByPackage.get(String(booking.packageId));
+      if (fallback && !Number.isNaN(fallback.getTime())) {
+        starts.set(String(booking._id), fallback);
+      }
+    }
+  }
+
+  return starts;
+}
+
+// --- Departure reminders --------------------------------------------------
+
+const DEPARTURE_REMINDER_STAGES = [
+  { key: '3d', days: 3, label: '3 days' },
+  { key: '1d', days: 1, label: 'tomorrow' }
+];
+
+const DEPARTURE_REMINDER_INTERVAL_MS = 15 * 60 * 1000;
+
+// Walks confirmed/pending bookings that are about to depart and drops a
+// reminder for each. Every reminder carries a dedupe key so repeated runs of
+// the scheduler never create duplicates.
+async function runDepartureReminderJob() {
+  try {
+    const now = new Date();
+    const horizon = new Date();
+    horizon.setDate(horizon.getDate() + Math.max(...DEPARTURE_REMINDER_STAGES.map(stage => stage.days)));
+
+    const bookings = await Booking.find({
+      status: { $in: ['pending', 'confirmed'] },
+      $or: [
+        { checkInDate: { $gte: startOfDay(now), $lte: horizon } },
+        { dates: { $gte: formatIsoDate(now), $lte: formatIsoDate(horizon) } }
+      ]
+    })
+      .select('customerId email customer package packageId dates checkInDate travelers operatorId hotelName pickupInfo')
+      .limit(500);
+
+    if (!bookings.length) return 0;
+
+    const tripStarts = await resolveTripStarts(bookings);
+    const packages = await Package.find({
+      _id: { $in: [...new Set(bookings.map(b => b.packageId).filter(Boolean))] }
+    }).select('name destination pickupInfo startingLocation duration transportType');
+    const packageById = new Map(packages.map(pkg => [String(pkg._id), pkg]));
+
+    let created = 0;
+    for (const booking of bookings) {
+      const tripStart = tripStarts.get(String(booking._id));
+      if (!tripStart) continue;
+      const remaining = daysUntil(tripStart);
+      if (remaining < 0) continue;
+
+      const stage = DEPARTURE_REMINDER_STAGES.find(item => item.days === remaining);
+      if (!stage) continue;
+
+      const pkg = booking.packageId ? packageById.get(String(booking.packageId)) : null;
+      const tripName = booking.package || pkg?.name || booking.hotelName || 'your trip';
+      const pickup = booking.pickupInfo || pkg?.pickupInfo || pkg?.startingLocation || 'the pickup point shared in your itinerary';
+      const travellers = booking.travelers || 1;
+      const when = remaining === 0 ? 'today' : remaining === 1 ? 'tomorrow' : `in ${remaining} days`;
+
+      const message = `Your trip "${tripName}" departs ${when} (${formatTripDate(tripStart)}). `
+        + `Please carry a government photo ID, reach the pickup point "${pickup}" and arrive 30 minutes early. `
+        + `You are travelling with ${travellers} ${travellers === 1 ? 'traveller' : 'travellers'}.`;
+
+      const notification = await createNotification({
+        userId: booking.customerId,
+        type: 'departure_reminder',
+        title: remaining === 0 ? 'Your trip departs today' : 'Trip departure reminder',
+        message,
+        bookingId: booking._id,
+        relatedId: booking._id,
+        severity: remaining === 0 ? 'critical' : 'info',
+        actionUrl: `/customer/bookings/${booking._id}/tracker`,
+        dedupeKey: `departure:${stage.key}:${booking._id}:${formatTripDate(tripStart)}`,
+        emailSubject: `Trip departure ${when} — ${tripName}`
+      });
+
+      if (notification) created += 1;
+    }
+
+    if (created) {
+      console.log(`[DEPARTURE REMINDERS] Created ${created} reminder(s)`);
+    }
+    return created;
+  } catch (error) {
+    console.error('Departure reminder job failed:', error.message);
+    return 0;
+  }
 }
 
 function generateInvoicePDF(invoice, booking) {
@@ -1788,6 +2585,8 @@ app.post('/api/verify-otp', (req, res) => {
     if (record.otp !== otp) {
       return res.status(400).json({ message: 'Invalid OTP' });
     }
+    // The OTP is single-use: it is consumed as soon as it is verified.
+    record.verifiedAt = Date.now();
     res.status(200).json({ message: 'OTP verified successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Server error during OTP verification' });
@@ -1809,17 +2608,30 @@ app.post('/api/reset-password', async (req, res) => {
     if (record.otp !== otp) {
       return res.status(400).json({ message: 'Invalid OTP' });
     }
+    if (record.verifiedAt && Date.now() - record.verifiedAt > 10 * 60 * 1000) {
+      otpStore.delete(email);
+      return res.status(400).json({ message: 'OTP expired. Request a new one.' });
+    }
+
+    const strength = validatePasswordStrength(newPassword);
+    if (!strength.valid) {
+      return res.status(400).json({ message: strength.message });
+    }
 
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    user.password = await bcrypt.hash(newPassword, 10);
+    user.password = await bcrypt.hash(newPassword, 12);
+    user.passwordChangedAt = new Date();
     await user.save();
     otpStore.delete(email);
+    invalidateSecurityStateCache(user._id);
+    // A reset means every existing session on the account is compromised.
+    const revoked = await revokeAllSessions(user._id);
 
-    res.status(200).json({ message: 'Password reset successfully' });
+    res.status(200).json({ message: 'Password reset successfully', revokedSessions: revoked });
   } catch (error) {
     console.error('Reset password error:', error);
     res.status(500).json({ message: 'Server error during password reset' });
@@ -1888,8 +2700,25 @@ app.get('/api/admin/users', async (req, res) => {
 app.post('/api/admin/users', async (req, res) => {
   try {
     const { fullName, email, phone, password, role } = req.body;
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const newUser = new User({ fullName, email, phone, password: hashedPassword, role });
+
+    const contactCheck = validateContactDetails({ fullName, email, phone });
+    if (!contactCheck.valid) {
+      return res.status(400).json({ message: contactCheck.message });
+    }
+    const strength = validatePasswordStrength(password);
+    if (!strength.valid) {
+      return res.status(400).json({ message: strength.message });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const newUser = new User({
+      fullName,
+      email: String(email).trim().toLowerCase(),
+      phone,
+      password: hashedPassword,
+      role,
+      passwordChangedAt: new Date()
+    });
     await newUser.save();
     const safeUser = newUser.toObject();
     delete safeUser.password;
@@ -1905,14 +2734,42 @@ app.post('/api/admin/users', async (req, res) => {
 app.put('/api/admin/users/:id', async (req, res) => {
   try {
     const updates = pickUpdates(req.body, ['fullName', 'email', 'phone', 'role', 'status']);
+    if (updates.email) updates.email = String(updates.email).trim().toLowerCase();
+
+    const contactCheck = validateContactDetails({
+      fullName: updates.fullName,
+      email: updates.email,
+      phone: updates.phone
+    });
+    if (!contactCheck.valid) {
+      return res.status(400).json({ message: contactCheck.message });
+    }
+    if (updates.email) {
+      const existing = await User.findOne({ email: updates.email, _id: { $ne: req.params.id } });
+      if (existing) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+    }
     if (req.body.password) {
-      updates.password = await bcrypt.hash(req.body.password, 10);
+      const strength = validatePasswordStrength(req.body.password);
+      if (!strength.valid) {
+        return res.status(400).json({ message: strength.message });
+      }
+      updates.password = await bcrypt.hash(req.body.password, 12);
+      updates.passwordChangedAt = new Date();
     }
     const user = await User.findByIdAndUpdate(req.params.id, updates, { new: true });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    res.status(200).json({ message: 'User updated successfully', user });
+    invalidateSecurityStateCache(req.params.id);
+    // A password set by an admin invalidates every existing session.
+    if (updates.password) {
+      await revokeAllSessions(user._id);
+    }
+    const safeUser = user.toObject();
+    delete safeUser.password;
+    res.status(200).json({ message: 'User updated successfully', user: safeUser });
   } catch (error) {
     res.status(500).json({ message: 'Error updating user' });
   }
@@ -1986,6 +2843,186 @@ app.delete('/api/admin/packages/:id', async (req, res) => {
   }
 });
 
+// --- Itinerary builder helpers ---------------------------------------------
+// The builder sends a rich day structure: activities with timestamps, hotel
+// details and transport legs. Older clients still send flat strings, so every
+// incoming day is normalised into the shape the schema expects. Keeping the
+// two forms interchangeable also stops Mongoose from failing a save with a
+// cast error when a plain string is posted for an object field.
+
+const ITINERARY_ACTIVITY_TYPES = ['activity', 'meal', 'transport', 'hotel', 'sightseeing', 'other'];
+
+function cleanText(value, maxLength = 500) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim().slice(0, maxLength);
+}
+
+// Accepts "9:30" and "09:30" and always returns "HH:MM"; anything that is
+// not a valid 24 hour time becomes an empty string.
+function normalizeTime(value) {
+  const match = cleanText(value, 10).match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return '';
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return '';
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+function normalizeActivities(value) {
+  const list = Array.isArray(value) ? value : (typeof value === 'string' ? value.split(',') : []);
+
+  const activities = list.map(entry => {
+    if (typeof entry === 'string') {
+      const text = cleanText(entry, 200);
+      if (!text) return null;
+      // "09:00 - Sightseeing" keeps the time that was written inline.
+      const timed = text.match(/^(\d{1,2}:\d{2})\s*[-–—]\s*(.+)$/);
+      if (timed) {
+        return {
+          time: normalizeTime(timed[1]),
+          name: cleanText(timed[2], 120),
+          description: '',
+          location: '',
+          type: 'activity'
+        };
+      }
+      return { time: '', name: cleanText(text, 120), description: '', location: '', type: 'activity' };
+    }
+
+    if (!entry || typeof entry !== 'object') return null;
+    const name = cleanText(entry.name || entry.title || entry.description, 120);
+    if (!name) return null;
+    return {
+      time: normalizeTime(entry.time),
+      name,
+      description: cleanText(entry.description, 500),
+      location: cleanText(entry.location, 200),
+      type: ITINERARY_ACTIVITY_TYPES.includes(entry.type) ? entry.type : 'activity'
+    };
+  }).filter(Boolean);
+
+  // Timed activities come first in clock order, untimed ones keep their order
+  // and sit at the end of the day.
+  return activities.sort((a, b) => {
+    if (!a.time && !b.time) return 0;
+    if (!a.time) return 1;
+    if (!b.time) return -1;
+    return a.time.localeCompare(b.time);
+  });
+}
+
+function normalizeAccommodation(value) {
+  if (!value) return undefined;
+  if (typeof value === 'string') {
+    const name = cleanText(value, 200);
+    return name ? { name } : undefined;
+  }
+  if (typeof value !== 'object') return undefined;
+
+  return {
+    name: cleanText(value.name || value.hotelName, 200),
+    hotelName: cleanText(value.hotelName, 200),
+    checkInTime: normalizeTime(value.checkInTime),
+    checkOutTime: normalizeTime(value.checkOutTime),
+    roomType: cleanText(value.roomType, 100),
+    location: cleanText(value.location || value.address, 250),
+    notes: cleanText(value.notes, 500)
+  };
+}
+
+function normalizeTransportation(value) {
+  if (!value) return undefined;
+  if (typeof value === 'string') {
+    const mode = cleanText(value, 200);
+    return mode ? { mode } : undefined;
+  }
+  if (typeof value !== 'object') return undefined;
+
+  return {
+    mode: cleanText(value.mode, 100),
+    vehicle: cleanText(value.vehicle, 120),
+    departureTime: normalizeTime(value.departureTime),
+    arrivalTime: normalizeTime(value.arrivalTime),
+    departureLocation: cleanText(value.departureLocation, 250),
+    arrivalLocation: cleanText(value.arrivalLocation, 250),
+    details: cleanText(value.details, 500)
+  };
+}
+
+function normalizeTransportLegs(value) {
+  const list = Array.isArray(value) ? value : [];
+  return list.map(leg => ({
+    time: normalizeTime(leg?.time),
+    mode: cleanText(leg?.mode, 100),
+    from: cleanText(leg?.from, 250),
+    to: cleanText(leg?.to, 250),
+    details: cleanText(leg?.details, 500)
+  })).filter(leg => leg.time || leg.mode || leg.from || leg.to);
+}
+
+function normalizeItineraryDay(day, index) {
+  const source = day && typeof day === 'object' ? day : {};
+
+  const normalized = {
+    dayNumber: index + 1,
+    title: cleanText(source.title, 160),
+    description: cleanText(source.description, 1000),
+    location: cleanText(source.location, 250),
+    notes: cleanText(source.notes, 1000),
+    meals: (Array.isArray(source.meals)
+      ? source.meals
+      : (typeof source.meals === 'string' ? source.meals.split(',') : [])
+    ).map(meal => cleanText(meal, 60)).filter(Boolean),
+    activities: normalizeActivities(source.activities),
+    images: (Array.isArray(source.images) ? source.images : [])
+      .map(image => cleanText(image, 500))
+      .filter(Boolean)
+  };
+
+  if (source.date) {
+    const date = new Date(source.date);
+    if (!Number.isNaN(date.getTime())) normalized.date = date;
+  }
+
+  const accommodation = normalizeAccommodation(source.accommodation);
+  if (accommodation) normalized.accommodation = accommodation;
+
+  const hotel = normalizeAccommodation(source.hotel);
+  if (hotel) normalized.hotel = hotel;
+
+  const transportation = normalizeTransportation(source.transportation);
+  if (transportation) normalized.transportation = transportation;
+
+  const transport = normalizeTransportLegs(source.transport);
+  if (transport.length) normalized.transport = transport;
+
+  return normalized;
+}
+
+// Turns a builder payload into the document shape, keeping the day count and
+// the hotel count in step with the days that were actually submitted.
+function normalizeItineraryPayload(body = {}) {
+  const source = body && typeof body === 'object' ? body : {};
+  const days = Array.isArray(source.dayDetails) ? source.dayDetails : [];
+  const dayDetails = days.map(normalizeItineraryDay);
+
+  const payload = {
+    name: cleanText(source.name, 160),
+    packageName: cleanText(source.packageName, 160),
+    days: Math.max(1, dayDetails.length),
+    status: source.status === 'inactive' ? 'inactive' : 'active',
+    dayDetails,
+    hotels: dayDetails.filter(day => day.accommodation?.name || day.hotel?.name).length
+  };
+
+  const highlights = Array.isArray(source.highlights)
+    ? source.highlights.map(item => cleanText(item, 160)).filter(Boolean)
+    : [];
+  if (highlights.length) payload.highlights = highlights;
+
+  return payload;
+}
+
 // Itinerary Management Routes
 app.get('/api/admin/itineraries', async (req, res) => {
   try {
@@ -2004,31 +3041,86 @@ app.get('/api/admin/itineraries', async (req, res) => {
   }
 });
 
+// A single itinerary, so the builder can load the days it has to edit.
+app.get('/api/admin/itineraries/:id', async (req, res) => {
+  try {
+    const itinerary = await Itinerary.findById(req.params.id);
+    if (!itinerary) {
+      return res.status(404).json({ message: 'Itinerary not found' });
+    }
+    res.status(200).json({ itinerary });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching itinerary' });
+  }
+});
+
 app.post('/api/admin/itineraries', async (req, res) => {
   try {
-    const payload = { ...req.body };
-    if (payload.packageName && !payload.packageId) {
+    const payload = normalizeItineraryPayload(req.body);
+    if (!payload.name) {
+      return res.status(400).json({ message: 'Itinerary name is required' });
+    }
+    if (req.body.packageId) {
+      payload.packageId = req.body.packageId;
+    } else if (payload.packageName) {
       const pkg = await Package.findOne({ name: payload.packageName });
       if (pkg) payload.packageId = pkg._id;
+    }
+    if (!payload.packageId) {
+      return res.status(400).json({ message: 'Select a package for this itinerary' });
     }
     const newItinerary = new Itinerary(payload);
     await newItinerary.save();
     res.status(201).json({ message: 'Itinerary created successfully', itinerary: newItinerary });
   } catch (error) {
+    console.error('Error creating itinerary:', error.message);
     res.status(500).json({ message: 'Error creating itinerary' });
   }
 });
 
 app.put('/api/admin/itineraries/:id', async (req, res) => {
   try {
-    const updates = pickUpdates(req.body, ['name', 'packageId', 'packageName', 'days', 'hotels', 'status']);
-    if (updates.packageName && !updates.packageId) {
+    const updates = normalizeItineraryPayload(req.body);
+    if (req.body.packageId) {
+      updates.packageId = req.body.packageId;
+    } else if (updates.packageName) {
       const pkg = await Package.findOne({ name: updates.packageName });
       if (pkg) updates.packageId = pkg._id;
+    }
+    if (updates.packageId) {
+      const pkg = await Package.findById(updates.packageId).select('name');
+      if (pkg && !updates.packageName) updates.packageName = pkg.name;
     }
     const itinerary = await Itinerary.findByIdAndUpdate(req.params.id, updates, { new: true });
     if (!itinerary) {
       return res.status(404).json({ message: 'Itinerary not found' });
+    }
+    // Notify customers with bookings for this package about itinerary changes
+    try {
+      if (itinerary.packageId) {
+        const bookings = await Booking.find({ packageId: itinerary.packageId, status: { $in: ['pending', 'confirmed'] } })
+          .select('customerId package');
+        const seen = new Set();
+        for (const booking of bookings) {
+          if (!booking.customerId) continue;
+          const customerId = String(booking.customerId);
+          if (seen.has(customerId)) continue;
+          seen.add(customerId);
+          await createNotification({
+            userId: customerId,
+            type: 'itinerary_change',
+            title: 'Itinerary Updated',
+            message: `The itinerary for ${itinerary.packageName || booking.package || 'your package'} has been updated. Please check your travel plan.`,
+            relatedId: itinerary._id,
+            bookingId: booking._id,
+            severity: 'warning',
+            actionUrl: `/customer/bookings/${booking._id}/tracker`,
+            emailSubject: 'Your itinerary has been updated'
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to notify customers of itinerary change:', e.message);
     }
     res.status(200).json({ message: 'Itinerary updated successfully', itinerary });
   } catch (error) {
@@ -2802,7 +3894,7 @@ app.get('/api/admin/notifications', async (req, res) => {
     const unread = await Notification.countDocuments({ ...filter, read: false });
     const recipientIds = await Notification.distinct('userId', filter);
     const byType = {};
-    for (const t of ['booking', 'payment', 'review', 'system', 'offer', 'availability']) {
+    for (const t of ['booking', 'payment', 'review', 'system', 'offer', 'availability', 'itinerary_change', 'departure_reminder', 'disruption']) {
       byType[t] = await Notification.countDocuments({ ...filter, type: t });
     }
     pagedResponse(res, 'notifications', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
@@ -2862,6 +3954,91 @@ app.delete('/api/admin/notifications/:id', async (req, res) => {
     res.status(200).json({ message: 'Notification deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting notification' });
+  }
+});
+
+// Sends a disruption alert (weather, strike, transport change, ...) to the
+// travellers actually affected by it, rather than to a generic audience.
+app.post('/api/admin/disruptions', async (req, res) => {
+  try {
+    const {
+      title,
+      message,
+      severity = 'warning',
+      packageId,
+      destination,
+      bookingIds,
+      role = 'customer',
+      affectedFrom,
+      affectedTo
+    } = req.body;
+
+    if (!title || !message) {
+      return res.status(400).json({ message: 'title and message are required' });
+    }
+
+    const filter = { status: { $in: ['pending', 'confirmed'] } };
+    if (packageId) filter.packageId = packageId;
+    if (bookingIds && bookingIds.length) filter._id = { $in: bookingIds };
+
+    let bookings = await Booking.find(filter).select('customerId email customer package packageId dates checkInDate status');
+    if (destination) {
+      const destinationRx = new RegExp(escapeRegExp(String(destination).trim()), 'i');
+      const matching = await Package.find({ destination: destinationRx }).select('_id');
+      const ids = matching.map(pkg => String(pkg._id));
+      bookings = bookings.filter(booking => ids.includes(String(booking.packageId)));
+    }
+
+    if (affectedFrom || affectedTo) {
+      const tripStarts = await resolveTripStarts(bookings);
+      bookings = bookings.filter(booking => {
+        const tripStart = tripStarts.get(String(booking._id));
+        if (!tripStart) return false;
+        if (affectedFrom && tripStart < new Date(affectedFrom)) return false;
+        if (affectedTo && tripStart > new Date(affectedTo)) return false;
+        return true;
+      });
+    }
+
+    const customerIds = [...new Set(bookings.map(b => b.customerId?.toString()).filter(Boolean))];
+    if (!customerIds.length) {
+      return res.status(404).json({ message: 'No matching trips found for this alert' });
+    }
+
+    const recipients = await User.find({ _id: { $in: customerIds } }).select('email fullName role');
+    const allowed = recipients.filter(user => role === 'all' || user.role === role);
+    if (!allowed.length) {
+      return res.status(404).json({ message: 'No matching recipients for this alert' });
+    }
+
+    const bookingByCustomer = new Map();
+    for (const booking of bookings) {
+      if (booking.customerId) {
+        bookingByCustomer.set(String(booking.customerId), booking);
+      }
+    }
+
+    let created = 0;
+    for (const user of allowed) {
+      const booking = bookingByCustomer.get(String(user._id));
+      const notification = await createNotification({
+        userId: user._id,
+        type: 'disruption',
+        title,
+        message,
+        severity,
+        bookingId: booking?._id,
+        relatedId: booking?._id,
+        actionUrl: booking ? `/customer/bookings/${booking._id}/tracker` : '/customer/trip-alerts',
+        emailSubject: `Travel alert: ${title}`
+      });
+      if (notification) created += 1;
+    }
+
+    res.status(201).json({ message: 'Disruption alert sent', count: created, affectedBookings: bookings.length });
+  } catch (error) {
+    console.error('Error sending disruption alert:', error);
+    res.status(500).json({ message: 'Error sending disruption alert' });
   }
 });
 
@@ -2996,20 +4173,44 @@ app.put('/api/operator/profile', async (req, res) => {
       updates,
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
-    
+
     if (req.body.fullName || req.body.email || req.body.phone) {
       const userUpdates = pickUpdates(req.body, ['fullName', 'email', 'phone']);
-      if (req.body.password) {
-        userUpdates.password = await bcrypt.hash(req.body.password, 10);
+      if (userUpdates.email) userUpdates.email = String(userUpdates.email).trim().toLowerCase();
+
+      const contactCheck = validateContactDetails({
+        fullName: userUpdates.fullName,
+        email: userUpdates.email,
+        phone: userUpdates.phone
+      });
+      if (!contactCheck.valid) {
+        return res.status(400).json({ message: contactCheck.message });
       }
-      await User.findByIdAndUpdate(req.user.userId, userUpdates);
+      if (userUpdates.email) {
+        const existing = await User.findOne({ email: userUpdates.email, _id: { $ne: req.user.userId } });
+        if (existing) {
+          return res.status(400).json({ message: 'Email already in use' });
+        }
+      }
+
+      // The password is intentionally not handled here: changing it requires
+      // the current password and goes through the account security endpoint.
+      const user = await User.findByIdAndUpdate(req.user.userId, userUpdates, { new: true });
+      invalidateSecurityStateCache(req.user.userId);
+
+      if (user && userUpdates.email) {
+        await revokeOtherSessions(req.user.userId, req.user.jti);
+      }
     }
-    
+
     res.status(200).json({ message: 'Profile updated successfully', profile });
   } catch (error) {
     res.status(500).json({ message: 'Error updating profile' });
   }
 });
+
+// --- Account security ---
+registerAccountSecurityRoutes('/api/operator');
 
 // Operator Package Routes
 app.get('/api/operator/packages', async (req, res) => {
@@ -3109,24 +4310,62 @@ app.get('/api/operator/itineraries/package/:packageId', async (req, res) => {
   }
 });
 
+// A single itinerary, so the builder can load the days it has to edit.
+app.get('/api/operator/itineraries/:id', async (req, res) => {
+  try {
+    const itinerary = await Itinerary.findOne({ _id: req.params.id, operatorId: req.user.userId });
+    if (!itinerary) {
+      return res.status(404).json({ message: 'Itinerary not found' });
+    }
+    res.status(200).json({ itinerary });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching itinerary' });
+  }
+});
+
 app.post('/api/operator/itineraries', async (req, res) => {
   try {
+    const payload = normalizeItineraryPayload(req.body);
+    if (!payload.name) {
+      return res.status(400).json({ message: 'Itinerary name is required' });
+    }
+    if (req.body.packageId) {
+      payload.packageId = req.body.packageId;
+    } else if (payload.packageName) {
+      const pkg = await Package.findOne({ name: payload.packageName, operatorId: req.user.userId });
+      if (pkg) payload.packageId = pkg._id;
+    }
+    if (!payload.packageId) {
+      return res.status(400).json({ message: 'Select a package for this itinerary' });
+    }
+
     const newItinerary = new Itinerary({
-      ...req.body,
+      ...payload,
       operatorId: req.user.userId,
       updatedAt: new Date()
     });
     await newItinerary.save();
     res.status(201).json({ message: 'Itinerary created successfully', itinerary: newItinerary });
   } catch (error) {
+    console.error('Error creating itinerary:', error.message);
     res.status(500).json({ message: 'Error creating itinerary' });
   }
 });
 
 app.put('/api/operator/itineraries/:id', async (req, res) => {
   try {
-    const updates = pickUpdates(req.body, ['name', 'packageId', 'packageName', 'days', 'hotels', 'status', 'dayDetails']);
+    const updates = normalizeItineraryPayload(req.body);
     updates.updatedAt = new Date();
+    if (req.body.packageId) {
+      updates.packageId = req.body.packageId;
+    } else if (updates.packageName) {
+      const pkg = await Package.findOne({ name: updates.packageName, operatorId: req.user.userId });
+      if (pkg) updates.packageId = pkg._id;
+    }
+    if (updates.packageId) {
+      const pkg = await Package.findById(updates.packageId).select('name');
+      if (pkg && !updates.packageName) updates.packageName = pkg.name;
+    }
     const itinerary = await Itinerary.findOneAndUpdate(
       { _id: req.params.id, operatorId: req.user.userId },
       updates,
@@ -3134,6 +4373,32 @@ app.put('/api/operator/itineraries/:id', async (req, res) => {
     );
     if (!itinerary) {
       return res.status(404).json({ message: 'Itinerary not found' });
+    }
+    try {
+      if (itinerary.packageId) {
+        const bookings = await Booking.find({ packageId: itinerary.packageId, status: { $in: ['pending', 'confirmed'] } })
+          .select('customerId package');
+        const seen = new Set();
+        for (const booking of bookings) {
+          if (!booking.customerId) continue;
+          const customerId = String(booking.customerId);
+          if (seen.has(customerId)) continue;
+          seen.add(customerId);
+          await createNotification({
+            userId: customerId,
+            type: 'itinerary_change',
+            title: 'Itinerary Updated',
+            message: `The itinerary for ${itinerary.packageName || booking.package || 'your package'} has been updated. Check for changes.`,
+            relatedId: itinerary._id,
+            bookingId: booking._id,
+            severity: 'warning',
+            actionUrl: `/customer/bookings/${booking._id}/tracker`,
+            emailSubject: 'Your itinerary has been updated'
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to notify customers:', e.message);
     }
     res.status(200).json({ message: 'Itinerary updated successfully', itinerary });
   } catch (error) {
@@ -3308,7 +4573,15 @@ app.get('/api/operator/bookings/:id', async (req, res) => {
 
 app.put('/api/operator/bookings/:id', async (req, res) => {
   try {
-    const updates = pickUpdates(req.body, ['status', 'paymentStatus']);
+    const previous = await Booking.findOne({
+      _id: req.params.id,
+      operatorId: req.user.userId
+    }).select('status paymentStatus dates checkInDate customerId package packageId');
+    if (!previous) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    const updates = pickUpdates(req.body, ['status', 'paymentStatus', 'dates', 'checkInDate', 'notes']);
     const booking = await Booking.findOneAndUpdate(
       { _id: req.params.id, operatorId: req.user.userId },
       updates,
@@ -3328,6 +4601,54 @@ app.put('/api/operator/bookings/:id', async (req, res) => {
     }
     
     await booking.save();
+
+    const statusChanged = updates.status && updates.status !== previous.status;
+    const paymentChanged = updates.paymentStatus && updates.paymentStatus !== previous.paymentStatus;
+    const tripDateChanged = (updates.dates && updates.dates !== previous.dates)
+      || (updates.checkInDate && String(updates.checkInDate) !== String(previous.checkInDate));
+
+    if (statusChanged) {
+      await createNotification({
+        userId: booking.customerId,
+        type: 'booking',
+        title: statusChangedLabel(updates.status),
+        message: `Your booking (${booking.bookingId || booking._id}) for ${booking.package || 'your trip'} is now "${updates.status}".`,
+        bookingId: booking._id,
+        relatedId: booking._id,
+        severity: updates.status === 'cancelled' || updates.status === 'rejected' ? 'warning' : 'info',
+        actionUrl: `/customer/bookings/${booking._id}/tracker`,
+        emailSubject: `Booking status updated — ${updates.status}`,
+        email: false
+      });
+    }
+
+    if (paymentChanged) {
+      await createNotification({
+        userId: booking.customerId,
+        type: 'payment',
+        title: 'Payment Status Updated',
+        message: `The payment for your booking (${booking.bookingId || booking._id}) is now "${updates.paymentStatus}".`,
+        bookingId: booking._id,
+        relatedId: booking._id,
+        actionUrl: `/customer/bookings/${booking._id}/tracker`,
+        emailSubject: 'Payment status updated'
+      });
+    }
+
+    if (tripDateChanged) {
+      await createNotification({
+        userId: booking.customerId,
+        type: 'itinerary_change',
+        title: 'Your trip date has changed',
+        message: `The travel date for your booking (${booking.bookingId || booking._id}) was updated to ${booking.dates || booking.checkInDate || 'the new schedule'}. Please review your itinerary.`,
+        bookingId: booking._id,
+        relatedId: booking._id,
+        severity: 'warning',
+        actionUrl: `/customer/bookings/${booking._id}/tracker`,
+        emailSubject: 'Your trip schedule changed'
+      });
+    }
+
     if (updates.status && updates.status !== 'pending' && booking.email) {
       await sendNotificationEmail(
         booking.email,
@@ -3617,6 +4938,84 @@ app.delete('/api/operator/notifications/:id', async (req, res) => {
   }
 });
 
+// Operator broadcast for disruption alerts (weather, strike, transport change).
+// Only travellers holding a live booking on one of the operator's packages are
+// alerted, so the message stays relevant to the trip they are taking.
+app.post('/api/operator/disruptions', async (req, res) => {
+  try {
+    const {
+      title,
+      message,
+      severity = 'warning',
+      packageId,
+      affectedFrom,
+      affectedTo
+    } = req.body;
+
+    if (!title || !message) {
+      return res.status(400).json({ message: 'title and message are required' });
+    }
+
+    const packageFilter = { operatorId: req.user.userId };
+    if (packageId) packageFilter._id = packageId;
+    const packages = await Package.find(packageFilter).select('_id name');
+    const packageIds = packages.map(pkg => pkg._id);
+    if (!packageIds.length) {
+      return res.status(404).json({ message: 'No packages found for this operator' });
+    }
+
+    let bookings = await Booking.find({
+      packageId: { $in: packageIds },
+      status: { $in: ['pending', 'confirmed'] }
+    }).select('customerId customer package packageId dates checkInDate');
+
+    if (affectedFrom || affectedTo) {
+      const tripStarts = await resolveTripStarts(bookings);
+      bookings = bookings.filter(booking => {
+        const tripStart = tripStarts.get(String(booking._id));
+        if (!tripStart) return false;
+        if (affectedFrom && tripStart < new Date(affectedFrom)) return false;
+        if (affectedTo && tripStart > new Date(affectedTo)) return false;
+        return true;
+      });
+    }
+
+    const customerIds = [...new Set(bookings.map(b => b.customerId?.toString()).filter(Boolean))];
+    if (!customerIds.length) {
+      return res.status(404).json({ message: 'No matching trips found for this alert' });
+    }
+
+    const bookingByCustomer = new Map();
+    for (const booking of bookings) {
+      if (booking.customerId) {
+        bookingByCustomer.set(String(booking.customerId), booking);
+      }
+    }
+
+    let created = 0;
+    for (const customerId of customerIds) {
+      const booking = bookingByCustomer.get(String(customerId));
+      const notification = await createNotification({
+        userId: customerId,
+        type: 'disruption',
+        title,
+        message,
+        severity,
+        bookingId: booking?._id,
+        relatedId: booking?._id,
+        actionUrl: booking ? `/customer/bookings/${booking._id}/tracker` : '/customer/trip-alerts',
+        emailSubject: `Travel alert: ${title}`
+      });
+      if (notification) created += 1;
+    }
+
+    res.status(201).json({ message: 'Disruption alert sent', count: created, affectedBookings: bookings.length });
+  } catch (error) {
+    console.error('Error sending disruption alert:', error);
+    res.status(500).json({ message: 'Error sending disruption alert' });
+  }
+});
+
 // =============================================================================
 // Public Routes
 // =============================================================================
@@ -3765,23 +5164,29 @@ app.get('/api/public/destinations', async (req, res) => {
 app.use('/api/customer', authenticate, requireCustomer);
 
 // --- Profile ---
+function serializeProfile(user) {
+  return {
+    fullName: user.fullName,
+    email: user.email,
+    phone: user.phone,
+    alternatePhone: user.alternatePhone || '',
+    address: user.address || '',
+    avatar: user.avatar || '',
+    role: user.role,
+    status: user.status,
+    createdAt: user.createdAt,
+    lastLogin: user.lastLogin,
+    passwordChangedAt: user.passwordChangedAt
+  };
+}
+
 app.get('/api/customer/profile', async (req, res) => {
   try {
     const user = await User.findById(req.user.userId).select('-password');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    res.status(200).json({
-      profile: {
-        fullName: user.fullName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        status: user.status,
-        createdAt: user.createdAt,
-        lastLogin: user.lastLogin
-      }
-    });
+    res.status(200).json({ profile: serializeProfile(user) });
   } catch (error) {
     res.status(500).json({ message: 'Error fetching profile' });
   }
@@ -3789,30 +5194,74 @@ app.get('/api/customer/profile', async (req, res) => {
 
 app.put('/api/customer/profile', async (req, res) => {
   try {
-    const updates = pickUpdates(req.body, ['fullName', 'email', 'phone']);
-    if (updates.email) {
+    const updates = pickUpdates(req.body, ['fullName', 'email', 'phone', 'alternatePhone', 'address', 'avatar']);
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ message: 'No profile changes to save' });
+    }
+
+    if (updates.email) updates.email = String(updates.email).trim().toLowerCase();
+    if (updates.phone) updates.phone = String(updates.phone).trim();
+    if (updates.alternatePhone) updates.alternatePhone = String(updates.alternatePhone).trim();
+
+    const contactCheck = validateContactDetails({
+      fullName: updates.fullName,
+      email: updates.email,
+      phone: updates.phone
+    });
+    if (!contactCheck.valid) {
+      return res.status(400).json({ message: contactCheck.message });
+    }
+    if (updates.alternatePhone && !PHONE_PATTERN.test(updates.alternatePhone)) {
+      return res.status(400).json({ message: 'Alternate phone number is not valid' });
+    }
+
+    const previous = await User.findById(req.user.userId).select('email').lean();
+    const emailChanged = Boolean(updates.email) && updates.email !== previous?.email;
+
+    if (emailChanged) {
       const existing = await User.findOne({ email: updates.email, _id: { $ne: req.user.userId } });
       if (existing) {
         return res.status(400).json({ message: 'Email already in use' });
       }
     }
+
     const user = await User.findByIdAndUpdate(req.user.userId, updates, { new: true }).select('-password');
-    res.status(200).json({
-      message: 'Profile updated successfully',
-      profile: {
-        fullName: user.fullName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        status: user.status,
-        createdAt: user.createdAt,
-        lastLogin: user.lastLogin
+    invalidateSecurityStateCache(req.user.userId);
+
+    // Changing the sign-in address ends every other session, so a stolen token
+    // cannot outlive the change.
+    let revokedSessions = 0;
+    if (emailChanged) {
+      revokedSessions = await revokeOtherSessions(req.user.userId, req.user.jti);
+      if (previous?.email) {
+        await sendNotificationEmail(
+          previous.email,
+          'Your account email was changed',
+          `The sign-in email on your TravelTour account was changed to ${updates.email}. If this was not you, reset your password immediately.`
+        ).catch(err => console.error('Profile change email failed:', err.message));
       }
+      await sendNotificationEmail(
+        updates.email,
+        'Your account email was updated',
+        `The sign-in email on your TravelTour account is now ${updates.email}. Other devices have been signed out.`
+      ).catch(err => console.error('Profile change email failed:', err.message));
+    }
+
+    res.status(200).json({
+      message: emailChanged
+        ? 'Profile updated. Other devices have been signed out.'
+        : 'Profile updated successfully',
+      profile: serializeProfile(user),
+      revokedSessions
     });
   } catch (error) {
+    console.error('Error updating profile:', error);
     res.status(500).json({ message: 'Error updating profile' });
   }
 });
+
+// --- Account security ---
+registerAccountSecurityRoutes('/api/customer');
 
 // --- Packages (customer view of published packages) ---
 app.get('/api/customer/packages', async (req, res) => {
@@ -3961,6 +5410,18 @@ app.post('/api/customer/bookings', async (req, res) => {
           `A new booking <strong>${payload.bookingId}</strong> has been placed for your package "${payload.package}". Amount: â‚¹${finalAmount || 0}.`
         );
       }
+      // In-app alert so the operator sees the booking without waiting for mail.
+      await createNotification({
+        userId: payload.operatorId,
+        type: 'booking',
+        title: 'New Booking Received',
+        message: `${payload.customer || 'A customer'} booked "${payload.package || 'your package'}" (${payload.bookingId}) for ${payload.dates || 'the scheduled date'}. Amount: â‚¹${finalAmount || 0}.`,
+        bookingId: newBooking._id,
+        relatedId: newBooking._id,
+        severity: 'info',
+        actionUrl: `/tour-operator/bookings`,
+        email: false
+      });
     }
     res.status(201).json({ message: 'Booking created successfully', booking: newBooking });
   } catch (error) {
@@ -4344,6 +5805,10 @@ app.get('/api/customer/itineraries', async (req, res) => {
       const itinerary = await Itinerary.findOne({ packageId: pkgId });
       return {
         ...it,
+        // The itinerary itself is the better source for the trip length and the
+        // number of stays, the package only knows how many it usually lists.
+        days: itinerary?.days || it.days,
+        hotels: itinerary?.hotels || it.hotels,
         dayDetails: itinerary?.dayDetails || [],
         highlights: itinerary?.highlights || []
       };
@@ -4643,6 +6108,153 @@ app.delete('/api/customer/notifications/:id', async (req, res) => {
     res.status(200).json({ message: 'Notification deleted' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting notification' });
+  }
+});
+
+// Unread badge counter for the header bell.
+app.get('/api/customer/notifications/unread-count', async (req, res) => {
+  try {
+    const unreadCount = await Notification.countDocuments({ userId: req.user.userId, read: false });
+    const criticalCount = await Notification.countDocuments({
+      userId: req.user.userId,
+      read: false,
+      type: { $in: ['disruption', 'departure_reminder'] }
+    });
+    res.status(200).json({ unreadCount, criticalCount });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching unread count' });
+  }
+});
+
+// Trip alerts — every booking, payment, itinerary, departure and disruption
+// alert tied to the traveller's own trips, with the trip context attached.
+app.get('/api/customer/trip-alerts', async (req, res) => {
+  try {
+    const filter = {
+      userId: req.user.userId,
+      type: { $in: TRIP_ALERT_TYPES }
+    };
+
+    if (req.query.type && TRIP_ALERT_TYPES.includes(req.query.type)) {
+      filter.type = req.query.type;
+    }
+    if (req.query.status === 'unread') {
+      filter.read = false;
+    } else if (req.query.status === 'read') {
+      filter.read = true;
+    }
+    if (req.query.severity) {
+      filter.severity = req.query.severity;
+    }
+
+    const search = searchFilter(['title', 'message'], req.query.search);
+    if (search) Object.assign(filter, search);
+
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Notification, filter, {
+      query: req.query,
+      sort: { createdAt: -1 },
+      defaultLimit: 20
+    });
+
+    const bookings = await Booking.find({ customerId: req.user.userId })
+      .select('bookingId package packageId dates checkInDate status paymentStatus travelers destination')
+      .sort({ bookingDate: -1 })
+      .limit(50);
+    const tripStarts = await resolveTripStarts(bookings);
+
+    const byType = {};
+    for (const type of TRIP_ALERT_TYPES) {
+      byType[type] = await Notification.countDocuments({ userId: req.user.userId, type });
+    }
+
+    const trips = bookings.map(booking => {
+      const tripStart = tripStarts.get(String(booking._id)) || null;
+      return {
+        bookingId: booking.bookingId || booking._id,
+        _id: booking._id,
+        package: booking.package,
+        dates: booking.dates,
+        tripStart: tripStart ? tripStart.toISOString() : null,
+        daysToGo: tripStart ? daysUntil(tripStart) : null,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        travelers: booking.travelers
+      };
+    });
+
+    const alerts = docs.map(doc => ({
+      ...doc,
+      trip: doc.bookingId
+        ? trips.find(trip => String(trip._id) === String(doc.bookingId)) || null
+        : null
+    }));
+
+    pagedResponse(res, 'alerts', { docs: alerts, total, page, limit, totalPages, hasNext, hasPrev }, {
+      unreadCount: await Notification.countDocuments({ userId: req.user.userId, read: false }),
+      byType,
+      trips
+    });
+  } catch (error) {
+    console.error('Error fetching trip alerts:', error);
+    res.status(500).json({ message: 'Error fetching trip alerts' });
+  }
+});
+
+// Lets the traveller confirm they have seen a disruption or reminder.
+app.put('/api/customer/notifications/:id/acknowledge', async (req, res) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.userId },
+      { acknowledged: true, acknowledgedAt: new Date(), read: true, readAt: new Date() },
+      { new: true }
+    );
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+    res.status(200).json({ message: 'Alert acknowledged', notification });
+  } catch (error) {
+    res.status(500).json({ message: 'Error acknowledging alert' });
+  }
+});
+
+// Notification preferences — which alert classes and channels to use.
+app.get('/api/customer/notification-preferences', async (req, res) => {
+  try {
+    const pref = await getNotificationPreference(req.user.userId);
+    res.status(200).json({ preferences: pref });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching notification preferences' });
+  }
+});
+
+app.put('/api/customer/notification-preferences', async (req, res) => {
+  try {
+    const allowed = [
+      'booking', 'payment', 'itinerary_change', 'departure_reminder',
+      'disruption', 'offer', 'inApp', 'email'
+    ];
+    const updates = pickUpdates(req.body, allowed);
+    updates.updatedAt = new Date();
+
+    const pref = await NotificationPreference.findOneAndUpdate(
+      { userId: req.user.userId },
+      { $set: updates },
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    ).catch(async (err) => {
+      // A concurrent request may have created the row first and tripped the
+      // unique index on userId — fall back to a plain update.
+      if (duplicateError(err)) {
+        return NotificationPreference.findOneAndUpdate(
+          { userId: req.user.userId },
+          { $set: updates },
+          { new: true }
+        );
+      }
+      throw err;
+    });
+    res.status(200).json({ message: 'Notification preferences updated', preferences: pref });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating notification preferences' });
   }
 });
 
@@ -5012,13 +6624,31 @@ app.put('/api/hotel/profile', async (req, res) => {
   try {
     const updates = pickUpdates(req.body, ['hotelName', 'email', 'phone', 'address', 'city', 'state', 'country', 'postalCode', 'website', 'description', 'starRating', 'checkinTime', 'checkoutTime', 'amenities', 'registrationNumber', 'taxId', 'logo']);
 
+    if (updates.email) updates.email = String(updates.email).trim().toLowerCase();
+
     if (updates.email || updates.phone) {
       const userUpdates = {};
       if (updates.email) userUpdates.email = updates.email;
-      if (updates.phone) userUpdates.phone = updates.phone;
-      if (updates.password) userUpdates.password = await bcrypt.hash(updates.password, 10);
+      if (updates.phone) userUpdates.phone = String(updates.phone).trim();
+
+      const contactCheck = validateContactDetails({
+        email: userUpdates.email,
+        phone: userUpdates.phone
+      });
+      if (!contactCheck.valid) {
+        return res.status(400).json({ message: contactCheck.message });
+      }
+      if (userUpdates.email) {
+        const existing = await User.findOne({ email: userUpdates.email, _id: { $ne: req.user.userId } });
+        if (existing) {
+          return res.status(400).json({ message: 'Email already in use' });
+        }
+      }
+      // The password is intentionally not handled here: changing it requires
+      // the current password and goes through the account security endpoint.
       if (Object.keys(userUpdates).length > 0) {
         await User.findByIdAndUpdate(req.user.userId, userUpdates, { new: true });
+        invalidateSecurityStateCache(req.user.userId);
       }
     }
 
@@ -5036,6 +6666,10 @@ app.put('/api/hotel/profile', async (req, res) => {
     res.status(500).json({ message: 'Error updating profile' });
   }
 });
+
+// --- Account security ---
+registerAccountSecurityRoutes('/api/hotel');
+
 
 // --- Settings ---
 app.get('/api/hotel/settings', async (req, res) => {
@@ -5814,6 +7448,26 @@ app.get('/api/hotel/analytics', async (req, res) => {
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+// --- Scheduled trip alerts ---
+// The departure reminder job runs on a fixed interval once Mongo is connected.
+// It is idempotent: every reminder carries a dedupe key, so a restart or a
+// second run never produces a duplicate alert.
+function startDepartureReminderScheduler() {
+  const run = () => {
+    if (mongoose.connection.readyState !== 1) return;
+    runDepartureReminderJob();
+  };
+
+  setTimeout(run, 15000);
+  const timer = setInterval(run, DEPARTURE_REMINDER_INTERVAL_MS);
+  if (typeof timer.unref === 'function') timer.unref();
+}
+
+mongoose.connection.on('connected', startDepartureReminderScheduler);
+mongoose.connection.on('error', (err) => {
+  console.error('MongoDB connection error:', err);
 });
 
 

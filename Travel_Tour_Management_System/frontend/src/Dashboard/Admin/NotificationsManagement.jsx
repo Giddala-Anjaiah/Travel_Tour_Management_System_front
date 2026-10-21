@@ -34,7 +34,10 @@ const NotificationsManagement = () => {
     { value: 'review', label: 'Review' },
     { value: 'system', label: 'System' },
     { value: 'offer', label: 'Offer' },
-    { value: 'availability', label: 'Availability' }
+    { value: 'availability', label: 'Availability' },
+    { value: 'itinerary_change', label: 'Itinerary change' },
+    { value: 'departure_reminder', label: 'Departure reminder' },
+    { value: 'disruption', label: 'Disruption' }
   ]
 
   // /admin/notifications only honours `olderThan`, so search and the

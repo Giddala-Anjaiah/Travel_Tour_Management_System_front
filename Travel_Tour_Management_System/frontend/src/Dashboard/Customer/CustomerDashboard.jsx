@@ -108,7 +108,15 @@ const SkeletonCharts = () => (
 )
 
 const ErrorState = ({ error, onRetry, user }) => (
-  <CustomerLayout active="dashboard" title="Dashboard Analytics">
+  <CustomerLayout active="dashboard">
+    <div className="page-head">
+      <div className="page-head-row">
+        <div>
+          <h1>Dashboard Analytics</h1>
+          <p>Track your travel journey and bookings</p>
+        </div>
+      </div>
+    </div>
     <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}>
       <div className="cd-hero-stats" style={{ justifyContent: 'center', marginBottom: '1.5rem' }}>
         <div className="cd-hero-stat">
@@ -187,7 +195,15 @@ const CustomerDashboard = () => {
 
   if (loading) {
     return (
-      <CustomerLayout active="dashboard" title="Dashboard Analytics">
+      <CustomerLayout active="dashboard">
+        <div className="page-head">
+          <div className="page-head-row">
+            <div>
+              <h1>Dashboard Analytics</h1>
+              <p>Track your travel journey and bookings</p>
+            </div>
+          </div>
+        </div>
         <SkeletonGrid />
         <SkeletonCharts />
       </CustomerLayout>
@@ -262,7 +278,15 @@ const kpis = [
   ]
 
   return (
-    <CustomerLayout active="dashboard" title="Dashboard Analytics" subtitle="Track your travel journey and bookings">
+    <CustomerLayout active="dashboard">
+      <div className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1>Dashboard Analytics</h1>
+            <p>Track your travel journey and bookings</p>
+          </div>
+        </div>
+      </div>
       <div className="cd-toolbar">
         <div className="cd-toolbar-left">
           {RANGES.map(r => (

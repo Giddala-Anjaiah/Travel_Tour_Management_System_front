@@ -97,11 +97,7 @@ const DestinationDetail = () => {
 
   if (loading && !destination) {
     return (
-      <CustomerLayout
-        active="destinations"
-        title="Destination Details"
-        subtitle="Loading..."
-      >
+      <CustomerLayout active="destinations">
         <div className="dd-loading">
           <Loader2 className="h-8 w-8 animate-spin" />
           <p>Loading destination...</p>
@@ -112,11 +108,7 @@ const DestinationDetail = () => {
 
   if (error) {
     return (
-      <CustomerLayout
-        active="destinations"
-        title="Destination Details"
-        subtitle="Error"
-      >
+      <CustomerLayout active="destinations">
         <div className="dd-error">
           <p>{error}</p>
           <Link to="/customer/destinations" className="btn-primary">
@@ -129,11 +121,7 @@ const DestinationDetail = () => {
 
   if (!destination) {
     return (
-      <CustomerLayout
-        active="destinations"
-        title="Destination Details"
-        subtitle="Not found"
-      >
+      <CustomerLayout active="destinations">
         <div className="dd-error">
           <p>Destination not found</p>
           <Link to="/customer/destinations" className="btn-primary">
@@ -159,11 +147,8 @@ const DestinationDetail = () => {
   const rating = Number(destination.rating) || 4.5;
 
   return (
-    <CustomerLayout
-      active="destinations"
-      title={destName}
-      subtitle={`Explore ${destName} — ${typeLabel} destination`}
-      actions={
+    <CustomerLayout active="destinations">
+      <div className="dd-page-actions">
         <div className="dd-header-actions">
           <Link to="/customer/destinations" className="dd-icon-btn" aria-label="Back to Destinations">
             <ArrowLeft className="h-4 w-4" />
@@ -179,8 +164,8 @@ const DestinationDetail = () => {
             <Bookmark className="h-4 w-4" />
           </button>
         </div>
-      }
-    >
+      </div>
+
       <div className="destination-detail">
         {/* Hero Section */}
         <section className="dd-hero" aria-labelledby="destination-title">

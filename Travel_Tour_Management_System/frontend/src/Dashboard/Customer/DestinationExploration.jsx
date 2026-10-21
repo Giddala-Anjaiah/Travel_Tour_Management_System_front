@@ -95,19 +95,22 @@ const DestinationExploration = () => {
   const IconComponent = (type) => TYPE_ICONS[type] || Compass
 
   return (
-    <CustomerLayout
-      active="destinations"
-      title="Explore destinations"
-      subtitle="Handpicked places for your next journey"
-      actions={
-        <div className="header-stats">
-          <div className="stat-badge">
-            <Sparkles className="h-4 w-4" />
-            <span>{destinations.length} destinations</span>
+    <CustomerLayout active="destinations">
+      <div className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1>Explore destinations</h1>
+            <p>Handpicked places for your next journey</p>
+          </div>
+          <div className="page-status-badges">
+            <div className="stat-badge">
+              <Sparkles className="h-4 w-4" />
+              <span>{destinations.length} destinations</span>
+            </div>
           </div>
         </div>
-      }
-    >
+      </div>
+
       {loading && <div className="cd-skeleton-grid">{[1,2,3,4].map(i => <div key={i} className="cd-skeleton-card" />)}</div>}
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 

@@ -62,6 +62,13 @@ const Login = () => {
       const target = redirectMap[role] || '/'
       window.history.replaceState({}, document.title, target)
       window.location.href = target
+      return
+    }
+
+    // The user was bounced here because their session ended or was revoked.
+    const reason = params.get('reason')
+    if (reason === 'session' || reason === 'expired') {
+      Promise.resolve().then(() => setError('Your session has ended. Please sign in again.'))
     }
   }, [location, navigate])
 
@@ -76,6 +83,12 @@ const Login = () => {
     e.preventDefault()
     setError('')
     setSuccess('')
+
+    if (!email.trim() || !password) {
+      setError('Enter your email and password')
+      return
+    }
+
     setLoading(true)
 
     try {

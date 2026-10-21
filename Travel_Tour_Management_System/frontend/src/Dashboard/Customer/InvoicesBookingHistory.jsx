@@ -142,7 +142,15 @@ const InvoicesBookingHistory = () => {
 
   if (loading) {
     return (
-      <CustomerLayout active="invoices" title="Invoices & history" subtitle="Payment records for every booking">
+      <CustomerLayout active="invoices">
+        <div className="page-head">
+          <div className="page-head-row">
+            <div>
+              <h1>Invoices & history</h1>
+              <p>Payment records for every booking</p>
+            </div>
+          </div>
+        </div>
         <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}>
           <p style={{ color: '#64748b' }}>Loading invoices…</p>
         </div>
@@ -151,23 +159,26 @@ const InvoicesBookingHistory = () => {
   }
 
   return (
-    <CustomerLayout
-      active="invoices"
-      title="Invoices & history"
-      subtitle="Payment records for every booking"
-      actions={
-        <div className="header-stats">
-          <div className="stat-badge">
-            <Sparkles className="h-4 w-4" />
-            <span>{totalCount} invoices</span>
+    <CustomerLayout active="invoices">
+      <div className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1>Invoices & history</h1>
+            <p>Payment records for every booking</p>
           </div>
-          <div className="stat-badge">
-            <Shield className="h-4 w-4" />
-            <span>Digital records</span>
+          <div className="page-status-badges">
+            <div className="stat-badge">
+              <Sparkles className="h-4 w-4" />
+              <span>{totalCount} invoices</span>
+            </div>
+            <div className="stat-badge">
+              <Shield className="h-4 w-4" />
+              <span>Digital records</span>
+            </div>
           </div>
         </div>
-      }
-    >
+      </div>
+
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 
       <div className="stats-grid enhanced">

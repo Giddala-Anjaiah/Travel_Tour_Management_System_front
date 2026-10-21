@@ -641,23 +641,26 @@ const totalCount = stats?.total ?? meta.total
   }
 
   return (
-    <CustomerLayout
-      active="bookings"
-      title="Bookings & payments"
-      subtitle="Manage reservations and remaining balances"
-      actions={
-        <div className="header-stats">
-          <div className="stat-badge">
-            <Sparkles className="h-4 w-4" />
-            <span>{totalCount} bookings</span>
+    <CustomerLayout active="bookings">
+      <div className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1>Bookings & payments</h1>
+            <p>Manage reservations and remaining balances</p>
           </div>
-          <div className="stat-badge">
-            <Shield className="h-4 w-4" />
-            <span>Secure payments</span>
+          <div className="page-status-badges">
+            <div className="stat-badge">
+              <Sparkles className="h-4 w-4" />
+              <span>{totalCount} bookings</span>
+            </div>
+            <div className="stat-badge">
+              <Shield className="h-4 w-4" />
+              <span>Secure payments</span>
+            </div>
           </div>
         </div>
-      }
-    >
+      </div>
+
       <div className="dashboard-page">
         {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 

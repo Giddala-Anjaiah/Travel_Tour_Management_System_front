@@ -2,7 +2,7 @@ import { API_BASE, api, readPagination } from '../../api'
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
 import Pagination from '../../components/Pagination'
-import { Bell, Search, Check, Trash2, Clock, DollarSign, Star, Settings, AlertCircle, Sparkles } from 'lucide-react'
+import { Bell, Search, Check, Trash2, Clock, DollarSign, Star, Settings, AlertCircle, Sparkles, CalendarClock, AlertTriangle } from 'lucide-react'
 import '../Dashboard.css'
 
 const OperatorNotifications = () => {
@@ -129,7 +129,10 @@ const OperatorNotifications = () => {
       review: <Star className="h-5 w-5" />,
       system: <Settings className="h-5 w-5" />,
       offer: <Sparkles className="h-5 w-5" />,
-      availability: <AlertCircle className="h-5 w-5" />
+      availability: <AlertCircle className="h-5 w-5" />,
+      itinerary_change: <CalendarClock className="h-5 w-5" />,
+      departure_reminder: <CalendarClock className="h-5 w-5" />,
+      disruption: <AlertTriangle className="h-5 w-5" />
     }
     return icons[type] || icons.system
   }
@@ -141,7 +144,10 @@ const OperatorNotifications = () => {
       review: '#f59e0b',
       system: '#64748b',
       offer: '#8b5cf6',
-      availability: '#ef4444'
+      availability: '#ef4444',
+      itinerary_change: '#f97316',
+      departure_reminder: '#eab308',
+      disruption: '#dc2626'
     }
     return colors[type] || colors.system
   }
@@ -173,6 +179,9 @@ const OperatorNotifications = () => {
                   <option value="system">System</option>
                   <option value="offer">Offers</option>
                   <option value="availability">Availability</option>
+                  <option value="itinerary_change">Itinerary changes</option>
+                  <option value="departure_reminder">Departure reminders</option>
+                  <option value="disruption">Disruptions</option>
                 </select>
               </div>
             </div>

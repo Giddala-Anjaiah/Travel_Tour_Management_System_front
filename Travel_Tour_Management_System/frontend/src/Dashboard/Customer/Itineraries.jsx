@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Clock, Building, Star, Search, Eye, ArrowRight, Compass, Sparkles, CheckCircle, Info, MapPin, Calendar as CalendarIcon } from 'lucide-react'
+import { Clock, Building, Star, Search, Eye, ArrowRight, Compass, Sparkles, CheckCircle, Info, MapPin, BedDouble, Bus, Utensils } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
 import { api, readPagination } from '../../api'
@@ -17,6 +17,146 @@ const CATEGORY_BADGES = {
   nature: { label: 'Nature', color: 'var(--cp-type-nature)' },
   adventure: { label: 'Adventure', color: 'var(--cp-type-adventure)' },
   heritage: { label: 'Heritage', color: 'var(--cp-type-heritage)' }
+}
+
+const ACTIVITY_ICONS = {
+  activity: Sparkles,
+  sightseeing: Compass,
+  meal: Utensils,
+  transport: Bus,
+  hotel: BedDouble,
+  other: Clock
+}
+
+// One day of the plan: the hotel, the transport and the activities with the
+// time they happen. Activities are shown in clock order, untimed ones last.
+const ItineraryDay = ({ day, index }) => {
+  const stay = day.accommodation?.name || day.accommodation?.hotelName
+    ? day.accommodation
+    : (day.hotel?.name ? day.hotel : null)
+  const transport = day.transportation || null
+  const legs = Array.isArray(day.transport) ? day.transport : []
+  const meals = Array.isArray(day.meals) ? day.meals : []
+
+  const activities = (Array.isArray(day.activities) ? day.activities : [])
+    .map(activity => (typeof activity === 'string'
+      ? { time: '', name: activity.trim(), type: 'activity', location: '', description: '' }
+      : {
+        time: activity.time || '',
+        name: activity.name || activity.title || '',
+        type: activity.type || 'activity',
+        location: activity.location || '',
+        description: activity.description || ''
+      }))
+    .filter(activity => activity.name)
+    .sort((a, b) => {
+      if (!a.time && !b.time) return 0
+      if (!a.time) return 1
+      if (!b.time) return -1
+      return a.time.localeCompare(b.time)
+    })
+
+  return (
+    <article className="cd-day">
+      <header className="cd-day-head">
+        <span className="cd-day-chip">Day {day.dayNumber ?? index + 1}</span>
+        <div className="cd-day-head-text">
+          <h4>{day.title || 'Untitled day'}</h4>
+          <span className="cd-day-where">
+            {day.location && <><MapPin className="h-3 w-3" /> {day.location}</>}
+            {day.location && day.date && ' · '}
+            {day.date && new Date(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+          </span>
+        </div>
+      </header>
+
+      {day.description && <p className="cd-day-desc">{day.description}</p>}
+
+      {(stay || transport || legs.length > 0) && (
+        <div className="cd-day-cards">
+          {stay && (
+            <div className="cd-day-card is-hotel">
+              <div className="cd-day-card-title"><BedDouble className="h-4 w-4" /> Hotel</div>
+              <strong>{stay.name || stay.hotelName}</strong>
+              <span className="cd-day-card-meta">
+                {stay.roomType ? `${stay.roomType}` : 'Room not specified'}
+                {stay.checkInTime ? ` · in ${stay.checkInTime}` : ''}
+                {stay.checkOutTime ? ` · out ${stay.checkOutTime}` : ''}
+              </span>
+              {stay.location && <span className="cd-day-card-meta"><MapPin className="h-3 w-3" /> {stay.location}</span>}
+              {stay.notes && <span className="cd-day-card-note">{stay.notes}</span>}
+            </div>
+          )}
+          {(transport || legs.length > 0) && (
+            <div className="cd-day-card is-transport">
+              <div className="cd-day-card-title"><Bus className="h-4 w-4" /> Transport</div>
+              {transport?.mode && <strong>{transport.mode}{transport.vehicle ? ` · ${transport.vehicle}` : ''}</strong>}
+              {(transport?.departureTime || transport?.arrivalTime) && (
+                <span className="cd-day-card-meta">
+                  {transport.departureTime ? `departs ${transport.departureTime}` : ''}
+                  {transport.departureTime && transport.arrivalTime ? ' · ' : ''}
+                  {transport.arrivalTime ? `arrives ${transport.arrivalTime}` : ''}
+                </span>
+              )}
+              {(transport?.departureLocation || transport?.arrivalLocation) && (
+                <span className="cd-day-card-meta">
+                  <MapPin className="h-3 w-3" /> {transport.departureLocation || '—'} → {transport.arrivalLocation || '—'}
+                </span>
+              )}
+              {transport?.details && <span className="cd-day-card-note">{transport.details}</span>}
+              {legs.map((leg, legIdx) => (
+                <span key={legIdx} className="cd-day-card-meta">
+                  {leg.time ? `${leg.time} · ` : ''}{leg.mode || 'Transfer'}
+                  {leg.from || leg.to ? ` · ${leg.from || '—'} → ${leg.to || '—'}` : ''}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {meals.length > 0 && (
+        <div className="cd-day-meals">
+          <Utensils className="h-3.5 w-3.5" /> Meals: {meals.join(' · ')}
+        </div>
+      )}
+
+      {activities.length === 0 ? (
+        <div className="cd-day-empty">No activities scheduled for this day.</div>
+      ) : (
+        <ol className="cd-timeline">
+          {activities.map((activity, actIdx) => {
+            const Icon = ACTIVITY_ICONS[activity.type] || ACTIVITY_ICONS.activity
+            return (
+              <li key={actIdx} className="cd-timeline-item">
+                <span className="cd-timeline-time">
+                  {activity.time || '—'}
+                </span>
+                <span className="cd-timeline-marker"><Icon className="h-3 w-3" /></span>
+                <div className="cd-timeline-body">
+                  <span className="cd-timeline-name">{activity.name}</span>
+                  {activity.location && (
+                    <span className="cd-timeline-meta"><MapPin className="h-3 w-3" /> {activity.location}</span>
+                  )}
+                  {activity.description && <span className="cd-timeline-desc">{activity.description}</span>}
+                </div>
+                {activity.type && activity.type !== 'activity' && (
+                  <span className="cd-timeline-type">{activity.type}</span>
+                )}
+              </li>
+            )
+          })}
+        </ol>
+      )}
+
+      {day.notes && (
+        <div className="cd-day-notes">
+          <Info className="h-3.5 w-3.5" />
+          <span>{day.notes}</span>
+        </div>
+      )}
+    </article>
+  )
 }
 
 const Itineraries = () => {
@@ -102,39 +242,27 @@ const Itineraries = () => {
     return DIFFICULTY_COLORS[difficulty] || 'var(--cp-muted)'
   }
 
-  const getActivityLabel = (activity) => {
-    if (typeof activity === 'string') return activity.trim() || 'Untitled Activity'
-    if (activity && typeof activity === 'object') {
-      return (
-        activity.name ||
-        activity.title ||
-        activity.description ||
-        activity.time ||
-        activity.location ||
-        'Untitled Activity'
-      )
-    }
-    return 'Untitled Activity'
-  }
-
   const getCategoryBadge = (category) => {
     return CATEGORY_BADGES[category] || { label: 'Tour', color: 'var(--cp-type-tour)' }
   }
 
   return (
-    <CustomerLayout
-      active="itineraries"
-      title="Itineraries"
-      subtitle="Day-by-day plans from arrival to departure"
-      actions={
-        <div className="header-stats">
-          <div className="stat-badge">
-            <Sparkles className="h-4 w-4" />
-            <span>{meta.total} itineraries</span>
+    <CustomerLayout active="itineraries">
+      <div className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1>Itineraries</h1>
+            <p>Day-by-day plans from arrival to departure</p>
+          </div>
+          <div className="page-status-badges">
+            <div className="stat-badge">
+              <Sparkles className="h-4 w-4" />
+              <span>{meta.total} itineraries</span>
+            </div>
           </div>
         </div>
-      }
-    >
+      </div>
+
       {loading && <div className="cd-skeleton-grid">{[1,2,3,4].map(i => <div key={i} className="cd-skeleton-card" />)}</div>}
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 
@@ -253,13 +381,13 @@ const Itineraries = () => {
                   <h4 style={{ color: 'var(--cp-ink)' }}>Daily Schedule Preview</h4>
                   <div className="schedule-preview">
                     {itinerary.schedule.slice(0, 3).map((day, idx) => (
-                      <div key={idx} className="day-preview" style={{ borderLeftColor: 'var(--cp-accent)' }}>
-                        <span className="day-number" style={{ color: 'var(--cp-accent)' }}>Day {day.day}</span>
-                        <span className="day-title" style={{ color: 'var(--cp-ink)' }}>{day.title}</span>
+                      <div key={idx} className="day-preview">
+                        <span className="day-number">Day {day.dayNumber ?? idx + 1}</span>
+                        <span className="day-title">{day.title || 'Untitled day'}</span>
                       </div>
                     ))}
                     {itinerary.schedule.length > 3 && (
-                      <span className="more-days" style={{ color: 'var(--cp-muted)' }}>+{itinerary.schedule.length - 3} more days</span>
+                      <span className="more-days">+{itinerary.schedule.length - 3} more days</span>
                     )}
                   </div>
                 </div>
@@ -327,75 +455,10 @@ const Itineraries = () => {
 
                 <div className="itinerary-timeline">
                   {(selectedItinerary.schedule || []).map((day, idx) => (
-                    <div key={idx} className="day-schedule enhanced" style={{ borderColor: 'var(--cp-line)', background: 'var(--cp-card)', marginBottom: '1.5rem', overflow: 'hidden' }}>
-                      <div className="day-header enhanced" style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '1rem 1.25rem', borderBottom: '1px solid var(--cp-line)', background: 'var(--cp-surface)' }}>
-                        <div className="day-number-badge" style={{ background: 'var(--cp-accent)', color: '#fff', fontWeight: '700', padding: '0.25rem 0.75rem', borderRadius: '6px', fontSize: '0.875rem' }}>Day {day.day ?? idx + 1}</div>
-                        <h4 style={{ color: 'var(--cp-ink)', margin: 0, fontSize: '1.125rem', flex: 1 }}>{day.title || 'Untitled Day'}</h4>
-                        {day.date && (
-                          <span style={{ fontSize: '0.875rem', color: 'var(--cp-muted)', whiteSpace: 'nowrap' }}>
-                            {new Date(day.date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
-                          </span>
-                        )}
-                      </div>
-                      <div style={{ padding: '1rem 1.25rem' }}>
-                        {day.meals && (
-                          <div className="meals-info" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', color: 'var(--cp-muted)', fontSize: '0.875rem' }}>
-                            <Info className="h-4 w-4" style={{ color: 'var(--cp-info)' }} />
-                            <span>Meals: {Array.isArray(day.meals) ? day.meals.join(', ') : day.meals}</span>
-                          </div>
-                        )}
-                        <div className="activities-list enhanced" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                          {(day.activities || []).length === 0 ? (
-                            <div style={{ padding: '1rem', color: 'var(--cp-muted)', fontSize: '0.875rem', textAlign: 'center', background: 'var(--cp-surface)', borderRadius: '8px', border: '1px dashed var(--cp-line)' }}>
-                              No activities scheduled for this day.
-                            </div>
-                          ) : (
-                            (day.activities || []).map((activity, actIdx) => {
-                              const isStr = typeof activity === 'string'
-                              const actName = getActivityLabel(activity)
-                              const actTime = isStr ? '' : activity?.time
-                              const actDesc = isStr ? '' : activity?.description
-                              const actLoc = isStr ? '' : activity?.location
-                              const actType = isStr ? '' : (activity?.type && activity?.type !== 'activity' ? activity?.type : '')
-                              return (
-                                <div key={actIdx} className="activity-item" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', padding: '0.75rem', background: '#fff', border: '1px solid var(--cp-line)', borderRadius: '10px' }}>
-                                  <div className="activity-dot" style={{ background: 'var(--cp-accent)', width: '8px', height: '8px', borderRadius: '50%', marginTop: '0.25rem', flexShrink: 0 }} />
-                                  <div style={{ flex: 1 }}>
-                                    {actTime && (
-                                      <span style={{ display: 'inline-block', fontSize: '0.75rem', fontWeight: '600', color: 'var(--cp-accent)', background: 'rgba(16, 185, 129, 0.1)', padding: '0.125rem 0.5rem', borderRadius: '4px', marginBottom: '0.25rem' }}>
-                                        {actTime}
-                                      </span>
-                                    )}
-                                    <span style={{ color: 'var(--cp-ink)', fontWeight: '600', fontSize: '0.95rem', display: 'block', marginBottom: actDesc ? '0.25rem' : 0 }}>
-                                      {actName}
-                                    </span>
-                                    {actDesc && (
-                                      <span style={{ color: 'var(--cp-muted)', fontSize: '0.875rem', lineHeight: '1.4', display: 'block' }}>{actDesc}</span>
-                                    )}
-                                    {actLoc && (
-                                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', marginTop: '0.5rem', color: 'var(--cp-muted)', fontSize: '0.8rem' }}>
-                                        <MapPin className="h-3 w-3" />
-                                        {actLoc}
-                                      </span>
-                                    )}
-                                    {actType && (
-                                      <span style={{ display: 'inline-block', fontSize: '0.7rem', fontWeight: '600', color: 'var(--cp-accent)', textTransform: 'uppercase', letterSpacing: '0.05em', border: '1px solid var(--cp-accent)', padding: '0.125rem 0.5rem', borderRadius: '4px', marginTop: '0.5rem' }}>
-                                        {actType}
-                                      </span>
-                                    )}
-                                  </div>
-                                </div>
-                              )
-                            })
-                          )}
-                        </div>
-                      </div>
-                    </div>
+                    <ItineraryDay key={idx} day={day} index={idx} />
                   ))}
                   {(selectedItinerary.schedule || []).length === 0 && (
-                    <div style={{ padding: '2rem', color: 'var(--cp-muted)', textAlign: 'center', background: 'var(--cp-surface)', borderRadius: '12px', border: '1px solid var(--cp-line)' }}>
-                      No daily schedule available for this itinerary.
-                    </div>
+                    <div className="cd-card cd-alert info">No daily schedule available for this itinerary.</div>
                   )}
                 </div>
               </div>

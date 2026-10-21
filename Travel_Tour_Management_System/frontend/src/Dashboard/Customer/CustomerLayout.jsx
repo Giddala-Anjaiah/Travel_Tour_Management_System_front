@@ -1,6 +1,7 @@
-import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon, Gift } from 'lucide-react'
+import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon, Gift, BellRing } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import NotificationBell from '../../components/NotificationBell'
 import '../Dashboard.css'
 
 const navItems = [
@@ -11,6 +12,7 @@ const navItems = [
   { to: '/customer/hotels', match: 'hotels', label: 'Hotels', icon: Building },
   { to: '/customer/bookings', match: 'bookings', label: 'Bookings', icon: CreditCard },
   { to: '/customer/invoices', match: 'invoices', label: 'Invoices', icon: FileText },
+  { to: '/customer/trip-alerts', match: 'trip-alerts', label: 'Trip Alerts', icon: BellRing },
   { to: '/customer/wishlist', match: 'wishlist', label: 'Wishlist', icon: Heart },
   { to: '/customer/profile', match: 'profile', label: 'Profile', icon: User },
   { to: '/customer/referral', match: 'referral', label: 'Referral', icon: Gift }
@@ -98,6 +100,7 @@ const CustomerLayout = ({ active, actions, children }) => {
           </button>
           <div className="header-actions">
             {actions}
+            <NotificationBell />
             <button onClick={toggleTheme} className="icon-btn header-icon-btn" aria-label={'Switch to ' + (theme === 'light' ? 'dark' : 'light') + ' mode'} title={theme === 'light' ? 'Dark mode' : 'Light mode'}>
               {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
             </button>

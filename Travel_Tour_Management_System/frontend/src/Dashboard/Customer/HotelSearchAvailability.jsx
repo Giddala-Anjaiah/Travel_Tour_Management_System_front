@@ -149,23 +149,26 @@ const HotelSearchAvailability = () => {
   }
 
   return (
-    <CustomerLayout
-      active="hotels"
-      title="Hotels"
-      subtitle="Search availability and book your stay"
-      actions={
-        <div className="header-stats">
-          <div className="stat-badge">
-            <Sparkles className="h-4 w-4" />
-            <span>{meta.total} properties</span>
+    <CustomerLayout active="hotels">
+      <div className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1>Hotels</h1>
+            <p>Search availability and book your stay</p>
           </div>
-          <div className="stat-badge">
-            <Shield className="h-4 w-4" />
-            <span>Verified stays</span>
+          <div className="page-status-badges">
+            <div className="stat-badge">
+              <Sparkles className="h-4 w-4" />
+              <span>{meta.total} properties</span>
+            </div>
+            <div className="stat-badge">
+              <Shield className="h-4 w-4" />
+              <span>Verified stays</span>
+            </div>
           </div>
         </div>
-      }
-    >
+      </div>
+
       <div className="hotel-search-toolbar">
         <div className="filter-group">
           <label>Check-in</label>

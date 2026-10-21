@@ -156,23 +156,26 @@ const TourPackages = () => {
   }
 
   return (
-    <CustomerLayout
-      active="packages"
-      title="Tour packages"
-      subtitle="Curated experiences for every traveler"
-      actions={
-        <div className="header-stats">
-          <div className="stat-badge">
-            <Sparkles className="h-4 w-4" />
-            <span>{meta.total} packages</span>
+    <CustomerLayout active="packages">
+      <div className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1>Tour packages</h1>
+            <p>Curated experiences for every traveler</p>
           </div>
-          <div className="stat-badge">
-            <Award className="h-4 w-4" />
-            <span>Best price guarantee</span>
+          <div className="page-status-badges">
+            <div className="stat-badge">
+              <Sparkles className="h-4 w-4" />
+              <span>{meta.total} packages</span>
+            </div>
+            <div className="stat-badge">
+              <Award className="h-4 w-4" />
+              <span>Best price guarantee</span>
+            </div>
           </div>
         </div>
-      }
-    >
+      </div>
+
       {loading && <div className="cd-skeleton-grid">{[1,2,3,4,5,6].map(i => <div key={i} className="cd-skeleton-card" />)}</div>}
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 

@@ -1,9 +1,10 @@
 import { useRef, useState, useEffect } from 'react'
-import { Heart, Star, Bell, Search, Trash2, Check, Calendar, Sparkles, Shield, Award, Clock, CheckCircle, AlertCircle, Star as StarIcon, Bell as BellIcon, MapPin as MapIcon, Plus } from 'lucide-react'
+import { Heart, Star, Bell, Bell as BellIcon, Search, Trash2, Check, Calendar, Sparkles, Clock, CheckCircle, MapPin as MapIcon, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
 import { api, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
+import { getTypeColor, getTypeMeta } from '../../utils/notificationTypes'
 import '../Dashboard.css'
 
 const emptyMeta = { page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false }
@@ -256,17 +257,7 @@ const WishlistReviewsNotifications = () => {
     return badges[category] || { label: 'Tour', color: '#475569' }
   }
 
-  const getNotificationTypeColor = (type) => {
-    const colors = {
-      booking: '#22c55e',
-      payment: '#f59e0b',
-      offer: '#8b5cf6',
-      review: '#0ea5e9',
-      system: '#64748b',
-      availability: '#06b6d4'
-    }
-    return colors[type] || '#64748b'
-  }
+  const getNotificationTypeColor = (type) => getTypeColor(type)
 
   // `search` is applied server-side on every one of these tabs.
   const filteredWishlist = wishlist
@@ -278,7 +269,15 @@ const WishlistReviewsNotifications = () => {
 
   if (loading) {
     return (
-      <CustomerLayout active="wishlist" title="Wishlist & updates" subtitle="Saved trips, reviews, and notifications">
+      <CustomerLayout active="wishlist">
+        <div className="page-head">
+          <div className="page-head-row">
+            <div>
+              <h1>Wishlist & updates</h1>
+              <p>Saved trips, reviews, and notifications</p>
+            </div>
+          </div>
+        </div>
         <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}>
           <p style={{ color: '#64748b' }}>Loading…</p>
         </div>
@@ -287,23 +286,26 @@ const WishlistReviewsNotifications = () => {
   }
 
   return (
-    <CustomerLayout
-      active="wishlist"
-      title="Wishlist & updates"
-      subtitle="Saved trips, reviews, and notifications"
-      actions={
-        <div className="header-stats">
-          <div className="stat-badge">
-            <Sparkles className="h-4 w-4" />
-            <span>{wishlistTotal} saved</span>
+    <CustomerLayout active="wishlist">
+      <div className="page-head">
+        <div className="page-head-row">
+          <div>
+            <h1>Wishlist & updates</h1>
+            <p>Saved trips, reviews, and notifications</p>
           </div>
-          <div className="stat-badge">
-            <BellIcon className="h-4 w-4" />
-            <span>{unreadCount} new</span>
+          <div className="page-status-badges">
+            <div className="stat-badge">
+              <Sparkles className="h-4 w-4" />
+              <span>{wishlistTotal} saved</span>
+            </div>
+            <div className="stat-badge">
+              <BellIcon className="h-4 w-4" />
+              <span>{unreadCount} new</span>
+            </div>
           </div>
         </div>
-      }
-    >
+      </div>
+
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 
       <div className="tabs enhanced">
@@ -511,15 +513,13 @@ const WishlistReviewsNotifications = () => {
             {filteredNotifications.length === 0 ? (
               <div className="cd-empty">No notifications yet.</div>
             ) : (
-              filteredNotifications.map(notif => (
+              filteredNotifications.map(notif => {
+                const typeMeta = getTypeMeta(notif.type)
+                const TypeIcon = typeMeta.Icon
+                return (
                 <div key={notif._id} className={`notification-card enhanced ${!notif.read ? 'unread' : ''}`}>
                   <div className="notification-icon enhanced" style={{ backgroundColor: getNotificationTypeColor(notif.type) }}>
-                    {notif.type === 'booking' && <CheckCircle className="h-4 w-4" />}
-                    {notif.type === 'payment' && <AlertCircle className="h-4 w-4" />}
-                    {notif.type === 'offer' && <Award className="h-4 w-4" />}
-                    {notif.type === 'review' && <StarIcon className="h-4 w-4" />}
-                    {notif.type === 'system' && <Shield className="h-4 w-4" />}
-                    {notif.type === 'availability' && <Clock className="h-4 w-4" />}
+                    <TypeIcon className="h-4 w-4" />
                   </div>
                   <div className="notification-content enhanced">
                     <p>{notif.message}</p>
@@ -539,7 +539,8 @@ const WishlistReviewsNotifications = () => {
                     </button>
                   </div>
                 </div>
-              ))
+                )
+              })
             )}
           </div>
           <Pagination

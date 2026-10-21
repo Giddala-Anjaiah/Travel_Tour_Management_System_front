@@ -13,6 +13,9 @@ export function buildQuery(params = {}) {
   return query ? `?${query}` : ''
 }
 
+// Endpoints where a 401 is an expected answer rather than an expired session.
+const AUTH_FREE_PATHS = ['/login', '/signup', '/forgot-password', '/verify-otp', '/reset-password']
+
 export async function api(path, options = {}) {
   const token = localStorage.getItem('token')
   const { headers, params, ...rest } = options
@@ -27,6 +30,14 @@ export async function api(path, options = {}) {
 
   const data = await response.json().catch(() => ({}))
   if (!response.ok) {
+    // An expired or revoked session must not leave a stale token behind.
+    if (response.status === 401 && !AUTH_FREE_PATHS.some(publicPath => path.startsWith(publicPath))) {
+      localStorage.removeItem('token')
+      localStorage.removeItem('user')
+      if (!window.location.pathname.startsWith('/login')) {
+        window.location.assign('/login?reason=session')
+      }
+    }
     throw new Error(data.message || 'Request failed')
   }
   return data

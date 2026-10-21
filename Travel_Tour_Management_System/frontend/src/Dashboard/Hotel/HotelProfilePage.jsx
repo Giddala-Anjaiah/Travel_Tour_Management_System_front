@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Save, Camera, Edit3, X, CheckCircle, AlertCircle, Building, MapPin, Hash, FileText, Lock, Star } from 'lucide-react'
+import { Save, Camera, Edit3, X, CheckCircle, AlertCircle, Building, MapPin, Hash, FileText, Star } from 'lucide-react'
 import HotelLayout from './HotelLayout'
+import AccountSecurityPanel from '../../components/AccountSecurityPanel'
 import { api } from '../../api'
 import '../Dashboard.css'
 
@@ -9,8 +10,7 @@ const emptyProfile = (user) => ({
   address: '', city: '', state: '', country: '', postalCode: '',
   website: '', description: '', starRating: '',
   checkinTime: '', checkoutTime: '', amenities: '',
-  registrationNumber: '', taxId: '', logo: '',
-  password: '', confirmPassword: ''
+  registrationNumber: '', taxId: '', logo: ''
 })
 
 const HotelProfilePage = () => {
@@ -68,10 +68,6 @@ const HotelProfilePage = () => {
     if (profileData.starRating !== '' && (Number(profileData.starRating) < 1 || Number(profileData.starRating) > 5)) {
       return 'Star rating must be between 1 and 5'
     }
-    if (profileData.password) {
-      if (profileData.password.length < 6) return 'Password must be at least 6 characters'
-      if (profileData.password !== profileData.confirmPassword) return 'Passwords do not match'
-    }
     return ''
   }
 
@@ -84,13 +80,7 @@ const HotelProfilePage = () => {
 
     setLoading(true)
     try {
-      const payload = { ...profileData }
-      // Don't send confirmPassword to backend
-      delete payload.confirmPassword
-      // Don't send password if empty
-      if (!payload.password) delete payload.password
-
-      const data = await api('/hotel/profile', { method: 'PUT', body: JSON.stringify(payload) })
+      const data = await api('/hotel/profile', { method: 'PUT', body: JSON.stringify(profileData) })
       setSuccess(data.message || 'Profile updated successfully!')
       setIsEditing(false)
       setTimeout(() => setSuccess(''), 4000)
@@ -207,21 +197,16 @@ const HotelProfilePage = () => {
           </div>
 
           {isEditing && (
-            <>
-              <h3 className="hp-section-title"><Lock size={16} /> Change Password (optional)</h3>
-              <div className="hp-grid">
-                <div className="hp-form-group"><label>New Password</label><input type="password" value={profileData.password} onChange={e => setProfileData({ ...profileData, password: e.target.value })} placeholder="Leave blank to keep current" autoComplete="new-password" /></div>
-                <div className="hp-form-group"><label>Confirm Password</label><input type="password" value={profileData.confirmPassword} onChange={e => setProfileData({ ...profileData, confirmPassword: e.target.value })} autoComplete="new-password" /></div>
-              </div>
-              <div className="hp-form-actions">
-                <button type="button" className="hp-btn hp-btn-secondary" onClick={handleCancel} disabled={loading}>Cancel</button>
-                <button type="submit" className="hp-btn hp-btn-primary" disabled={loading}>
-                  <Save size={16} /> {loading ? 'Saving...' : 'Save Profile'}
-                </button>
-              </div>
-            </>
+            <div className="hp-form-actions">
+              <button type="button" className="hp-btn hp-btn-secondary" onClick={handleCancel} disabled={loading}>Cancel</button>
+              <button type="submit" className="hp-btn hp-btn-primary" disabled={loading}>
+                <Save size={16} /> {loading ? 'Saving...' : 'Save Profile'}
+              </button>
+            </div>
           )}
         </form>
+
+        <AccountSecurityPanel basePath="/hotel" />
       </div>
 
       <style>{`

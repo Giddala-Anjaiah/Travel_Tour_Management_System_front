@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
   User, Star, Link as LinkIcon, Share2, Award, Wallet,
@@ -29,12 +29,12 @@ const ReferralRewards = () => {
         referralCode,
         referrals: [],
         rewards: [
-          { id: 'r1', title: '₹500 Off', cost: 500, type: 'discount', minBooking: 2000, redeemed: false },
-          { id: 'r2', title: '₹1000 Off', cost: 1000, type: 'discount', minBooking: 5000, redeemed: false },
+          { id: 'r1', title: 'â‚¹500 Off', cost: 500, type: 'discount', minBooking: 2000, redeemed: false },
+          { id: 'r2', title: 'â‚¹1000 Off', cost: 1000, type: 'discount', minBooking: 5000, redeemed: false },
           { id: 'r3', title: 'Free Upgrade', cost: 1500, type: 'upgrade', minBooking: 0, redeemed: false }
         ],
         earnings: [
-          { label: 'Points per booking', value: '10 pts / ₹1000 spent' },
+          { label: 'Points per booking', value: '10 pts / â‚¹1000 spent' },
           { label: 'Referral bonus', value: '200 pts per friend' },
           { label: 'Friend bonus', value: '100 pts on signup' }
         ]
@@ -99,7 +99,7 @@ const ReferralRewards = () => {
   }
 
   if (loading) return (
-    <CustomerLayout active="referral" title="Referral & Rewards">
+    <CustomerLayout active="referral">
       <div className="cd-card" style={{ textAlign: 'center', padding: '4rem' }}>
         <div className="bt-spinner" style={{ margin: '0 auto 1.5rem', width: '40px', height: '40px' }} />
         <p style={{ color: 'var(--cp-muted)', fontSize: '1.1rem' }}>Loading your rewards...</p>
@@ -108,7 +108,7 @@ const ReferralRewards = () => {
   )
 
   if (error && !data) return (
-    <CustomerLayout active="referral" title="Referral & Rewards">
+    <CustomerLayout active="referral">
       <div className="cd-card" style={{ textAlign: 'center', padding: '4rem' }}>
         <Award size={48} style={{ color: 'var(--cp-danger)', marginBottom: '1rem' }} />
         <h3 style={{ color: 'var(--cp-ink)' }}>Unable to load rewards</h3>
@@ -123,7 +123,7 @@ const ReferralRewards = () => {
   const d = data
 
   return (
-    <CustomerLayout active="referral" title="Referral & Rewards" subtitle="Earn points on every booking and redeem for discounts">
+    <CustomerLayout active="referral">
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 
       <div className="rr-page">
@@ -159,7 +159,7 @@ const ReferralRewards = () => {
                 </div>
                 <span className="rr-tier-points">{d.points} / 500 pts</span>
               </div>
-              <p className="rr-tier-note">Spend ₹50,000 to reach Silver</p>
+              <p className="rr-tier-note">Spend â‚¹50,000 to reach Silver</p>
             </div>
           </div>
           <div className="rr-tier-card">
@@ -176,7 +176,7 @@ const ReferralRewards = () => {
                 </div>
                 <span className="rr-tier-points">{d.tier === 'Silver' ? Math.max(d.points - 500, 0) : 0} / 500 pts</span>
               </div>
-              <p className="rr-tier-note">Spend ₹1,00,000 to reach Gold</p>
+              <p className="rr-tier-note">Spend â‚¹1,00,000 to reach Gold</p>
             </div>
           </div>
           <div className="rr-tier-card">
@@ -255,7 +255,7 @@ const ReferralRewards = () => {
                       <h4 className="rr-reward-title">{r.title}</h4>
                       <span className={`rr-reward-tag ${r.type}`}>{r.type}</span>
                     </div>
-                    <p className="rr-reward-desc">{r.type === 'discount' ? `Save ₹${r.cost} on bookings of ₹${r.minBooking}+` : 'Complimentary upgrade on your next trip'}</p>
+                    <p className="rr-reward-desc">{r.type === 'discount' ? `Save â‚¹${r.cost} on bookings of â‚¹${r.minBooking}+` : 'Complimentary upgrade on your next trip'}</p>
                     <div className="rr-reward-cost-row">
                       <span className="rr-reward-cost">{r.cost} pts</span>
                     </div>

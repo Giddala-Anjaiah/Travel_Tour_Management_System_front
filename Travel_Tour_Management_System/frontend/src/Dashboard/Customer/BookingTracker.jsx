@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import {
   Package, Calendar, Users, Clock, CreditCard, AlertCircle,
-  CheckCircle, XCircle, MapPin, ArrowLeft
+  CheckCircle, XCircle, MapPin, ArrowLeft, RotateCcw, Info
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
@@ -70,6 +70,27 @@ const BookingTracker = () => {
   const amount = Number(booking.amount || 0).toFixed(2)
   const paidAmount = Number(booking.paidAmount || 0).toFixed(2)
   const paymentStatus = booking.paymentStatus || 'pending'
+
+  // Cancellation & refund figures, resolved once so the section can render
+  // without repeating the fallback logic for every field.
+  const cancellation = booking.cancellation || null
+  const refund = booking.refund || {}
+  const bookingAmount = Number(cancellation?.bookingAmount ?? amount)
+  const refundAmount = Number(cancellation?.refundAmount || 0)
+  const cancellationFee = Number(cancellation?.cancellationFee || 0)
+  const refundStatus = refund.status ? refund.status.toLowerCase() : 'pending'
+  const refundStatusLabel = refund.status
+    ? refund.status.charAt(0).toUpperCase() + refund.status.slice(1)
+    : 'Pending'
+  const refundStatusClass = {
+    processed: 'completed',
+    refunded: 'completed',
+    completed: 'completed',
+    pending: 'pending',
+    processing: 'pending',
+    failed: 'rejected',
+    rejected: 'rejected'
+  }[refundStatus] || 'pending'
 
   const formatStatus = (s) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -171,57 +192,82 @@ const BookingTracker = () => {
           </div>
         )}
 
-        {cancelled && booking.cancellation && (
-          <div className="bt-card">
-            <h3 className="bt-card-subtitle">Cancellation & Refund</h3>
+        {cancelled && cancellation && (
+          <div className="bt-card bt-refund-card">
+            <div className="bt-card-header">
+              <div className="bt-card-title">
+                <span className="bt-card-icon bt-refund-icon">
+                  <RotateCcw size={20} />
+                </span>
+                <div>
+                  <h2>Cancellation & Refund</h2>
+                  <span className="bt-booking-id">How this cancellation was settled</span>
+                </div>
+              </div>
+              <span className={`bt-status bt-status-${refundStatusClass}`}>
+                {refundStatusLabel}
+              </span>
+            </div>
+
+            <div className="bt-refund-summary">
+              <div className="bt-refund-tile">
+                <span className="bt-refund-tile-label">Booking Amount</span>
+                <strong className="bt-refund-tile-value">${bookingAmount.toFixed(2)}</strong>
+              </div>
+              <div className="bt-refund-tile is-refund">
+                <span className="bt-refund-tile-label">Refund Amount</span>
+                <strong className="bt-refund-tile-value">${refundAmount.toFixed(2)}</strong>
+              </div>
+              <div className="bt-refund-tile is-fee">
+                <span className="bt-refund-tile-label">Cancellation Fee</span>
+                <strong className="bt-refund-tile-value">${cancellationFee.toFixed(2)}</strong>
+              </div>
+            </div>
+
             <div className="bt-refund-grid">
               <div className="bt-refund-item">
                 <span className="bt-refund-label">Cancelled At</span>
-                <strong className="bt-refund-value">{new Date(booking.cancellation.cancelledAt).toLocaleString()}</strong>
+                <strong className="bt-refund-value">
+                  {cancellation.cancelledAt ? new Date(cancellation.cancelledAt).toLocaleString() : '—'}
+                </strong>
               </div>
               <div className="bt-refund-item">
                 <span className="bt-refund-label">Days Before Trip</span>
-                <strong className="bt-refund-value">{booking.cancellation.daysBeforeTrip}</strong>
+                <strong className="bt-refund-value">
+                  {cancellation.daysBeforeTrip ?? '—'}
+                </strong>
               </div>
               <div className="bt-refund-item">
                 <span className="bt-refund-label">Applicable Refund</span>
-                <strong className="bt-refund-value">{booking.cancellation.refundPercentage}%</strong>
-              </div>
-              <div className="bt-refund-item">
-                <span className="bt-refund-label">Booking Amount</span>
-                <strong className="bt-refund-value">${booking.cancellation.bookingAmount ? booking.cancellation.bookingAmount.toFixed(2) : amount}</strong>
-              </div>
-              <div className="bt-refund-item">
-                <span className="bt-refund-label">Refund Amount</span>
-                <strong className="bt-refund-value">${Number(booking.cancellation.refundAmount || 0).toFixed(2)}</strong>
-              </div>
-              <div className="bt-refund-item">
-                <span className="bt-refund-label">Cancellation Fee</span>
-                <strong className="bt-refund-value">${Number(booking.cancellation.cancellationFee || 0).toFixed(2)}</strong>
+                <strong className="bt-refund-value">
+                  {cancellation.refundPercentage != null ? `${cancellation.refundPercentage}%` : '—'}
+                </strong>
               </div>
               <div className="bt-refund-item">
                 <span className="bt-refund-label">Refund Reference</span>
-                <strong className="bt-refund-value">{booking.refund?.transactionId || '—'}</strong>
-              </div>
-              <div className="bt-refund-item">
-                <span className="bt-refund-label">Refund Status</span>
-                <strong className={`bt-refund-value bt-status-${booking.refund?.status || 'pending'}`}>
-                  {booking.refund?.status ? booking.refund.status.charAt(0).toUpperCase() + booking.refund.status.slice(1) : 'Pending'}
+                <strong className="bt-refund-value bt-refund-mono">
+                  {refund.transactionId || '—'}
                 </strong>
               </div>
-              {booking.refund?.processedAt && (
+              {refund.processedAt && (
                 <div className="bt-refund-item">
                   <span className="bt-refund-label">Processed At</span>
-                  <strong className="bt-refund-value">{new Date(booking.refund.processedAt).toLocaleString()}</strong>
-                </div>
-              )}
-              {booking.cancellation.reason && (
-                <div className="bt-refund-item bt-refund-reason">
-                  <span className="bt-refund-label">Reason</span>
-                  <span className="bt-refund-value">{booking.cancellation.reason}</span>
+                  <strong className="bt-refund-value">
+                    {new Date(refund.processedAt).toLocaleString()}
+                  </strong>
                 </div>
               )}
             </div>
+
+            {cancellation.reason && (
+              <div className="bt-refund-note">
+                <Info size={16} />
+                <div>
+                  <span className="bt-refund-label">Cancellation Reason</span>
+                  <p>{cancellation.reason}</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {cancelled && (
