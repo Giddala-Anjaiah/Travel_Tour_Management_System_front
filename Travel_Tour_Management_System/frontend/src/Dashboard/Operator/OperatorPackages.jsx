@@ -2,11 +2,16 @@ import { API_BASE, api, readPagination } from '../../api'
 import { useState, useEffect } from 'react'
 import usePolling from '../../hooks/usePolling'
 import Pagination from '../../components/Pagination'
-import { MapPin, Calendar, Clock, Plus, Search, Pencil as Edit, Trash2, Star, CheckCircle, XCircle, Sparkles, Award, Image as ImageIcon } from 'lucide-react'
+import { MapPin, Calendar, Clock, Plus, Search, Pencil as Edit, Trash2, Star, CheckCircle, XCircle, Sparkles, Award, Image as ImageIcon, Save } from 'lucide-react'
 import '../Dashboard.css'
 
 const OperatorPackages = () => {
   const [packages, setPackages] = useState([])
+  const [availability, setAvailability] = useState([])
+  const [showSeatModal, setShowSeatModal] = useState(false)
+  const [seatPackage, setSeatPackage] = useState(null)
+  const [seatForm, setSeatForm] = useState({ totalSeats: 20, availableSeats: 20, startDate: '', endDate: '', status: 'available' })
+  const [savingSeats, setSavingSeats] = useState(false)
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
@@ -71,10 +76,78 @@ const OperatorPackages = () => {
     }
   }
 
+  const fetchAvailability = async () => {
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${API_BASE}/operator/availability`, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+      const data = await response.json()
+      if (data.availability) {
+        setAvailability(data.availability)
+      }
+    } catch (error) {
+      console.error('Error fetching availability:', error)
+    }
+  }
+
+  const handleConfigureSeats = (pkg) => {
+    setSeatPackage(pkg)
+    setSeatForm({ totalSeats: 20, availableSeats: 20, startDate: '', endDate: '', status: 'available' })
+    setShowSeatModal(true)
+  }
+
+  const handleSaveSeats = async (e) => {
+    e.preventDefault()
+    if (!seatPackage) return
+    setSavingSeats(true)
+    try {
+      const token = localStorage.getItem('token')
+      const payload = {
+        packageId: seatPackage._id,
+        totalSeats: Number(seatForm.totalSeats),
+        availableSeats: Number(seatForm.availableSeats),
+        soldSeats: 0,
+        startDate: seatForm.startDate || new Date().toISOString().slice(0, 10),
+        endDate: seatForm.endDate || '',
+        status: seatForm.status || 'available',
+        operatorId: seatPackage.operatorId
+      }
+      const response = await fetch(`${API_BASE}/operator/availability`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(payload)
+      })
+      if (response.ok) {
+        setShowSeatModal(false)
+        setSeatPackage(null)
+        fetchAvailability()
+        fetchPackages()
+      } else {
+        const data = await response.json().catch(() => ({}))
+        alert(data.message || 'Error saving seats')
+      }
+    } catch (error) {
+      console.error('Error saving seats:', error)
+      alert('Error saving seats')
+    } finally {
+      setSavingSeats(false)
+    }
+  }
+
   useEffect(() => {
     Promise.resolve().then(() => fetchPackages())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit])
+
+  useEffect(() => {
+    Promise.resolve().then(() => fetchAvailability())
+  }, [])
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -240,6 +313,10 @@ const OperatorPackages = () => {
     }
   }
 
+  const getAvailabilityForPackage = (packageId) => {
+    return availability.filter((a) => String(a.packageId) === String(packageId))
+  }
+
   const filteredPackages = hasLocalFilters
     ? packages.filter(pkg => pkg.publishedStatus === filterStatus)
     : packages
@@ -335,11 +412,25 @@ const OperatorPackages = () => {
                       <small>Starting from</small>
                       <strong>₹{pkg.price?.toLocaleString()}</strong>
                     </div>
+                    <div className="package-seats">
+                      {(() => {
+                        const avails = getAvailabilityForPackage(pkg._id)
+                        const total = avails.reduce((s, a) => s + (a.totalSeats || 0), 0)
+                        const avail = avails.reduce((s, a) => s + (a.availableSeats || 0), 0)
+                        if (!total) return <span>Seats: not configured</span>
+                        return <span>Seats: {avail} / {total} available</span>
+                      })()}
+                    </div>
                   </div>
                   <div className="package-actions enhanced">
                     <button onClick={() => handleEdit(pkg)} className="icon-btn">
                       <Edit className="h-4 w-4" />
                     </button>
+                    {!getAvailabilityForPackage(pkg._id).length && (
+                      <button onClick={() => handleConfigureSeats(pkg)} className="icon-btn" title="Configure Seats">
+                        <Save className="h-4 w-4" />
+                      </button>
+                    )}
                     <button onClick={() => handleDelete(pkg._id)} className="icon-btn delete">
                       <Trash2 className="h-4 w-4" />
                     </button>
@@ -638,6 +729,77 @@ const OperatorPackages = () => {
                 <button type="submit" className="btn-primary enhanced">
                   <Sparkles className="h-4 w-4" />
                   {editingPackage ? 'Update Package' : 'Create Package'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showSeatModal && seatPackage && (
+        <div className="modal-overlay">
+          <div className="modal package-modal">
+            <div className="modal-header">
+              <h3>Configure Seats — {seatPackage.name}</h3>
+              <button onClick={() => setShowSeatModal(false)} className="modal-close">×</button>
+            </div>
+            <form onSubmit={handleSaveSeats} className="modal-body">
+              <div className="form-grid">
+                <div className="form-group">
+                  <label>Total Seats *</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={seatForm.totalSeats}
+                    onChange={(e) => setSeatForm({ ...seatForm, totalSeats: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Available Seats *</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={seatForm.availableSeats}
+                    onChange={(e) => setSeatForm({ ...seatForm, availableSeats: e.target.value })}
+                    required
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Start Date</label>
+                  <input
+                    type="date"
+                    value={seatForm.startDate}
+                    onChange={(e) => setSeatForm({ ...seatForm, startDate: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>End Date</label>
+                  <input
+                    type="date"
+                    value={seatForm.endDate}
+                    onChange={(e) => setSeatForm({ ...seatForm, endDate: e.target.value })}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Status</label>
+                  <select
+                    value={seatForm.status}
+                    onChange={(e) => setSeatForm({ ...seatForm, status: e.target.value })}
+                  >
+                    <option value="available">Available</option>
+                    <option value="limited">Limited</option>
+                    <option value="full">Full</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </div>
+              </div>
+              <div className="form-actions">
+                <button type="button" onClick={() => setShowSeatModal(false)} className="btn-secondary" disabled={savingSeats}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn-primary enhanced" disabled={savingSeats}>
+                  <Save className="h-4 w-4" /> {savingSeats ? 'Saving...' : 'Save Seats'}
                 </button>
               </div>
             </form>

@@ -1003,11 +1003,13 @@ const totalCount = stats?.total ?? meta.total
                           method: 'POST',
                           body: JSON.stringify({ reason: '', preview: true })
                         })
-                        if (data.refund) {
+                        if (data.success && data.refund) {
                           setCancelRefundInfo(data.refund)
+                        } else if (!data.success) {
+                          alert(data.message || 'Failed to calculate refund')
                         }
                       } catch (err) {
-                        console.error('Failed to preview refund:', err)
+                        alert(err.message || 'Failed to calculate refund')
                       }
                     }}
                     className="btn-secondary"

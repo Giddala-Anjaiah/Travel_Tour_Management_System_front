@@ -9,6 +9,7 @@ const mapBooking = (booking) => ({
   customer: booking.customer,
   email: booking.email,
   package: booking.package,
+  operatorId: booking.operatorId,
   dates: booking.dates,
   amount: Number(booking.amount) || 0,
   status: booking.status,
@@ -19,9 +20,11 @@ const mapBooking = (booking) => ({
 const BookingManagement = () => {
   const [bookings, setBookings] = useState([])
   const [packages, setPackages] = useState([])
+  const [operators, setOperators] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterPayment, setFilterPayment] = useState('all')
+  const [filterOperator, setFilterOperator] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [selectedBooking, setSelectedBooking] = useState(null)
@@ -34,28 +37,32 @@ const BookingManagement = () => {
 
   // The route only filters server-side on `search`. An active status/payment
   // filter asks for the full set instead of paging a partial match.
-  const hasLocalFilters = filterStatus !== 'all' || filterPayment !== 'all'
+  const hasLocalFilters = filterStatus !== 'all' || filterPayment !== 'all' || filterOperator !== 'all'
 
   const load = async (overrides = {}) => {
     const nextPage = overrides.page ?? page
     const nextLimit = overrides.limit ?? limit
     try {
       setError('')
-      const [bookingData, packageData] = await Promise.all([
-        api('/admin/bookings', {
+       const [bookingData, packageData, operatorData] = await Promise.all([
+       api('/admin/bookings', {
           params: {
             page: hasLocalFilters ? undefined : nextPage,
             limit: hasLocalFilters ? 'all' : nextLimit,
-            search: searchTerm
+            search: searchTerm,
+            operatorId: filterOperator !== 'all' ? filterOperator : undefined,
+            status: filterStatus !== 'all' ? filterStatus : undefined
           }
         }),
-        api('/admin/packages', { params: { limit: 'all' } })
+        api('/admin/packages', { params: { limit: 'all' } }),
+        api('/admin/users', { params: { role: 'tour_operator', limit: 'all' } })
       ])
       const mapped = (bookingData.bookings || []).map(mapBooking)
       setBookings(mapped)
       setMeta(readPagination(bookingData, mapped.length))
       if (bookingData.stats) setStats(bookingData.stats)
       setPackages(packageData.packages || [])
+      setOperators(operatorData.users || [])
     } catch (err) {
       setError(err.message)
     } finally {
@@ -91,8 +98,15 @@ const BookingManagement = () => {
   const filteredBookings = hasLocalFilters
     ? bookings.filter((booking) =>
       (filterStatus === 'all' || booking.status === filterStatus) &&
-      (filterPayment === 'all' || booking.paymentStatus === filterPayment))
+      (filterPayment === 'all' || booking.paymentStatus === filterPayment) &&
+      (filterOperator === 'all' || booking.operatorId === filterOperator))
     : bookings
+
+  const operatorName = (id) => {
+    const key = (id && typeof id === 'object') ? (id._id || id.id) : id
+    const op = operators.find((o) => String(o._id) === String(key))
+    return op ? (op.fullName || op.companyName || op.email || '-') : (key ? String(key) : '-')
+  }
 
   const updateBooking = async (id, payload) => {
     await api(`/admin/bookings/${id}`, { method: 'PUT', body: JSON.stringify(payload) })
@@ -192,6 +206,10 @@ const BookingManagement = () => {
               <option value="pending">Pending</option>
               <option value="cancelled">Cancelled</option>
             </select>
+            <select value={filterOperator} onChange={(e) => setFilterOperator(e.target.value)} className="filter-select enhanced">
+              <option value="all">All Operators</option>
+              {operators.map((op) => <option key={op._id} value={op._id}>{op.fullName || op.companyName || op.email}</option>)}
+            </select>
             <select value={filterPayment} onChange={(e) => setFilterPayment(e.target.value)} className="filter-select enhanced">
               <option value="all">All Payment Status</option>
               <option value="paid">Paid</option>
@@ -226,13 +244,13 @@ const BookingManagement = () => {
               <table className="data-table enhanced">
                 <thead>
                   <tr>
-                    <th>Customer</th><th>Email</th><th>Package</th><th>Dates</th><th>Amount</th><th>Status</th><th>Payment</th><th>Booking Date</th><th>Actions</th>
+                    <th>Customer</th><th>Email</th><th>Package</th><th>Operator</th><th>Dates</th><th>Amount</th><th>Status</th><th>Payment</th><th>Booking Date</th><th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBookings.length === 0 ? (
                     <tr>
-                      <td colSpan="9">
+                      <td colSpan="10">
                         <div className="empty-state enhanced">
                           <Ticket className="h-8 w-8" />
                           <h3>No bookings found</h3>
@@ -245,6 +263,7 @@ const BookingManagement = () => {
                       <td className="customer-name">{booking.customer}</td>
                       <td className="cell-ellipsis" title={booking.email}>{booking.email}</td>
                       <td className="cell-ellipsis" title={booking.package}>{booking.package}</td>
+                      <td className="cell-ellipsis" title={operatorName(booking.operatorId)}>{operatorName(booking.operatorId)}</td>
                       <td className="cell-nowrap"><Calendar className="h-4 w-4 inline-icon" />{booking.dates}</td>
                       <td className="cell-amount">₹{(booking.amount || 0).toLocaleString()}</td>
                       <td><span className={`status-badge enhanced ${booking.status}`}>{booking.status}</span></td>

@@ -43,6 +43,7 @@ const BookingManagement = lazy(() => import('./Dashboard/Admin/BookingManagement
 const InvoicesReviews = lazy(() => import('./Dashboard/Admin/InvoicesReviews.jsx'))
 const NotificationsManagement = lazy(() => import('./Dashboard/Admin/NotificationsManagement.jsx'))
 const ReportsCouponsSettings = lazy(() => import('./Dashboard/Admin/ReportsCouponsSettings.jsx'))
+const RefundOversight = lazy(() => import('./Dashboard/Admin/RefundOversight.jsx'))
 const ProfileManagement = lazy(() => import('./Dashboard/Customer/ProfileManagement.jsx'))
 const DestinationExploration = lazy(() => import('./Dashboard/Customer/DestinationExploration.jsx'))
 const DestinationDetail = lazy(() => import('./Dashboard/Customer/DestinationDetail.jsx'))
@@ -52,7 +53,7 @@ const HotelSearchAvailability = lazy(() => import('./Dashboard/Customer/HotelSea
 const BookingsPayments = lazy(() => import('./Dashboard/Customer/BookingsPayments.jsx'))
 const BookingTracker = lazy(() => import('./Dashboard/Customer/BookingTracker.jsx'))
 const InvoicesBookingHistory = lazy(() => import('./Dashboard/Customer/InvoicesBookingHistory.jsx'))
-const WishlistReviewsNotifications = lazy(() => import('./Dashboard/Customer/WishlistReviewsNotifications.jsx'))
+import Wishlist from './Dashboard/Customer/Wishlist.jsx'
 const TripAlerts = lazy(() => import('./Dashboard/Customer/TripAlerts.jsx'))
 const ReferralRewards = lazy(() => import('./Dashboard/Customer/ReferralRewards.jsx'))
 
@@ -118,6 +119,14 @@ createRoot(document.getElementById('root')).render(
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <BookingManagement />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/refunds" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <RefundOversight />
             </ProtectedRoute>
           } 
         />
@@ -231,7 +240,7 @@ createRoot(document.getElementById('root')).render(
           path="/customer/wishlist"  
           element={
             <ProtectedRoute allowedRoles={['customer']}>
-              <WishlistReviewsNotifications />
+              <Wishlist />
             </ProtectedRoute>
           } 
         />

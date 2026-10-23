@@ -1107,22 +1107,46 @@ const wishlistSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   },
+  itemType: {
+    type: String,
+    enum: ['package', 'hotel'],
+    default: 'package'
+  },
   packageId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Package',
-    required: true
+    ref: 'Package'
+  },
+  hotelId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Hotel'
+  },
+  itemId: {
+    type: mongoose.Schema.Types.ObjectId
   },
   packageName: String,
+  hotelName: String,
+  name: String,
   destination: String,
+  location: String,
   image: String,
   rating: Number,
   price: Number,
+  originalPrice: Number,
+  lastPrice: Number,
+  targetPrice: Number,
+  priceAlertEnabled: {
+    type: Boolean,
+    default: false
+  },
   category: String,
   addedAt: {
     type: Date,
     default: Date.now
-  }
+  },
+  lastCheckedAt: Date
 });
+wishlistSchema.index({ userId: 1, itemType: 1, itemId: 1 });
+wishlistSchema.index({ userId: 1, addedAt: -1 });
 const Wishlist = mongoose.model('Wishlist', wishlistSchema);
 
 function pickUpdates(body, keys) {
@@ -2061,7 +2085,7 @@ async function sendEmailViaBrevo(to, subject, htmlContent) {
     throw new Error('BREVO_API_KEY not configured');
   }
   if (brevoAuthFailure) {
-    throw new Error(brevoAuthFailure);
+    return false;
   }
   const senderEmail = process.env.BREVO_SENDER_EMAIL || 'anjaiahgiddala@gmail.com';
   const senderName = process.env.BREVO_SENDER_NAME || 'Teja.com';
@@ -2094,9 +2118,11 @@ async function sendNotificationEmail(to, title, message) {
   if (!to) return false;
   const htmlContent = cardEmailTemplate(title, message);
   try {
-    await sendEmailViaBrevo(to, title, htmlContent);
+    const result = await sendEmailViaBrevo(to, title, htmlContent);
+    if (result === false) return false; // Brevo auth known broken — skip silently
     return true;
   } catch (err) {
+    if (/Brevo API error (401|403)/.test(err.message)) return false; // log once only
     console.error('Email notification failed:', err.message);
     return false;
   }
@@ -2664,6 +2690,7 @@ app.use('/api/admin', authenticate, requireAdmin);
 app.get('/api/admin/users', async (req, res) => {
   try {
     const filter = {};
+    if (req.query.role) filter.role = req.query.role;
     const search = searchFilter(['fullName', 'email'], req.query.search);
     if (search) Object.assign(filter, search);
     const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(User, filter, {
@@ -3243,6 +3270,8 @@ app.get('/api/admin/bookings', async (req, res) => {
     const filter = {};
     const search = searchFilter(['bookingId', 'customer', 'package', 'email'], req.query.search);
     if (search) Object.assign(filter, search);
+    if (req.query.operatorId) filter.operatorId = req.query.operatorId;
+    if (req.query.status) filter.status = req.query.status;
     const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Booking, filter, {
       query: req.query,
       defaultSort: { bookingDate: -1 }
@@ -3410,6 +3439,99 @@ app.delete('/api/admin/invoices/:id', async (req, res) => {
     res.status(200).json({ message: 'Invoice deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Error deleting invoice' });
+  }
+});
+
+// Refund Management Routes
+app.get('/api/admin/refunds', async (req, res) => {
+  try {
+    const filter = {};
+    const search = searchFilter(['bookingId', 'customer', 'package', 'email'], req.query.search);
+    if (search) Object.assign(filter, search);
+    if (req.query.refundStatus) filter['refund.status'] = req.query.refundStatus;
+    if (req.query.paymentStatus) filter.paymentStatus = req.query.paymentStatus;
+    if (req.query.operatorId) filter.operatorId = req.query.operatorId;
+    const hasRefund = { $or: [{ 'refund.status': { $ne: 'not_applicable' } }, { paymentStatus: { $in: ['refunded', 'failed'] } }] };
+    let finalFilter = filter;
+    if (Object.keys(filter).length > 0) {
+      finalFilter = { $and: [hasRefund, filter] };
+    } else {
+      finalFilter = { ...hasRefund };
+    }
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Booking, finalFilter, { query: req.query, defaultSort: { bookingDate: -1 } });
+    const [pendingRefunds, completedRefunds, failedRefunds, refundedAmount] = await Promise.all([
+      Booking.countDocuments({ ...filter, 'refund.status': 'pending' }),
+      Booking.countDocuments({ ...filter, 'refund.status': 'completed' }),
+      Booking.countDocuments({ ...filter, 'refund.status': 'failed' }),
+      Booking.aggregate([{ $match: { ...filter, paymentStatus: 'refunded' } }, { $group: { _id: null, total: { $sum: '$amount' } } }])
+    ]);
+    pagedResponse(res, 'refunds', { docs, total, page, limit, totalPages, hasNext, hasPrev }, { stats: { pendingRefunds, completedRefunds, failedRefunds, refundedAmount: refundedAmount[0]?.total || 0 } });
+  } catch (error) {
+    console.error('Error fetching refunds:', error);
+    res.status(500).json({ message: 'Error fetching refund requests' });
+  }
+});
+
+app.get('/api/admin/refunds/reconcile', async (req, res) => {
+  try {
+    const pendingRefunds = await Booking.find({ 'refund.status': 'pending', 'refund.amount': { $gt: 0 } }).select('bookingId customer email amount refund paidAmount bookingDate');
+    const refundedIncomplete = await Booking.find({ paymentStatus: 'refunded', 'refund.status': { $ne: 'completed' } }).select('bookingId customer email amount refund paidAmount');
+    const failedRefunds = await Booking.find({ 'refund.status': 'failed' }).select('bookingId customer email amount refund paidAmount');
+    const amountMismatches = await Booking.find({ 'refund.status': { $ne: 'not_applicable' }, $expr: { $gt: ['$refund.amount', '$paidAmount'] } }).select('bookingId customer email amount refund paidAmount');
+    res.status(200).json({ pendingRefunds: { count: pendingRefunds.length, items: pendingRefunds }, refundedIncomplete: { count: refundedIncomplete.length, items: refundedIncomplete }, failedRefunds: { count: failedRefunds.length, items: failedRefunds }, amountMismatches: { count: amountMismatches.length, items: amountMismatches } });
+  } catch (error) {
+    console.error('Error reconciling refunds:', error);
+    res.status(500).json({ message: 'Error reconciling refund records' });
+  }
+});
+
+app.get('/api/admin/refunds/:id', async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    res.status(200).json({ booking });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching refund details' });
+  }
+});
+
+app.put('/api/admin/refunds/:id/process', async (req, res) => {
+  try {
+    const { transactionId, notes } = req.body || {};
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!booking.refund || booking.refund.status === 'not_applicable') return res.status(400).json({ message: 'No refund applicable for this booking' });
+    booking.refund.status = 'completed';
+    booking.refund.processedAt = new Date();
+    booking.refund.transactionId = transactionId || null;
+    if (notes) { booking.timeline = booking.timeline || []; booking.timeline.push({ status: 'refund_completed', date: new Date(), note: notes }); }
+    booking.paymentStatus = 'refunded';
+    booking.status = 'cancelled';
+    await booking.save();
+    await createNotification({ userId: booking.customerId, type: 'payment', title: 'Refund Processed', message: `Your refund of ₹${booking.refund.amount.toLocaleString()} for booking ${booking.bookingId} has been processed.`, bookingId: booking._id, relatedId: booking._id, severity: 'info' });
+    res.status(200).json({ message: 'Refund processed successfully', booking });
+  } catch (error) {
+    console.error('Error processing refund:', error);
+    res.status(500).json({ message: 'Error processing refund' });
+  }
+});
+
+app.put('/api/admin/refunds/:id/reject', async (req, res) => {
+  try {
+    const { reason, notes } = req.body || {};
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (!booking.refund || booking.refund.status === 'not_applicable') return res.status(400).json({ message: 'No refund applicable for this booking' });
+    booking.refund.status = 'failed';
+    booking.refund.processedAt = new Date();
+    booking.paymentStatus = 'failed';
+    if (notes) { booking.timeline = booking.timeline || []; booking.timeline.push({ status: 'refund_rejected', date: new Date(), note: notes || reason || 'Refund rejected by admin' }); }
+    await booking.save();
+    await createNotification({ userId: booking.customerId, type: 'payment', title: 'Refund Declined', message: `Your refund request for booking ${booking.bookingId} has been declined. Reason: ${reason || 'Not specified'}`, bookingId: booking._id, relatedId: booking._id, severity: 'warning' });
+    res.status(200).json({ message: 'Refund rejected', booking });
+  } catch (error) {
+    console.error('Error rejecting refund:', error);
+    res.status(500).json({ message: 'Error rejecting refund' });
   }
 });
 
@@ -4465,6 +4587,19 @@ app.put('/api/operator/pricing/:id', async (req, res) => {
 });
 
 // Operator Availability Routes
+app.get('/api/operator/availability', async (req, res) => {
+  try {
+    const filter = { operatorId: req.user.userId };
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Availability, filter, {
+      query: req.query,
+      defaultSort: { startDate: -1 }
+    });
+    pagedResponse(res, 'availability', { docs, total, page, limit, totalPages, hasNext, hasPrev });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching availability' });
+  }
+});
+
 app.get('/api/operator/availability/package/:packageId', async (req, res) => {
   try {
     const filter = { packageId: req.params.packageId, operatorId: req.user.userId };
@@ -4480,6 +4615,10 @@ app.get('/api/operator/availability/package/:packageId', async (req, res) => {
 
 app.post('/api/operator/availability', async (req, res) => {
   try {
+    const { totalSeats, availableSeats } = req.body;
+    if (availableSeats !== undefined && totalSeats !== undefined && Number(availableSeats) > Number(totalSeats)) {
+      return res.status(400).json({ message: 'Available seats cannot exceed total seats' });
+    }
     const newAvailability = new Availability({
       ...req.body,
       operatorId: req.user.userId,
@@ -4498,6 +4637,9 @@ app.put('/api/operator/availability/:id', async (req, res) => {
       'startDate', 'endDate', 'totalSeats', 'availableSeats', 'soldSeats',
       'bookingCutoffDate', 'minGroupSize', 'maxGroupSize', 'status'
     ]);
+    if (updates.availableSeats !== undefined && updates.totalSeats !== undefined && Number(updates.availableSeats) > Number(updates.totalSeats)) {
+      return res.status(400).json({ message: 'Available seats cannot exceed total seats' });
+    }
     updates.updatedAt = new Date();
     const availability = await Availability.findOneAndUpdate(
       { _id: req.params.id, operatorId: req.user.userId },
@@ -5311,9 +5453,79 @@ app.get('/api/customer/bookings', async (req, res) => {
   }
 });
 
+// Reserves seats from availability records covering the booking date.
+// Decrements availableSeats and increments soldSeats atomically. Returns the
+// matched availability document, or throws when seats are insufficient.
+async function reservePackageSeats(packageId, bookingDate, travelers) {
+  if (!packageId || !travelers || travelers <= 0) return null;
+  let tripDate = null;
+  if (bookingDate) {
+    const raw = String(bookingDate).trim();
+    const iso = raw.match(/(\d{4}-\d{2}-\d{2})/);
+    if (iso) {
+      tripDate = new Date(iso[1]);
+    } else {
+      tripDate = new Date(raw);
+    }
+  }
+  if (!tripDate || isNaN(tripDate.getTime())) return null;
+  const startOfDay = new Date(tripDate.getFullYear(), tripDate.getMonth(), tripDate.getDate());
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+  const availability = await Availability.findOne({
+    packageId,
+    operatorId: { $exists: true },
+    startDate: { $lte: endOfDay },
+    endDate: { $gte: startOfDay },
+    status: { $in: ['active', 'available', 'limited'] },
+    availableSeats: { $gte: travelers }
+  }).sort({ availableSeats: 1 });
+  if (!availability) {
+    const err = new Error('Not enough seats available for the selected date');
+    err.statusCode = 400;
+    throw err;
+  }
+  availability.availableSeats = (availability.availableSeats || 0) - travelers;
+  availability.soldSeats = ((availability.soldSeats || 0) + travelers);
+  if (availability.availableSeats <= 0) {
+    availability.status = 'inactive';
+  } else if (availability.availableSeats <= Math.ceil((availability.totalSeats || 0) * 0.2)) {
+    availability.status = 'active';
+  }
+  await availability.save();
+  return availability;
+}
+
+// Releases previously reserved seats when a booking is cancelled.
+async function releasePackageSeats(booking) {
+  if (!booking.packageId || !booking.travelers || booking.travelers <= 0) return;
+  const tripDate = booking.dates ? new Date(String(booking.dates).match(/(\d{4}-\d{2}-\d{2})/)?.[1] || String(booking.dates)) : null;
+  if (!tripDate || isNaN(tripDate.getTime())) return;
+  const startOfDay = new Date(tripDate.getFullYear(), tripDate.getMonth(), tripDate.getDate());
+  const endOfDay = new Date(startOfDay);
+  endOfDay.setDate(endOfDay.getDate() + 1);
+  const availability = await Availability.findOne({
+    packageId: booking.packageId,
+    startDate: { $lte: endOfDay },
+    endDate: { $gte: startOfDay }
+  });
+  if (!availability) return;
+  availability.availableSeats = Math.max(0, (availability.availableSeats || 0) + booking.travelers);
+  availability.soldSeats = Math.max(0, (availability.soldSeats || 0) - booking.travelers);
+  if (availability.availableSeats > 0) {
+    availability.status = 'active';
+  }
+  await availability.save();
+}
+
 app.post('/api/customer/bookings', async (req, res) => {
+  let seatsReserved = false;
+  let packageId = null, dates = null, travelers = null;
   try {
-    const { packageId, package: packageName, hotelId, hotelName, dates, travelers, amount, email, phone, customer, coupon } = req.body;
+    const { package: packageName, hotelId, hotelName, amount, email, phone, customer, coupon } = req.body;
+    packageId = req.body.packageId;
+    dates = req.body.dates;
+    travelers = req.body.travelers;
     const originalAmount = Number(amount) || 0;
     let finalAmount = originalAmount;
     let discountAmount = 0;
@@ -5371,6 +5583,11 @@ app.post('/api/customer/bookings', async (req, res) => {
           };
         }
       }
+      // Enforce inventory control: reject booking when seats are insufficient
+      // for the selected travel date, otherwise reserve them.
+      const numTravelers = Number(travelers) || 1;
+      await reservePackageSeats(packageId, dates, numTravelers);
+      seatsReserved = true;
     }
     // Persist hotel references so hotel booking history (used by the
     // recommendation engine) is complete for customer-initiated stays.
@@ -5390,7 +5607,7 @@ app.post('/api/customer/bookings', async (req, res) => {
       userId: req.user.userId,
       type: 'booking',
       title: 'Booking Confirmed',
-      message: `Your booking for ${payload.package || 'hotel'} (${payload.bookingId}) has been received and is pending confirmation. Amount: â‚¹${finalAmount || 0}.`,
+      message: `Your booking for ${payload.package || 'hotel'} (${payload.bookingId}) has been received and is pending confirmation. Amount: ₹${finalAmount || 0}.`,
       relatedId: newBooking._id,
       read: false
     });
@@ -5398,7 +5615,7 @@ app.post('/api/customer/bookings', async (req, res) => {
       await sendNotificationEmail(
         req.user.email,
         'Booking Confirmation',
-        `Your booking <strong>${payload.bookingId}</strong> for ${payload.package || 'hotel'} has been received and is pending confirmation. Amount: â‚¹${finalAmount || 0}.`
+        `Your booking <strong>${payload.bookingId}</strong> for ${payload.package || 'hotel'} has been received and is pending confirmation. Amount: ₹${finalAmount || 0}.`
       );
     }
     if (payload.operatorId) {
@@ -5407,7 +5624,7 @@ app.post('/api/customer/bookings', async (req, res) => {
         await sendNotificationEmail(
           opUser.email,
           'New Booking Received',
-          `A new booking <strong>${payload.bookingId}</strong> has been placed for your package "${payload.package}". Amount: â‚¹${finalAmount || 0}.`
+          `A new booking <strong>${payload.bookingId}</strong> has been placed for your package "${payload.package}". Amount: ₹${finalAmount || 0}.`
         );
       }
       // In-app alert so the operator sees the booking without waiting for mail.
@@ -5415,7 +5632,7 @@ app.post('/api/customer/bookings', async (req, res) => {
         userId: payload.operatorId,
         type: 'booking',
         title: 'New Booking Received',
-        message: `${payload.customer || 'A customer'} booked "${payload.package || 'your package'}" (${payload.bookingId}) for ${payload.dates || 'the scheduled date'}. Amount: â‚¹${finalAmount || 0}.`,
+        message: `${payload.customer || 'A customer'} booked "${payload.package || 'your package'}" (${payload.bookingId}) for ${payload.dates || 'the scheduled date'}. Amount: ₹${finalAmount || 0}.`,
         bookingId: newBooking._id,
         relatedId: newBooking._id,
         severity: 'info',
@@ -5425,8 +5642,16 @@ app.post('/api/customer/bookings', async (req, res) => {
     }
     res.status(201).json({ message: 'Booking created successfully', booking: newBooking });
   } catch (error) {
+    if (seatsReserved && packageId) {
+      try {
+        await releasePackageSeats({ packageId, travelers: Number(travelers) || 1, dates });
+      } catch (releaseErr) {
+        console.error('Failed to release reserved seats:', releaseErr.message);
+      }
+    }
     console.error('Error creating booking:', error);
-    res.status(500).json({ message: 'Error creating booking' });
+    const status = error.statusCode || 500;
+    res.status(status).json({ message: error.message || 'Error creating booking' });
   }
 });
 
@@ -5521,7 +5746,7 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
     } else if (booking.paidAmount > 0) {
       booking.paymentStatus = 'partial';
     }
-    booking.timeline.push({ status: booking.paymentStatus, date: new Date(), note: `Payment of â‚¹${paymentAmount} received` });
+    booking.timeline.push({ status: booking.paymentStatus, date: new Date(), note: `Payment of ₹${paymentAmount} received` });
     await booking.save();
     if (booking.paymentStatus === 'paid') {
       if (booking.coupon && booking.coupon.couponId) {
@@ -5541,7 +5766,7 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
           userId: req.user.userId,
           type: 'payment',
           title: 'Payment Confirmed',
-          message: `Payment of â‚¹${paymentAmount} received. Your booking (${booking.bookingId}) is now fully confirmed.`,
+          message: `Payment of ₹${paymentAmount} received. Your booking (${booking.bookingId}) is now fully confirmed.`,
           relatedId: booking._id,
           read: false
         });
@@ -5551,7 +5776,7 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
           req.user.email,
           'Payment Confirmation & Invoice',
           'Payment Confirmed!',
-          `Payment of â‚¹${paymentAmount} received. Your booking <strong>${booking.bookingId}</strong> is now fully confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
+          `Payment of ₹${paymentAmount} received. Your booking <strong>${booking.bookingId}</strong> is now fully confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
           [{ name: `invoice_${invoice.invoiceNo || 'invoice'}.pdf`, content: pdfBuffer }]
         ).catch(err => console.error('Invoice email failed:', err.message));
       }
@@ -5560,7 +5785,7 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
         userId: req.user.userId,
         type: 'payment',
         title: 'Partial Payment Received',
-        message: `Payment of â‚¹${paymentAmount} received. Remaining balance: â‚¹${booking.amount - booking.paidAmount}.`,
+        message: `Payment of ₹${paymentAmount} received. Remaining balance: ₹${booking.amount - booking.paidAmount}.`,
         relatedId: booking._id,
         read: false
       });
@@ -5568,7 +5793,7 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
         await sendNotificationEmail(
           req.user.email,
           'Partial Payment Received',
-          `Payment of â‚¹${paymentAmount} received for booking <strong>${booking.bookingId}</strong>. Remaining balance: â‚¹${booking.amount - booking.paidAmount}.`
+          `Payment of ₹${paymentAmount} received for booking <strong>${booking.bookingId}</strong>. Remaining balance: ₹${booking.amount - booking.paidAmount}.`
         );
       }
     }
@@ -5645,7 +5870,9 @@ app.post('/api/customer/bookings/:id/cancel', async (req, res) => {
 
     await booking.save();
 
+    // Release reserved seats back to inventory on cancellation.
     if (booking.packageId) {
+      await releasePackageSeats(booking).catch(() => {});
       await Package.findByIdAndUpdate(booking.packageId._id, { $inc: { bookings: -1 } }).catch(() => {});
     }
 
@@ -5982,63 +6209,149 @@ app.delete('/api/customer/reviews/:id', async (req, res) => {
 app.get('/api/customer/wishlist', async (req, res) => {
   try {
     const filter = { userId: req.user.userId };
-    const search = searchFilter(['packageName', 'destination', 'category'], req.query.search);
+    const search = searchFilter(['packageName', 'hotelName', 'name', 'destination', 'location', 'category'], req.query.search);
     if (search) Object.assign(filter, search);
+    if (req.query.itemType && ['package', 'hotel'].includes(req.query.itemType)) {
+      filter.itemType = req.query.itemType;
+    }
     const { docs: items, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Wishlist, filter, {
       query: req.query,
-      populate: { path: 'packageId', select: 'name destination image price rating category' },
+      populate: [
+        { path: 'packageId', select: 'name destination image price rating category' },
+        { path: 'hotelId', select: 'name location image rating' }
+      ],
       sort: { addedAt: -1 }
     });
     const wishlist = items.map(item => {
       const pkg = item.packageId || {};
+      const hotel = item.hotelId || {};
+      const isHotel = item.itemType === 'hotel' || item.hotelId;
       return {
         _id: item._id,
+        itemType: item.itemType || (isHotel ? 'hotel' : 'package'),
         packageId: item.packageId?._id || item.packageId,
-        packageName: item.packageName || pkg.name || '',
+        hotelId: item.hotelId?._id || item.hotelId,
+        itemId: item.itemId || item.packageId?._id || item.hotelId?._id || item._id,
+        packageName: item.packageName || item.name || pkg.name || hotel.name || '',
+        hotelName: item.hotelName || item.name || hotel.name || '',
+        name: item.name || item.packageName || item.hotelName || pkg.name || hotel.name || '',
         destination: item.destination || pkg.destination || '',
-        image: item.image || pkg.image || '',
+        location: item.location || hotel.location || item.destination || '',
+        image: item.image || pkg.image || hotel.image || '',
         price: item.price || pkg.price || 0,
-        rating: item.rating || pkg.rating || 0,
-        category: item.category || pkg.category || 'tour',
-        addedAt: item.addedAt
+        originalPrice: item.originalPrice || item.price || pkg.price || hotel.minPrice || 0,
+        lastPrice: item.lastPrice || item.price || pkg.price || 0,
+        targetPrice: item.targetPrice || null,
+        priceAlertEnabled: Boolean(item.priceAlertEnabled),
+        rating: item.rating || pkg.rating || hotel.rating || 0,
+        category: item.category || pkg.category || 'hotel',
+        addedAt: item.addedAt,
+        lastCheckedAt: item.lastCheckedAt
       };
     });
     pagedResponse(res, 'wishlist', { docs: wishlist, total, page, limit, totalPages, hasNext, hasPrev }, {
-      stats: { total }
+      stats: { total, packageCount: await Wishlist.countDocuments({ userId: req.user.userId, $or: [{ itemType: 'package' }, { packageId: { $exists: true }, hotelId: { $exists: false } }] }), hotelCount: await Wishlist.countDocuments({ userId: req.user.userId, $or: [{ itemType: 'hotel' }, { hotelId: { $exists: true } }] }) }
     });
   } catch (error) {
+    console.error('Error fetching wishlist:', error);
     res.status(500).json({ message: 'Error fetching wishlist' });
   }
 });
 
 app.post('/api/customer/wishlist', async (req, res) => {
   try {
-    const { packageId } = req.body;
-    if (!packageId) {
-      return res.status(400).json({ message: 'Package ID is required' });
+    const { packageId, hotelId, itemType, targetPrice, priceAlertEnabled } = req.body;
+    const type = itemType === 'hotel' || hotelId ? 'hotel' : 'package';
+    
+    if (type === 'package') {
+      if (!packageId) {
+        return res.status(400).json({ message: 'Package ID is required' });
+      }
+      const existing = await Wishlist.findOne({ userId: req.user.userId, packageId });
+      if (existing) {
+        return res.status(400).json({ message: 'Package already in wishlist' });
+      }
+      const pkg = await Package.findById(packageId);
+      if (!pkg) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+      const item = new Wishlist({
+        userId: req.user.userId,
+        itemType: 'package',
+        packageId,
+        itemId: packageId,
+        packageName: pkg.name,
+        name: pkg.name,
+        destination: pkg.destination,
+        image: pkg.image,
+        price: pkg.price,
+        originalPrice: pkg.price,
+        lastPrice: pkg.price,
+        rating: pkg.rating,
+        category: pkg.category,
+        targetPrice: targetPrice || null,
+        priceAlertEnabled: Boolean(priceAlertEnabled)
+      });
+      await item.save();
+      return res.status(201).json({ message: 'Added to wishlist', item });
+    } else {
+      if (!hotelId) {
+        return res.status(400).json({ message: 'Hotel ID is required' });
+      }
+      const existing = await Wishlist.findOne({ userId: req.user.userId, hotelId });
+      if (existing) {
+        return res.status(400).json({ message: 'Hotel already in wishlist' });
+      }
+      const hotel = await Hotel.findById(hotelId);
+      if (!hotel) {
+        return res.status(404).json({ message: 'Hotel not found' });
+      }
+      const rooms = await Room.find({ hotel: hotel.name }).lean();
+      const minPrice = rooms.length > 0 ? Math.min(...rooms.map(r => r.price)) : 0;
+      const item = new Wishlist({
+        userId: req.user.userId,
+        itemType: 'hotel',
+        hotelId,
+        itemId: hotelId,
+        hotelName: hotel.name,
+        name: hotel.name,
+        location: hotel.location,
+        destination: hotel.location,
+        image: hotel.image,
+        price: minPrice,
+        originalPrice: minPrice,
+        lastPrice: minPrice,
+        rating: hotel.rating,
+        category: 'hotel',
+        targetPrice: targetPrice || null,
+        priceAlertEnabled: Boolean(priceAlertEnabled)
+      });
+      await item.save();
+      return res.status(201).json({ message: 'Added to wishlist', item });
     }
-    const existing = await Wishlist.findOne({ userId: req.user.userId, packageId });
-    if (existing) {
-      return res.status(400).json({ message: 'Package already in wishlist' });
-    }
-    const pkg = await Package.findById(packageId);
-    if (!pkg) {
-      return res.status(404).json({ message: 'Package not found' });
-    }
-    const item = new Wishlist({
-      userId: req.user.userId,
-      packageId,
-      packageName: pkg.name,
-      destination: pkg.destination,
-      image: pkg.image,
-      price: pkg.price,
-      rating: pkg.rating,
-      category: pkg.category
-    });
-    await item.save();
-    res.status(201).json({ message: 'Added to wishlist', item });
   } catch (error) {
+    console.error('Error adding to wishlist:', error);
     res.status(500).json({ message: 'Error adding to wishlist' });
+  }
+});
+
+app.put('/api/customer/wishlist/:id/alerts', async (req, res) => {
+  try {
+    const { priceAlertEnabled, targetPrice } = req.body;
+    const updates = {};
+    if (priceAlertEnabled !== undefined) updates.priceAlertEnabled = Boolean(priceAlertEnabled);
+    if (targetPrice !== undefined) updates.targetPrice = targetPrice === null || targetPrice === '' ? null : Number(targetPrice);
+    const item = await Wishlist.findOneAndUpdate(
+      { _id: req.params.id, userId: req.user.userId },
+      updates,
+      { new: true }
+    );
+    if (!item) {
+      return res.status(404).json({ message: 'Wishlist item not found' });
+    }
+    res.status(200).json({ message: 'Price alert updated', item });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating price alert' });
   }
 });
 
@@ -6903,7 +7216,7 @@ app.post('/api/hotel/bookings', async (req, res) => {
       await sendNotificationEmail(
         payload.guestEmail,
         'Booking Confirmation',
-        `Your hotel booking <strong>${payload.bookingId}</strong> has been created. Check-in: ${payload.checkInDate || 'TBD'}. Amount: â‚¹${payload.amount || 0}.`
+        `Your hotel booking <strong>${payload.bookingId}</strong> has been created. Check-in: ${payload.checkInDate || 'TBD'}. Amount: ₹${payload.amount || 0}.`
       );
     }
     res.status(201).json({ message: 'Booking created successfully', booking });
@@ -6945,7 +7258,7 @@ app.put('/api/hotel/bookings/:id', async (req, res) => {
         userId: req.user.userId,
         type: 'payment',
         title: 'Guest Checked Out',
-        message: `${booking.guestName || 'Guest'} has checked out. Total: â‚¹${booking.amount || 0}, Paid: â‚¹${booking.paidAmount || 0}.`,
+        message: `${booking.guestName || 'Guest'} has checked out. Total: ₹${booking.amount || 0}, Paid: ₹${booking.paidAmount || 0}.`,
         relatedId: booking._id,
         read: false
       });
@@ -6953,7 +7266,7 @@ app.put('/api/hotel/bookings/:id', async (req, res) => {
         await sendNotificationEmail(
           booking.guestEmail,
           'Check-out Confirmation',
-          `Thank you for staying at ${booking.hotelName || 'our hotel'}. Total: â‚¹${booking.amount || 0}, Paid: â‚¹${booking.paidAmount || 0}.`
+          `Thank you for staying at ${booking.hotelName || 'our hotel'}. Total: ₹${booking.amount || 0}, Paid: ₹${booking.paidAmount || 0}.`
         ).catch(() => {});
       }
     }
@@ -6986,13 +7299,13 @@ app.put('/api/hotel/bookings/:id/pay', async (req, res) => {
     } else if (booking.paidAmount > 0) {
       booking.paymentStatus = 'partial';
     }
-    booking.timeline.push({ status: 'payment', date: new Date(), note: `Payment of â‚¹${paymentAmount} recorded` });
+    booking.timeline.push({ status: 'payment', date: new Date(), note: `Payment of ₹${paymentAmount} recorded` });
     await booking.save();
     await Notification.create({
       userId: req.user.userId,
       type: 'payment',
       title: 'Payment Recorded',
-      message: `Payment of â‚¹${paymentAmount} recorded for ${booking.guestName || 'guest'} (${booking.bookingId}).`,
+      message: `Payment of ₹${paymentAmount} recorded for ${booking.guestName || 'guest'} (${booking.bookingId}).`,
       relatedId: booking._id,
       read: false
     });

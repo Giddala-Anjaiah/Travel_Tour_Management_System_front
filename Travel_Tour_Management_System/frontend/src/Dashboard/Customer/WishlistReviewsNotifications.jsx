@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+﻿import { useRef, useState, useEffect } from 'react'
 import { Heart, Star, Bell, Bell as BellIcon, Search, Trash2, Check, Calendar, Sparkles, Clock, CheckCircle, MapPin as MapIcon, Plus } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
@@ -14,7 +14,7 @@ const WishlistReviewsNotifications = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [showReviewModal, setShowReviewModal] = useState(false)
 
-  // Each tab pages independently — switching tabs never shares or resets
+  // Each tab pages independently â€” switching tabs never shares or resets
   // another tab's position in its own list.
   const [pages, setPages] = useState({ wishlist: 1, reviews: 1, notifications: 1 })
   const [limits, setLimits] = useState({ wishlist: 10, reviews: 10, notifications: 10 })
@@ -34,6 +34,7 @@ const WishlistReviewsNotifications = () => {
   const [reviewForm, setReviewForm] = useState({ packageId: '', packageName: '', rating: 5, comment: '' })
   const [saving, setSaving] = useState(false)
   const [packages, setPackages] = useState([])
+  const [hotels, setHotels] = useState([])
   const localWishlistRef = useRef([])
 
   const loadPackages = async () => {
@@ -42,6 +43,15 @@ const WishlistReviewsNotifications = () => {
       setPackages(data.packages || [])
     } catch (err) {
       console.error('Failed to load packages', err)
+    }
+  }
+
+  const loadHotels = async () => {
+    try {
+      const data = await api('/public/hotels', { params: { limit: 'all' } })
+      setHotels(data.hotels || data.docs || [])
+    } catch (err) {
+      console.error('Failed to load hotels', err)
     }
   }
 
@@ -113,6 +123,19 @@ const WishlistReviewsNotifications = () => {
     }
   }
 
+  const addHotelToWishlist = async (hotelId) => {
+    try {
+      await api('/customer/wishlist', {
+        method: 'POST',
+        body: JSON.stringify({ hotelId, itemType: 'hotel' })
+      })
+      alert('Added to wishlist!')
+      await loadWishlist()
+    } catch (err) {
+      alert(err.message || 'Failed to add to wishlist')
+    }
+  }
+
   const loadReviews = async (page = pages.reviews, limit = limits.reviews) => {
     try {
       const data = await api('/customer/reviews', { params: { page, limit, search: searchTerm } })
@@ -141,7 +164,7 @@ const WishlistReviewsNotifications = () => {
     Promise.resolve().then(() => {
       setLoading(true)
       setError('')
-      return Promise.all([loadWishlist(), loadReviews(), loadNotifications(), loadPackages()])
+      return Promise.all([loadWishlist(), loadReviews(), loadNotifications(), loadPackages(), loadHotels()])
     })
       .catch((err) => setError(err.message || 'Failed to load data'))
       .finally(() => setLoading(false))
@@ -169,15 +192,19 @@ const WishlistReviewsNotifications = () => {
     return false
   }
 
-  const removeFromWishlist = async (id) => {
-    if (!window.confirm('Remove this item from wishlist?')) return
+  const togglePriceAlert = async (id, enabled, targetPrice) => {
     try {
-      await api(`/customer/wishlist/${id}`, { method: 'DELETE' })
-      if (!stepBackAfterDelete('wishlist', wishlist)) await loadWishlist()
+      await api(`/customer/wishlist/${id}/alerts`, {
+        method: 'PUT',
+        body: JSON.stringify({ priceAlertEnabled: enabled, targetPrice })
+      })
+      await loadWishlist()
     } catch (err) {
-      alert(err.message || 'Failed to remove from wishlist')
+      alert(err.message || 'Failed to update price alert')
     }
   }
+
+  const removeFromWishlist = async (id) => {
 
   const submitReview = async (e) => {
     e.preventDefault()
@@ -252,7 +279,8 @@ const WishlistReviewsNotifications = () => {
       beach: { label: 'Beach', color: '#0e7490' },
       nature: { label: 'Nature', color: '#15803d' },
       adventure: { label: 'Adventure', color: '#b45309' },
-      heritage: { label: 'Heritage', color: '#6d28d9' }
+      heritage: { label: 'Heritage', color: '#6d28d9' },
+      hotel: { label: 'Hotel', color: '#2563eb' }
     }
     return badges[category] || { label: 'Tour', color: '#475569' }
   }
@@ -279,7 +307,7 @@ const WishlistReviewsNotifications = () => {
           </div>
         </div>
         <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <p style={{ color: '#64748b' }}>Loading…</p>
+          <p style={{ color: '#64748b' }}>Loadingâ€¦</p>
         </div>
       </CustomerLayout>
     )
@@ -347,7 +375,7 @@ const WishlistReviewsNotifications = () => {
           <div className="wishlist-add-section enhanced">
             <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>Add to Wishlist</h3>
             <div className="wishlist-add-grid enhanced">
-              {packages.filter(pkg => !wishlist.some(w => w.packageId === pkg._id)).map(pkg => (
+              {packages.filter(pkg => !wishlist.some(w => (w.packageId === pkg._id) || (w.itemType === 'package' && w.itemId === pkg._id))).map(pkg => (
                 <div key={pkg._id} className="wishlist-add-card enhanced">
                   <div className="wishlist-image enhanced" style={{ height: '120px' }}>
                     {pkg.image ? <img className="cp-cover" src={pkg.image} alt={pkg.name} /> : <Star className="h-8 w-8" style={{ color: '#cbd5e1' }} />}
@@ -367,8 +395,28 @@ const WishlistReviewsNotifications = () => {
                   </div>
                 </div>
               ))}
-              {packages.filter(pkg => !wishlist.some(w => w.packageId === pkg._id)).length === 0 && (
-                <p style={{ color: '#64748b' }}>All packages are in your wishlist or no packages available.</p>
+              {hotels.filter(hotel => !wishlist.some(w => (w.hotelId === hotel._id) || (w.itemType === 'hotel' && w.itemId === hotel._id))).map(hotel => (
+                <div key={`hotel-${hotel._id}`} className="wishlist-add-card enhanced">
+                  <div className="wishlist-image enhanced" style={{ height: '120px' }}>
+                    {hotel.image ? <img className="cp-cover" src={hotel.image} alt={hotel.name} /> : <Star className="h-8 w-8" style={{ color: '#cbd5e1' }} />}
+                  </div>
+                  <div className="wishlist-content enhanced">
+                    <h4>{hotel.name}</h4>
+                    <div className="wishlist-location enhanced">
+                      <MapIcon className="h-4 w-4" />
+                      <span>{hotel.location || hotel.destination || 'Unknown'}</span>
+                    </div>
+                    <div className="wishlist-price enhanced">
+                      <strong>₹{Number(hotel.minPrice || hotel.price || 0).toLocaleString()} {hotel.minPrice ? '/ night' : ''}</strong>
+                    </div>
+                    <button onClick={() => addHotelToWishlist(hotel._id)} className="btn-secondary enhanced" style={{ marginTop: '0.5rem' }}>
+                      <Heart className="h-4 w-4" /> Add Hotel
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {packages.filter(pkg => !wishlist.some(w => (w.packageId === pkg._id) || (w.itemType === 'package' && w.itemId === pkg._id))).length === 0 && hotels.filter(hotel => !wishlist.some(w => (w.hotelId === hotel._id) || (w.itemType === 'hotel' && w.itemId === hotel._id))).length === 0 && (
+                <p style={{ color: '#64748b' }}>All packages and hotels are in your wishlist or no items available.</p>
               )}
             </div>
           </div>
@@ -391,14 +439,14 @@ const WishlistReviewsNotifications = () => {
                     </div>
                   </div>
                   <div className="wishlist-content enhanced">
-                    <h3>{item.packageName}</h3>
+                    <h3>{item.name || item.packageName || item.hotelName}</h3>
                     <div className="wishlist-location enhanced">
                       <MapIcon className="h-4 w-4" />
-                      <span>{item.destination || 'Unknown'}</span>
+                      <span>{item.location || item.destination || 'Unknown'}</span>
                     </div>
                     <div className="wishlist-rating enhanced">
                       <Star className="h-4 w-4 fill" />
-                      <span>{item.rating || '—'}</span>
+                      <span>{item.rating || 'â€”'}</span>
                     </div>
                     <div className="wishlist-meta">
                       <span className="meta-item">
@@ -406,14 +454,39 @@ const WishlistReviewsNotifications = () => {
                         <small>Added {item.addedAt ? new Date(item.addedAt).toLocaleDateString() : 'recently'}</small>
                       </span>
                     </div>
+                    <div className="wishlist-price-alerts" style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <div style={{ fontSize: '0.875rem' }}>
+                        <strong>Current: ₹{Number(item.price || 0).toLocaleString()}{item.itemType === 'hotel' ? '/ night' : ''}</strong>
+                      </div>
+                      {item.targetPrice && (
+                        <div style={{ fontSize: '0.75rem', color: item.price <= item.targetPrice ? '#16a34a' : '#64748b' }}>
+                          Target: ₹{Number(item.targetPrice).toLocaleString()} {item.price <= item.targetPrice ? '(Below target!)' : ''}
+                        </div>
+                      )}
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.375rem', fontSize: '0.75rem', cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={Boolean(item.priceAlertEnabled)}
+                          onChange={(e) => togglePriceAlert(item._id, e.target.checked, item.targetPrice)}
+                        />
+                        Price alerts
+                      </label>
+                      <input
+                        type="number"
+                        placeholder="Target price"
+                        defaultValue={item.targetPrice || ''}
+                        onBlur={(e) => togglePriceAlert(item._id, item.priceAlertEnabled, e.target.value)}
+                        style={{ padding: '0.25rem 0.5rem', fontSize: '0.75rem', borderRadius: '4px', border: '1px solid #cbd5e1' }}
+                      />
+                    </div>
                     <div className="wishlist-footer enhanced">
                       <div className="wishlist-price enhanced">
                         <small>Starting from</small>
-                        <strong>{item.price ? '₹' + item.price.toLocaleString() : 'Price on request'}</strong>
+                        <strong>{item.price ? '₹' + item.price.toLocaleString() + (item.itemType === 'hotel' ? '/ night' : '') : 'Price on request'}</strong>
                       </div>
                       <div className="wishlist-actions">
-                        <Link to="/customer/bookings" state={{ package: { name: item.packageName, price: item.price, _id: item.packageId || item._id } }} className="btn-primary enhanced">
-                          Book Now
+                        <Link to={item.itemType === 'hotel' ? '/customer/hotels' : '/customer/bookings'} state={item.itemType === 'package' ? { package: { name: item.name || item.packageName, price: item.price, _id: item.packageId || item.itemId } } : undefined} className="btn-primary enhanced">
+                          {item.itemType === 'hotel' ? 'View Hotel' : 'Book Now'}
                         </Link>
                         <button
                           onClick={() => removeFromWishlist(item._id)}
@@ -478,7 +551,7 @@ const WishlistReviewsNotifications = () => {
                   <div className="review-footer enhanced">
                     <span className="review-date">
                       <Calendar className="h-4 w-4" />
-                      {review.date ? new Date(review.date).toLocaleDateString() : '—'}
+                      {review.date ? new Date(review.date).toLocaleDateString() : 'â€”'}
                     </span>
                     <div className="review-actions">
                       <button onClick={() => deleteReview(review._id)} className="icon-btn delete">
@@ -525,7 +598,7 @@ const WishlistReviewsNotifications = () => {
                     <p>{notif.message}</p>
                     <span className="notification-date">
                       <Clock className="h-4 w-4" />
-                      {notif.createdAt ? new Date(notif.createdAt).toLocaleDateString() : '—'}
+                      {notif.createdAt ? new Date(notif.createdAt).toLocaleDateString() : 'â€”'}
                     </span>
                   </div>
                   <div className="notification-actions enhanced">
@@ -561,7 +634,7 @@ const WishlistReviewsNotifications = () => {
           <div className="modal">
             <div className="modal-header">
               <h3>Write a Review</h3>
-              <button onClick={() => setShowReviewModal(false)} className="modal-close">×</button>
+              <button onClick={() => setShowReviewModal(false)} className="modal-close">Ã—</button>
             </div>
             <div className="modal-body">
               <form className="review-form enhanced" onSubmit={submitReview}>
@@ -616,6 +689,7 @@ const WishlistReviewsNotifications = () => {
       )}
     </CustomerLayout>
   )
+}
 }
 
 export default WishlistReviewsNotifications

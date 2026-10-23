@@ -18,6 +18,17 @@ const HotelSearchAvailability = () => {
   const [checkOut, setCheckOut] = useState('')
   const [guests, setGuests] = useState(2)
   const [favorites, setFavorites] = useState([])
+  const [priceAlerts, setPriceAlerts] = useState({})
+
+  useEffect(() => {
+    try {
+      const wishlist = JSON.parse(localStorage.getItem('customerWishlist') || '[]')
+      const favs = wishlist.filter(w => w.itemType === 'hotel' || w.hotelId).map(w => w.hotelId || w.itemId || w._id)
+      setFavorites(favs)
+    } catch {
+      // ignore
+    }
+  }, [])
   const [selectedHotel, setSelectedHotel] = useState(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [page, setPage] = useState(1)
@@ -114,8 +125,44 @@ const HotelSearchAvailability = () => {
     return matchesRating && matchesPrice && matchesLocation
   })
 
-  const toggleFavorite = (id) => {
-    setFavorites(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id])
+  const toggleFavorite = async (hotel) => {
+    const hotelId = hotel._id
+    if (favorites.includes(hotelId)) {
+      setFavorites(favorites.filter(id => id !== hotelId))
+      try {
+        const wishlist = JSON.parse(localStorage.getItem('customerWishlist') || '[]')
+        const item = wishlist.find(w => (w.hotelId || w.itemId) === hotelId)
+        if (item?._id) {
+          await api(`/customer/wishlist/${item._id}`, { method: 'DELETE' })
+        }
+        const updated = wishlist.filter(w => (w.hotelId || w.itemId || w._id) !== hotelId)
+        localStorage.setItem('customerWishlist', JSON.stringify(updated))
+      } catch (err) {
+        console.error('Failed to remove hotel from wishlist', err)
+      }
+      return
+    }
+    setFavorites([...favorites, hotelId])
+    try {
+      const res = await api('/customer/wishlist', {
+        method: 'POST',
+        body: JSON.stringify({ hotelId, itemType: 'hotel', priceAlertEnabled: false })
+      })
+      const wishlist = JSON.parse(localStorage.getItem('customerWishlist') || '[]')
+      wishlist.push({
+        _id: res.item?._id,
+        hotelId,
+        itemId: hotelId,
+        itemType: 'hotel',
+        name: hotel.name,
+        location: hotel.location,
+        price: hotel.minPrice || hotel.price
+      })
+      localStorage.setItem('customerWishlist', JSON.stringify(wishlist))
+    } catch (err) {
+      console.error('Failed to add hotel to wishlist', err)
+      setFavorites(favorites)
+    }
   }
 
   const getAmenityIcon = (amenity) => {
@@ -250,7 +297,7 @@ const HotelSearchAvailability = () => {
             <div key={hotel._id} className="hotel-card enhanced">
               <div className="hotel-image enhanced">
                 <img className="cp-cover" src={hotel.image} alt={hotel.name} onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80' }} />
-                <button onClick={() => toggleFavorite(hotel._id)} className={`favorite-btn enhanced ${isFavorite ? 'active' : ''}`}>
+                <button onClick={() => toggleFavorite(hotel)} className={`favorite-btn enhanced ${isFavorite ? 'active' : ''}`}>
                   <Heart className="h-5 w-5" fill={isFavorite ? '#ef4444' : 'none'} />
                 </button>
                 <div className="hotel-category-badge" style={{ backgroundColor: categoryBadge.color }}>
