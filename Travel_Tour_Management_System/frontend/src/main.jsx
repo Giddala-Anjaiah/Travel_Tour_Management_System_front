@@ -36,6 +36,7 @@ const HotelReviewsRevenuePage = lazy(() => import('./Dashboard/Hotel/HotelReview
 const HotelSettingsPage = lazy(() => import('./Dashboard/Hotel/HotelSettingsPage.jsx'))
 const DashboardAnalytics = lazy(() => import('./Dashboard/Admin/DashboardAnalytics.jsx'))
 const UserManagement = lazy(() => import('./Dashboard/Admin/UserManagement.jsx'))
+const OperatorManagement = lazy(() => import('./Dashboard/Admin/OperatorManagement.jsx'))
 const DestinationManagement = lazy(() => import('./Dashboard/Admin/DestinationManagement.jsx'))
 const ItineraryManagement = lazy(() => import('./Dashboard/Admin/ItineraryManagement.jsx'))
 const RoomsManagement = lazy(() => import('./Dashboard/Admin/RoomsManagement.jsx'))
@@ -44,6 +45,7 @@ const InvoicesReviews = lazy(() => import('./Dashboard/Admin/InvoicesReviews.jsx
 const NotificationsManagement = lazy(() => import('./Dashboard/Admin/NotificationsManagement.jsx'))
 const ReportsCouponsSettings = lazy(() => import('./Dashboard/Admin/ReportsCouponsSettings.jsx'))
 const RefundOversight = lazy(() => import('./Dashboard/Admin/RefundOversight.jsx'))
+const HotelPartnerManagement = lazy(() => import('./Dashboard/Admin/HotelPartnerManagement.jsx'))
 const ProfileManagement = lazy(() => import('./Dashboard/Customer/ProfileManagement.jsx'))
 const DestinationExploration = lazy(() => import('./Dashboard/Customer/DestinationExploration.jsx'))
 const DestinationDetail = lazy(() => import('./Dashboard/Customer/DestinationDetail.jsx'))
@@ -91,6 +93,14 @@ createRoot(document.getElementById('root')).render(
           } 
         />
         <Route 
+          path="/admin/operators" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <OperatorManagement />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
           path="/admin/destinations" 
           element={
             <ProtectedRoute allowedRoles={['admin']}>
@@ -127,6 +137,14 @@ createRoot(document.getElementById('root')).render(
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <RefundOversight />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/hotel-partners" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <HotelPartnerManagement />
             </ProtectedRoute>
           } 
         />

@@ -1,4 +1,4 @@
-﻿/* ============================================
+/* ============================================
    PROFESSIONAL DASHBOARD STYLES
    ============================================ */
 
@@ -5696,7 +5696,7 @@
 }
 
 .placeholder-content li::before {
-  content: 'âœ“';
+  content: '✓';
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -6568,7 +6568,7 @@
 }
 
 /* ============================================
-   CUSTOMER PORTAL â€” PROFESSIONAL TRAVEL UI
+   CUSTOMER PORTAL — PROFESSIONAL TRAVEL UI
    ============================================ */
 
 .customer-portal {
@@ -6667,7 +6667,7 @@
 }
 
 /* ============================================
-   CUSTOMER DASHBOARD â€” DARK MODE SUPPORT
+   CUSTOMER DASHBOARD — DARK MODE SUPPORT
    ============================================ */
 
 [data-theme="dark"] .customer-portal .cd-toolbar {
@@ -7480,7 +7480,7 @@
 }
 
 /* ============================================
-   CUSTOMER PORTAL â€” PACKAGE SECTION
+   CUSTOMER PORTAL — PACKAGE SECTION
    Professional, travel-grade card system
    ============================================ */
 
@@ -7675,7 +7675,7 @@
   pointer-events: none;
 }
 
-/* Floating badges on image â€” single right-aligned cluster: [ â™¥ ] [ Beach ] [ Easy ] */
+/* Floating badges on image — single right-aligned cluster: [ ♥ ] [ Beach ] [ Easy ] */
 .customer-portal .package-image.enhanced {
   position: relative;
 }
@@ -8032,7 +8032,7 @@
 }
 
 /* ============================================
-   CUSTOMER PORTAL â€” DASHBOARD HOME
+   CUSTOMER PORTAL — DASHBOARD HOME
    Polished, animated, professional
    ============================================ */
 
@@ -8666,7 +8666,7 @@
 
 
 /* ============================================
-   ADMIN â€” PACKAGE CARD IMAGE
+   ADMIN — PACKAGE CARD IMAGE
    Reliable image rendering for admin packages
    ============================================ */
 
@@ -8702,7 +8702,7 @@
 }
 
 /* ============================================
-   CUSTOMER DASHBOARD â€” COMPLETE STYLING
+   CUSTOMER DASHBOARD — COMPLETE STYLING
    ============================================ */
 
 .customer-portal .cd-toolbar {
@@ -10753,13 +10753,13 @@
 }
 
 /* ============================================
-   CUSTOMER PORTAL â€” DESIGN SYSTEM REFINEMENT
+   CUSTOMER PORTAL — DESIGN SYSTEM REFINEMENT
    Professional travel-platform polish layer:
    design tokens, unified badges/buttons/forms/
    tables/modals, and responsive behavior.
    ============================================ */
 
-/* â€” Design tokens (radius / shadow / status palette) â€” */
+/* — Design tokens (radius / shadow / status palette) — */
 .customer-portal {
   --cp-r-sm: 0.5rem;
   --cp-r-md: 0.75rem;
@@ -10785,7 +10785,7 @@
   --cp-neutral-line: #e2e8f0;
 }
 
-  /* â€” Sidebar: scannable nav with a distinct active state â€” */
+  /* — Sidebar: scannable nav with a distinct active state — */
   .customer-portal .dashboard-sidebar {
     width: 252px;
     background: #0e2038;
@@ -10828,7 +10828,7 @@
   box-shadow: inset 3px 0 0 var(--cp-accent);
 }
 
-/* â€” Header: consistent, slightly elevated â€” */
+/* — Header: consistent, slightly elevated — */
 .customer-portal .dashboard-header {
   padding: 1.1rem 1.75rem;
   box-shadow: var(--cp-sh-sm);
@@ -10847,7 +10847,7 @@
   border-color: #cde7e3;
 }
 
-/* â€” Cards: one consistent card system â€” */
+/* — Cards: one consistent card system — */
 .customer-portal .cd-card,
 .customer-portal .destination-card.enhanced,
 .customer-portal .package-card.enhanced,
@@ -10889,7 +10889,7 @@
   overflow-wrap: break-word;
 }
 
-/* â€” Buttons: primary / secondary / danger / focus states â€” */
+/* — Buttons: primary / secondary / danger / focus states — */
 .customer-portal .btn-primary,
 .customer-portal .btn-primary.enhanced,
 .customer-portal a.btn-primary {
@@ -10954,7 +10954,7 @@
   box-shadow: none;
 }
 
-/* â€” Status badges: subtle, accessible, not color-only (dot + label) â€” */
+/* — Status badges: subtle, accessible, not color-only (dot + label) — */
 .customer-portal .status-badge {
   display: inline-flex;
   align-items: center;
@@ -11004,7 +11004,7 @@
   border-color: var(--cp-info-line);
 }
 
-/* â€” Payment status badge â€” */
+/* — Payment status badge — */
 .customer-portal .payment-status-badge {
   display: inline-flex;
   align-items: center;
@@ -11046,7 +11046,7 @@
   border-color: var(--cp-info-line);
 }
 
-/* â€” Forms: consistent inputs, focus and disabled states â€” */
+/* — Forms: consistent inputs, focus and disabled states — */
 .customer-portal .form-group input,
 .customer-portal .form-group select,
 .customer-portal .form-group textarea,
@@ -11077,7 +11077,7 @@
   cursor: not-allowed;
 }
 
-/* â€” Tables: clear headers, spacing, hover, mobile scroll â€” */
+/* — Tables: clear headers, spacing, hover, mobile scroll — */
 .table-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -11116,7 +11116,7 @@
   background: #f6fbfa;
 }
 
-/* â€” Modals: safe viewport fit, aligned footer â€” */
+/* — Modals: safe viewport fit, aligned footer — */
 .customer-portal .modal-overlay {
   padding: 1rem;
   background: rgba(16, 35, 58, 0.5);
@@ -11141,7 +11141,7 @@
   flex-shrink: 0;
 }
 
-/* â€” Empty / loading / error states â€” */
+/* — Empty / loading / error states — */
 .customer-portal .cp-empty,
 .customer-portal .hotel-empty,
 .customer-portal .hotel-loading,
@@ -11155,7 +11155,7 @@
   color: var(--cp-danger);
 }
 
-/* â€” Hotel detail modal chips â€” */
+/* — Hotel detail modal chips — */
 .customer-portal .amenity-chip {
   display: inline-block;
   padding: 0.25rem 0.6rem;
@@ -11167,7 +11167,7 @@
   font-weight: 500;
 }
 
-/* â€” Toast: full-width on small screens â€” */
+/* — Toast: full-width on small screens — */
 @media (max-width: 480px) {
   .toast-container {
     left: 1rem;
@@ -11182,7 +11182,7 @@
   }
 }
 
-/* â€” Responsive: tablet â€” */
+/* — Responsive: tablet — */
 @media (max-width: 1024px) {
   .customer-portal .dashboard-content {
     padding: 1.25rem;
@@ -11195,7 +11195,7 @@
   }
 }
 
-/* â€” Responsive: mobile â€” the sidebar becomes a compact top bar â€” */
+/* — Responsive: mobile — the sidebar becomes a compact top bar — */
 @media (max-width: 900px) {
   .customer-portal .dashboard-container {
     flex-direction: column;
@@ -11272,7 +11272,7 @@
   }
 }
 
-/* â€” Responsive: small phones â€” */
+/* — Responsive: small phones — */
 @media (max-width: 640px) {
   .customer-portal .packages-grid.enhanced,
   .customer-portal .destinations-grid.enhanced,
@@ -11544,7 +11544,7 @@
 }
 
 .inclusions-list li::before {
-  content: 'âœ“';
+  content: '✓';
   color: var(--cp-success);
   font-weight: bold;
   flex-shrink: 0;
@@ -18679,7 +18679,7 @@
 }
 
 /* ============================================
-   ADMIN ANALYTICS â€” DASHBOARD ANALYTICS PAGE
+   ADMIN ANALYTICS — DASHBOARD ANALYTICS PAGE
    ============================================ */
 
 .analytics-sections {
@@ -18961,7 +18961,7 @@
 }
 
 /* ============================================
-   ADMIN â€” ITINERARY & HOTEL MANAGEMENT
+   ADMIN — ITINERARY & HOTEL MANAGEMENT
    ============================================ */
 
 .itinerary-page {
@@ -19305,7 +19305,7 @@
 }
 
 /* ============================================
-   ADMIN â€” ROOMS & AVAILABILITY
+   ADMIN — ROOMS & AVAILABILITY
    ============================================ */
 
 .rooms-page {
@@ -19620,7 +19620,7 @@
 }
 
 /* ============================================
-   ADMIN â€” BOOKINGS & PAYMENTS
+   ADMIN — BOOKINGS & PAYMENTS
    ============================================ */
 
 .bookings-page {
@@ -19847,7 +19847,7 @@
 }
 
 /* ============================================
-   ADMIN â€” INVOICES & REVIEWS
+   ADMIN — INVOICES & REVIEWS
    ============================================ */
 
 .invoices-page {
@@ -20260,7 +20260,7 @@
 }
 
 /* ============================================
-   ADMIN â€” NOTIFICATIONS MANAGEMENT
+   ADMIN — NOTIFICATIONS MANAGEMENT
    ============================================ */
 
 .notifications-page {
@@ -24365,3 +24365,173 @@
   justify-content: flex-end;
   margin-top: 1rem;
 }
+/* ============================================
+   ANALYTICS UI ENHANCEMENTS
+   ============================================ */
+
+/* Loading & empty states */
+.loading-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: var(--text-secondary);
+}
+.spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 1rem;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Error message enhanced */
+.error-message.enhanced {
+  background: var(--danger-light);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+.error-message-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 200px;
+}
+.error-message-content strong {
+  display: block;
+  font-size: 0.9rem;
+  color: var(--danger);
+}
+.error-message-content p {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* Filter controls */
+.filter-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-right: 0.5rem;
+  white-space: nowrap;
+}
+
+/* Stat card color variants */
+.stat-card.revenue-card .stat-icon { background: var(--primary-50); color: var(--primary); }
+.stat-card.bookings-card .stat-icon { background: var(--blue-light); color: var(--blue); }
+.stat-card.users-card .stat-icon { background: var(--info-light); color: var(--info); }
+.stat-card.refunds-card .stat-icon { background: var(--danger-light); color: var(--danger); }
+.stat-card.commissions-card .stat-icon { background: var(--warning-light); color: var(--warning); }
+.stat-card.rating-card .stat-icon { background: var(--purple-light); color: var(--purple); }
+.stat-card .stat-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+}
+
+/* Section header */
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.header-left h3 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+.header-left p {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* Chart container */
+.chart-container {
+  width: 100%;
+  min-height: 260px;
+}
+
+/* Room card */
+.room-pct {
+  font-weight: 700;
+  color: var(--success);
+}
+
+/* Booking list head */
+.booking-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-tertiary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Stat change negative */
+.stat-change.negative {
+  color: var(--danger);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+/* Activity list icon */
+.activity-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* Quick actions */
+.quick-actions.enhanced {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Analytics sections spacing */
+.analytics-sections {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+

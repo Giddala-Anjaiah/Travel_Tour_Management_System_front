@@ -190,7 +190,6 @@ const BookingManagement = () => {
   return (
     <AdminLayout
       active="bookings"
-      title="Bookings & Payments"
     >
       <div className="bookings-page">
         {error && <div className="error-message">{error}</div>}

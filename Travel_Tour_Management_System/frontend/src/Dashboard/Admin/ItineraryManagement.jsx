@@ -176,7 +176,6 @@ const ItineraryManagement = () => {
   return (
     <AdminLayout
       active="itinerary"
-      title="Itinerary & Hotel Management"
     >
       <div className="itinerary-page">
         {error && <div className="error-message">{error}</div>}

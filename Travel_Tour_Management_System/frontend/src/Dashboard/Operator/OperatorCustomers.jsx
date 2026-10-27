@@ -10,6 +10,8 @@ const OperatorCustomers = () => {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState(null)
+  const [customerDetail, setCustomerDetail] = useState(null)
+  const [detailLoading, setDetailLoading] = useState(false)
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
@@ -53,6 +55,19 @@ const OperatorCustomers = () => {
   }, [searchTerm])
 
   usePolling(fetchCustomers, 15000)
+
+  const fetchCustomerDetail = async (id) => {
+    setDetailLoading(true)
+    setCustomerDetail(null)
+    try {
+      const data = await api(`/operator/customers/${id}`)
+      setCustomerDetail(data)
+    } catch (error) {
+      console.error('Error fetching customer detail:', error)
+    } finally {
+      setDetailLoading(false)
+    }
+  }
 
   const handlePageChange = (nextPage) => {
     setPage(nextPage)
@@ -121,7 +136,7 @@ const OperatorCustomers = () => {
                         </div>
                       </div>
                     </div>
-                    <button onClick={() => setSelectedCustomer(customer)} className="icon-btn">
+                    <button onClick={() => { setSelectedCustomer(customer); fetchCustomerDetail(customer._id) }} className="icon-btn">
                       <Eye className="h-4 w-4" />
                     </button>
                   </div>
@@ -144,7 +159,7 @@ const OperatorCustomers = () => {
           <div className="modal">
             <div className="modal-header">
               <h3>Customer Details</h3>
-              <button onClick={() => setSelectedCustomer(null)} className="modal-close">×</button>
+              <button onClick={() => { setSelectedCustomer(null); setCustomerDetail(null) }} className="modal-close">×</button>
             </div>
             <div className="modal-body">
               <div className="customer-detail-section">
@@ -177,6 +192,29 @@ const OperatorCustomers = () => {
                   <strong>{selectedCustomer.lastBooking ? new Date(selectedCustomer.lastBooking).toLocaleDateString() : 'N/A'}</strong>
                 </div>
               </div>
+              {detailLoading && <div className="loading-state">Loading history...</div>}
+              {customerDetail && (
+                <>
+                  <div className="customer-detail-section">
+                    <h4>Booking History</h4>
+                    {(customerDetail.bookings || []).length === 0 ? <p>No bookings</p> : customerDetail.bookings.map(b => (
+                      <div key={b._id} className="detail-row">
+                        <span>{b.packageName || b.package || 'Package'}</span>
+                        <strong>{new Date(b.bookingDate).toLocaleDateString()} — ₹{(b.paidAmount || 0).toLocaleString()}</strong>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="customer-detail-section">
+                    <h4>Reviews</h4>
+                    {(customerDetail.reviews || []).length === 0 ? <p>No reviews</p> : customerDetail.reviews.map(r => (
+                      <div key={r._id} className="detail-row">
+                        <span>{r.rating}★</span>
+                        <strong>{r.comment}</strong>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

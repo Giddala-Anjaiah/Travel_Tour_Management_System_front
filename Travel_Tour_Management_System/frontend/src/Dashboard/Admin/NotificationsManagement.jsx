@@ -205,7 +205,6 @@ const NotificationsManagement = () => {
   return (
     <AdminLayout
       active="notifications"
-      title="Notification Management"
     >
       <div className="notifications-page">
         {error && <div className="error-message">{error}</div>}

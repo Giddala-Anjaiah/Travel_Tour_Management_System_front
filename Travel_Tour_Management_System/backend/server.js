@@ -843,6 +843,17 @@ const operatorProfileSchema = new mongoose.Schema({
   alternatePhone: String,
   licenseNumber: String,
   taxId: String,
+  commissionRate: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  commissionType: {
+    type: String,
+    enum: ['percentage', 'fixed'],
+    default: 'percentage'
+  },
   createdAt: {
     type: Date,
     default: Date.now
@@ -2811,6 +2822,193 @@ app.delete('/api/admin/users/:id', async (req, res) => {
   }
 });
 
+// Hotel Partner Management Routes
+app.get('/api/admin/hotel-partners', async (req, res) => {
+  try {
+    const filter = { role: 'hotel_partner' };
+    const search = searchFilter(['fullName', 'email'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(User, filter, {
+      query: req.query,
+      select: '-password',
+      defaultSort: { createdAt: -1 }
+    });
+
+    const partners = await Promise.all(docs.map(async (user) => {
+      const profile = await HotelProfile.findOne({ userId: user._id });
+      const hotelCount = await Hotel.countDocuments({ partner: user.fullName });
+      return {
+        id: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        status: user.status,
+        createdAt: user.createdAt,
+        profile: profile || {},
+        hotelCount
+      };
+    }));
+
+    const [active, inactive] = await Promise.all([
+      User.countDocuments({ ...filter, status: 'active' }),
+      User.countDocuments({ ...filter, status: 'inactive' })
+    ]);
+
+    pagedResponse(res, 'hotelPartners', { docs: partners, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: { total, active, inactive }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching hotel partners' });
+  }
+});
+
+app.put('/api/admin/hotel-partners/:id/approve', async (req, res) => {
+  try {
+    const { status } = req.body;
+    if (!['active', 'inactive'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { status },
+      { new: true, select: '-password' }
+    );
+    if (!user) {
+      return res.status(404).json({ message: 'Hotel partner not found' });
+    }
+    res.status(200).json({
+      message: `Hotel partner ${status === 'active' ? 'approved' : 'rejected'} successfully`,
+      user
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating hotel partner status' });
+  }
+});
+
+// Operator Management Routes
+app.get('/api/admin/operators', async (req, res) => {
+  try {
+    const filter = { role: 'tour_operator' };
+    const search = searchFilter(['fullName', 'email', 'companyName'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(User, filter, {
+      query: req.query,
+      select: '-password',
+      defaultSort: { createdAt: -1 }
+    });
+    const [active, inactive] = await Promise.all([
+      User.countDocuments({ ...filter, status: 'active' }),
+      User.countDocuments({ ...filter, status: 'inactive' })
+    ]);
+    pagedResponse(res, 'users', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: { total, active, inactive }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching operators' });
+  }
+});
+
+app.get('/api/admin/operators/:id', async (req, res) => {
+  try {
+    const operator = await User.findById(req.params.id).select('-password');
+    if (!operator || operator.role !== 'tour_operator') {
+      return res.status(404).json({ message: 'Operator not found' });
+    }
+    const profile = await OperatorProfile.findOne({ userId: req.params.id });
+    const [packages, bookings, reviews] = await Promise.all([
+      Package.countDocuments({ operatorId: req.params.id }),
+      Booking.countDocuments({ operatorId: req.params.id }),
+      Review.countDocuments({ operatorId: req.params.id })
+    ]);
+    const revenueAgg = await Booking.aggregate([
+      { $match: { operatorId: new mongoose.Types.ObjectId(req.params.id) } },
+      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+    ]);
+    const revenue = revenueAgg[0]?.total || 0;
+    const bookingCount = revenueAgg[0]?.count || 0;
+    res.status(200).json({
+      operator,
+      profile: profile || {},
+      stats: {
+        packages,
+        bookings: bookingCount,
+        reviews,
+        revenue,
+        totalBookings: bookings
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching operator details' });
+  }
+});
+
+app.put('/api/admin/operators/:id', async (req, res) => {
+  try {
+    const { fullName, email, phone, status, commissionRate, commissionType, verificationStatus } = req.body;
+    const userUpdates = pickUpdates(req.body, ['fullName', 'email', 'phone', 'status']);
+    if (userUpdates.email) userUpdates.email = String(userUpdates.email).trim().toLowerCase();
+
+    const contactCheck = validateContactDetails({
+      fullName: userUpdates.fullName,
+      email: userUpdates.email,
+      phone: userUpdates.phone
+    });
+    if (!contactCheck.valid) {
+      return res.status(400).json({ message: contactCheck.message });
+    }
+    if (userUpdates.email) {
+      const existing = await User.findOne({ email: userUpdates.email, _id: { $ne: req.params.id } });
+      if (existing) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+    }
+
+    const operator = await User.findById(req.params.id);
+    if (!operator || operator.role !== 'tour_operator') {
+      return res.status(404).json({ message: 'Operator not found' });
+    }
+
+    if (userUpdates.status && userUpdates.status !== operator.status) {
+      if (userUpdates.status === 'inactive') {
+        await revokeAllSessions(operator._id);
+      }
+    }
+
+    const updatedOperator = await User.findByIdAndUpdate(req.params.id, userUpdates, { new: true, runValidators: true }).select('-password');
+
+    const profileUpdates = {};
+    if (commissionRate !== undefined) profileUpdates.commissionRate = Number(commissionRate);
+    if (commissionType !== undefined) profileUpdates.commissionType = commissionType;
+    if (verificationStatus !== undefined) profileUpdates.verificationStatus = verificationStatus;
+    if (Object.keys(profileUpdates).length > 0) {
+      profileUpdates.updatedAt = new Date();
+      await OperatorProfile.findOneAndUpdate(
+        { userId: req.params.id },
+        profileUpdates,
+        { new: true, upsert: true, setDefaultsOnInsert: true }
+      );
+    }
+
+    res.status(200).json({ message: 'Operator updated successfully', operator: updatedOperator });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating operator' });
+  }
+});
+
+app.delete('/api/admin/operators/:id', async (req, res) => {
+  try {
+    const operator = await User.findById(req.params.id);
+    if (!operator || operator.role !== 'tour_operator') {
+      return res.status(404).json({ message: 'Operator not found' });
+    }
+    await User.findByIdAndDelete(req.params.id);
+    await OperatorProfile.deleteOne({ userId: req.params.id });
+    res.status(200).json({ message: 'Operator deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting operator' });
+  }
+});
+
 // Package Management Routes
 app.get('/api/admin/packages', async (req, res) => {
   try {
@@ -3886,6 +4084,101 @@ app.get('/api/admin/analytics', async (req, res) => {
     ]);
     const rangeRevenue = rangeRevenueAgg[0]?.revenue || 0;
 
+    // Refund statistics
+    const refundStatusAgg = await Booking.aggregate([
+      {
+        $group: {
+          _id: { $ifNull: ['$refund.status', 'not_applicable'] },
+          count: { $sum: 1 },
+          amount: { $sum: { $ifNull: ['$refund.amount', 0] } }
+        }
+      }
+    ]);
+    const refundStats = {
+      pending: refundStatusAgg.find((r) => r._id === 'pending')?.count || 0,
+      completed: refundStatusAgg.find((r) => r._id === 'completed')?.count || 0,
+      failed: refundStatusAgg.find((r) => r._id === 'failed')?.count || 0,
+      notApplicable: refundStatusAgg.find((r) => r._id === 'not_applicable')?.count || 0,
+      totalRefundedAmount: refundStatusAgg.reduce((sum, r) => sum + (r.amount || 0), 0)
+    };
+
+    // Commission breakdown by operator (paid bookings only)
+    const commissionAgg = await Booking.aggregate([
+      { $match: { paymentStatus: 'paid', operatorId: { $exists: true, $ne: null } } },
+      {
+        $group: {
+          _id: '$operatorId',
+          totalBookings: { $sum: 1 },
+          totalRevenue: { $sum: { $ifNull: ['$amount', 0] } }
+        }
+      }
+    ]);
+    const operatorIds = commissionAgg.map((c) => c._id);
+    const operatorProfiles = await OperatorProfile.find({ userId: { $in: operatorIds } }).lean();
+    const operatorMap = {};
+    operatorProfiles.forEach((op) => {
+      operatorMap[op.userId.toString()] = op;
+    });
+    const commissionBreakdown = commissionAgg.map((c) => {
+      const profile = operatorMap[c._id.toString()];
+      const rate = profile ? profile.commissionRate || 0 : 0;
+      const type = profile ? profile.commissionType || 'percentage' : 'percentage';
+      const commission = type === 'fixed' ? rate : (c.totalRevenue * rate) / 100;
+      return {
+        operatorId: c._id,
+        operatorName: profile ? profile.fullName || 'Unknown' : 'Unknown',
+        totalBookings: c.totalBookings,
+        totalRevenue: c.totalRevenue,
+        commissionRate: rate,
+        commissionType: type,
+        commissionAmount: Math.round(commission * 100) / 100
+      };
+    });
+    const totalCommissions = commissionBreakdown.reduce((sum, c) => sum + c.commissionAmount, 0);
+
+    // Package performance breakdown
+    const packageAgg = await Booking.aggregate([
+      { $group: { _id: '$package', bookings: { $sum: 1 }, revenue: { $sum: { $ifNull: ['$amount', 0] } } } },
+      { $sort: { revenue: -1 } },
+      { $limit: 10 }
+    ]);
+    const packagePerformance = await Promise.all(packageAgg.map(async (p) => {
+      const pkg = await Package.findOne({ name: p._id }).select('name destination price').lean();
+      return {
+        packageName: p._id || 'Unknown',
+        destination: pkg?.destination || '—',
+        bookings: p.bookings,
+        revenue: p.revenue
+      };
+    }));
+
+    // Destination performance breakdown
+    const destinationAgg = await Booking.aggregate([
+      {
+        $lookup: {
+          from: 'packages',
+          localField: 'packageId',
+          foreignField: '_id',
+          as: 'pkg'
+        }
+      },
+      { $unwind: { path: '$pkg', preserveNullAndEmptyArrays: true } },
+      {
+        $group: {
+          _id: { $ifNull: ['$pkg.destination', 'Unknown'] },
+          bookings: { $sum: 1 },
+          revenue: { $sum: { $ifNull: ['$amount', 0] } }
+        }
+      },
+      { $sort: { revenue: -1 } },
+      { $limit: 10 }
+    ]);
+    const destinationPerformance = destinationAgg.map((d) => ({
+      destination: d._id,
+      bookings: d.bookings,
+      revenue: d.revenue
+    }));
+
     res.status(200).json({
       totalUsers,
       activeTours,
@@ -3896,6 +4189,11 @@ app.get('/api/admin/analytics', async (req, res) => {
       grossRevenue,
       avgRating: Number(avgRating.toFixed(1)),
       bookingStats,
+      refundStats,
+      totalCommissions,
+      commissionBreakdown,
+      packagePerformance,
+      destinationPerformance,
       topTours: topTours.map((pkg) => ({
         name: pkg.name,
         bookings: pkg.bookings || 0,
@@ -4871,12 +5169,25 @@ app.get('/api/operator/customers/:id', async (req, res) => {
     if (!customer) {
       return res.status(404).json({ message: 'Customer not found' });
     }
-    
+
+    // Privacy-aware access control: operator may only view customers
+    // who have an existing booking relationship with them.
     const bookings = await Booking.find({ customerId: req.params.id, operatorId: req.user.userId });
+    if (!bookings || bookings.length === 0) {
+      return res.status(403).json({ message: 'Access denied: no booking relationship' });
+    }
     const reviews = await Review.find({ customerId: req.params.id, operatorId: req.user.userId });
-    
+
+    // Mask sensitive contact fields for privacy
+    const masked = customer.toObject();
+    if (masked.phone) masked.phone = masked.phone.replace(/.(?=.{4})/g, '*');
+    if (masked.email) {
+      const [local, domain] = masked.email.split('@');
+      masked.email = (local.slice(0, 2) + '***@' + domain);
+    }
+
     res.status(200).json({
-      customer,
+      customer: masked,
       bookings,
       reviews,
       totalBookings: bookings.length,

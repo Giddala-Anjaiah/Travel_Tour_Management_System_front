@@ -175,7 +175,6 @@ const DestinationManagement = () => {
   return (
     <AdminLayout
       active="destinations"
-      title="Destinations & Packages"
     >
       {error && <div className="error-message">{error}</div>}
       <div className="filters-section">

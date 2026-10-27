@@ -262,7 +262,6 @@ const InvoicesReviews = () => {
   return (
     <AdminLayout
       active="invoices"
-      title="Invoices & Reviews"
     >
       <div className="invoices-page">
         {error && <div className="error-message">{error}</div>}

@@ -152,7 +152,6 @@ const AuditLogs = () => {
   return (
     <AdminLayout
       active="audit"
-      title="Audit Logs"
       actions={
         <>
           <button className="action-btn" onClick={handleExport}><Download className="h-4 w-4" /> Export</button>
