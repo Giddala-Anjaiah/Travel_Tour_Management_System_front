@@ -15,7 +15,7 @@ img, video {
 
 :root {
   --primary: #1e3a5f;
-  --primary-dark: #0f2440;
+  --primary-dark: #061a34;
   --primary-light: #2d5a87;
   --secondary: #c9a24b;
   --accent: #d9b45c;
@@ -137,17 +137,30 @@ body {
 }
 
 .btn-login {
-  color: var(--primary);
-  border: 1.5px solid var(--primary);
-  background: transparent;
+ background: var(--gradient-2);
+  color: #fff;
+  border: 1.5px solid transparent;
+}
+.nav-links a.btn-login,
+.nav-menu a.btn-login,
+.mobile-menu a.btn-login,
+.btn-login {
+  color: #fff;
+}
+
+.nav-links a.btn-login:hover,
+.nav-menu a.btn-login:hover,
+.mobile-menu a.btn-login:hover,
+.btn-login:hover {
+  color: #fff !important;
 }
 
 .btn-login:hover {
-  background: var(--primary);
-  color: white !important;
+  background: var(--gradient-3);
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
 }
+
 
 .btn-signup {
   background: var(--gradient-2);

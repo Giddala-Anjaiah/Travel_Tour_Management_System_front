@@ -1,4 +1,4 @@
-import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon, Gift, BellRing } from 'lucide-react'
+import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon, Gift, BellRing, Headset } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import NotificationBell from '../../components/NotificationBell'
@@ -15,7 +15,8 @@ const navItems = [
   { to: '/customer/trip-alerts', match: 'trip-alerts', label: 'Trip Alerts', icon: BellRing },
   { to: '/customer/wishlist', match: 'wishlist', label: 'Wishlist', icon: Heart },
   { to: '/customer/profile', match: 'profile', label: 'Profile', icon: User },
-  { to: '/customer/referral', match: 'referral', label: 'Referral', icon: Gift }
+  { to: '/customer/referral', match: 'referral', label: 'Referral', icon: Gift },
+  { to: '/customer/support', match: 'support', label: 'Support Tickets', icon: Headset }
 ]
 
 const CustomerLayout = ({ active, actions, children }) => {

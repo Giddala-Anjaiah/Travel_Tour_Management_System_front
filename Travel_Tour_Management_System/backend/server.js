@@ -1111,6 +1111,58 @@ const hotelProfileSchema = new mongoose.Schema({
 });
 const HotelProfile = mongoose.model('HotelProfile', hotelProfileSchema);
 
+// Support Ticket Schema
+const ticketSchema = new mongoose.Schema({
+  ticketId: { type: String, unique: true, required: true },
+  customerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  customerName: { type: String, required: true },
+  customerEmail: { type: String, required: true },
+  subject: { type: String, required: true },
+  description: { type: String, required: true },
+  category: {
+    type: String,
+    enum: ['billing', 'booking', 'technical', 'account', 'general', 'refund', 'cancellation'],
+    default: 'general'
+  },
+  priority: {
+    type: String,
+    enum: ['low', 'medium', 'high', 'urgent'],
+    default: 'medium'
+  },
+  status: {
+    type: String,
+    enum: ['open', 'in_progress', 'resolved', 'closed', 'escalated'],
+    default: 'open'
+  },
+  assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  assignedToName: String,
+  responseTarget: Date,
+  firstResponseAt: Date,
+  resolvedAt: Date,
+  escalationCount: { type: Number, default: 0 },
+  messages: [{
+    sender: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    senderName: String,
+    senderRole: { type: String, enum: ['customer', 'admin', 'system'] },
+    message: { type: String, required: true },
+    isInternal: { type: Boolean, default: false },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  tags: [String],
+  satisfactionRating: { type: Number, min: 1, max: 5 },
+  feedback: String,
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now }
+});
+
+ticketSchema.index({ ticketId: 1 });
+ticketSchema.index({ status: 1 });
+ticketSchema.index({ priority: 1 });
+ticketSchema.index({ customerEmail: 1 });
+ticketSchema.index({ assignedTo: 1 });
+
+const Ticket = mongoose.model('Ticket', ticketSchema);
+
 // Wishlist Schema
 const wishlistSchema = new mongoose.Schema({
   userId: {
@@ -2210,7 +2262,8 @@ const NOTIFICATION_TYPES = [
   'availability',
   'itinerary_change',
   'departure_reminder',
-  'disruption'
+  'disruption',
+  'ticket_reply'
 ];
 
 const TRIP_ALERT_TYPES = [
@@ -2882,6 +2935,202 @@ app.put('/api/admin/hotel-partners/:id/approve', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Error updating hotel partner status' });
+  }
+});
+
+// Support Ticket Administration Routes
+app.get('/api/admin/tickets', async (req, res) => {
+  try {
+    const filter = {};
+    const search = searchFilter(['ticketId', 'customerName', 'customerEmail', 'subject', 'description'], req.query.search);
+    if (search) Object.assign(filter, search);
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.priority) filter.priority = req.query.priority;
+    if (req.query.category) filter.category = req.query.category;
+    if (req.query.assignedTo) filter.assignedTo = req.query.assignedTo;
+
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Ticket, filter, {
+      query: req.query,
+      select: '-__v',
+      defaultSort: { createdAt: -1 }
+    });
+
+    const [open, inProgress, resolved, escalated, overdue] = await Promise.all([
+      Ticket.countDocuments({ ...filter, status: 'open' }),
+      Ticket.countDocuments({ ...filter, status: 'in_progress' }),
+      Ticket.countDocuments({ ...filter, status: 'resolved' }),
+      Ticket.countDocuments({ ...filter, status: 'escalated' }),
+      Ticket.countDocuments({ ...filter, status: { $in: ['open', 'in_progress', 'escalated'] }, responseTarget: { $lt: new Date() } })
+    ]);
+
+    pagedResponse(res, 'tickets', { docs, total, page, limit, totalPages, hasNext, hasPrev }, {
+      stats: { total, open, inProgress, resolved, escalated, overdue }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching tickets' });
+  }
+});
+
+app.get('/api/admin/tickets/stats', async (req, res) => {
+  try {
+    const [total, byStatus, byPriority, byCategory] = await Promise.all([
+      Ticket.countDocuments(),
+      Ticket.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+      Ticket.aggregate([{ $group: { _id: '$priority', count: { $sum: 1 } } }]),
+      Ticket.aggregate([{ $group: { _id: '$category', count: { $sum: 1 } } }])
+    ]);
+    res.status(200).json({
+      total,
+      byStatus: byStatus.reduce((acc, { _id, count }) => { acc[_id] = count; return acc; }, {}),
+      byPriority: byPriority.reduce((acc, { _id, count }) => { acc[_id] = count; return acc; }, {}),
+      byCategory: byCategory.reduce((acc, { _id, count }) => { acc[_id] = count; return acc; }, {})
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching ticket stats' });
+  }
+});
+
+app.get('/api/admin/tickets/:id', async (req, res) => {
+  try {
+    const ticket = await Ticket.findById(req.params.id).populate('assignedTo', 'fullName email role');
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    res.status(200).json({ ticket });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching ticket' });
+  }
+});
+
+app.post('/api/admin/tickets', async (req, res) => {
+  try {
+    const { customerName, customerEmail, subject, description, category, priority, assignedTo, tags } = req.body;
+    if (!customerName || !customerEmail || !subject || !description) {
+      return res.status(400).json({ message: 'Customer name, email, subject and description are required' });
+    }
+
+    const ticketCount = await Ticket.countDocuments();
+    const ticketId = `TKT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(ticketCount + 1).padStart(4, '0')}`;
+    const responseTarget = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const customerUser = await User.findOne({ email: customerEmail }).select('_id').lean();
+    const customerId = customerUser ? customerUser._id : undefined;
+
+    const ticket = new Ticket({
+      ticketId,
+      customerId,
+      customerName,
+      customerEmail,
+      subject,
+      description,
+      category: category || 'general',
+      priority: priority || 'medium',
+      status: 'open',
+      assignedTo: assignedTo || null,
+      responseTarget,
+      tags: Array.isArray(tags) ? tags : [],
+      messages: [{
+        senderName: customerName,
+        senderRole: 'customer',
+        message: description,
+        createdAt: new Date()
+      }]
+    });
+    await ticket.save();
+
+    res.status(201).json({ message: 'Ticket created successfully', ticket });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Ticket ID already exists' });
+    }
+    res.status(500).json({ message: 'Error creating ticket' });
+  }
+});
+
+app.put('/api/admin/tickets/:id', async (req, res) => {
+  try {
+    const updates = pickUpdates(req.body, ['status', 'priority', 'category', 'assignedTo', 'assignedToName', 'tags', 'satisfactionRating', 'feedback']);
+    if (updates.status === 'resolved' && !req.body._skip_resolved_at) {
+      updates.resolvedAt = new Date();
+    }
+    if (updates.status === 'escalated') {
+      updates.escalationCount = (req.body.escalationCount || 0) + 1;
+    }
+    updates.updatedAt = new Date();
+
+    const ticket = await Ticket.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true });
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    res.status(200).json({ message: 'Ticket updated successfully', ticket });
+  } catch (error) {
+    res.status(500).json({ message: 'Error updating ticket' });
+  }
+});
+
+app.post('/api/admin/tickets/:id/messages', async (req, res) => {
+  try {
+    const { senderName, senderRole, message, isInternal } = req.body;
+    if (!senderName || !senderRole || !message) {
+      return res.status(400).json({ message: 'senderName, senderRole and message are required' });
+    }
+
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+
+    ticket.messages.push({
+      senderName,
+      senderRole,
+      message,
+      isInternal: isInternal === true,
+      createdAt: new Date()
+    });
+
+    if (senderRole === 'admin' && ticket.status === 'open') {
+      ticket.firstResponseAt = new Date();
+      ticket.status = 'in_progress';
+    }
+    ticket.updatedAt = new Date();
+    await ticket.save();
+
+    // Notify the customer when an admin sends a reply
+    if (senderRole === 'admin' && ticket.customerId) {
+      try {
+        await createNotification({
+          userId: ticket.customerId,
+          type: 'ticket_reply',
+          title: `New reply on ticket #${ticket.ticketId}`,
+          message: `Your support ticket "${ticket.subject}" has a new reply.`,
+          relatedId: ticket._id,
+          bookingId: undefined,
+          severity: 'info',
+          actionUrl: '/customer/support',
+          dedupeKey: `ticket_reply_${ticket._id}_${Date.now()}`,
+          email: true,
+          emailSubject: `New reply on your support ticket #${ticket.ticketId}`
+        });
+      } catch (notifyErr) {
+        console.error('Ticket reply notification failed:', notifyErr.message);
+      }
+    }
+
+    res.status(200).json({ message: 'Message added successfully', ticket });
+  } catch (error) {
+    res.status(500).json({ message: 'Error adding message' });
+  }
+});
+
+app.delete('/api/admin/tickets/:id', async (req, res) => {
+  try {
+    const ticket = await Ticket.findByIdAndDelete(req.params.id);
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    res.status(200).json({ message: 'Ticket deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: 'Error deleting ticket' });
   }
 });
 
@@ -7222,6 +7471,88 @@ app.get('/api/customer/recommendations/hotels', async (req, res) => {
   } catch (error) {
     console.error('Error fetching hotel recommendations:', error);
     res.status(500).json({ success: false, message: 'Error fetching recommendations' });
+  }
+});
+
+// --- Customer Support Tickets ---
+app.get('/api/customer/tickets', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const filter = { customerEmail: user.email };
+    const search = searchFilter(['ticketId', 'customerName', 'subject'], req.query.search);
+    if (search) Object.assign(filter, search);
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Ticket, filter, {
+      query: req.query,
+      select: '-__v',
+      defaultSort: { createdAt: -1 }
+    });
+    pagedResponse(res, 'tickets', { docs, total, page, limit, totalPages, hasNext, hasPrev });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching tickets' });
+  }
+});
+
+app.get('/api/customer/tickets/:id', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const ticket = await Ticket.findOne({ _id: req.params.id, customerEmail: user.email }).lean();
+    if (!ticket) {
+      return res.status(404).json({ message: 'Ticket not found' });
+    }
+    res.status(200).json({ ticket });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching ticket' });
+  }
+});
+
+app.post('/api/customer/tickets', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const { subject, description, category, priority, tags } = req.body;
+    if (!subject || !description) {
+      return res.status(400).json({ message: 'Subject and description are required' });
+    }
+
+    const ticketCount = await Ticket.countDocuments();
+    const ticketId = `TKT-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(ticketCount + 1).padStart(4, '0')}`;
+    const responseTarget = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+    const ticket = new Ticket({
+      ticketId,
+      customerId: user._id,
+      customerName: user.fullName,
+      customerEmail: user.email,
+      subject,
+      description,
+      category: category || 'general',
+      priority: priority || 'medium',
+      status: 'open',
+      responseTarget,
+      tags: Array.isArray(tags) ? tags : [],
+      messages: [{
+        senderName: user.fullName,
+        senderRole: 'customer',
+        message: description,
+        createdAt: new Date()
+      }]
+    });
+    await ticket.save();
+
+    res.status(201).json({ message: 'Ticket created successfully', ticket });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({ message: 'Ticket ID already exists' });
+    }
+    res.status(500).json({ message: 'Error creating ticket' });
   }
 });
 

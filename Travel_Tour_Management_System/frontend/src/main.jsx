@@ -46,6 +46,7 @@ const NotificationsManagement = lazy(() => import('./Dashboard/Admin/Notificatio
 const ReportsCouponsSettings = lazy(() => import('./Dashboard/Admin/ReportsCouponsSettings.jsx'))
 const RefundOversight = lazy(() => import('./Dashboard/Admin/RefundOversight.jsx'))
 const HotelPartnerManagement = lazy(() => import('./Dashboard/Admin/HotelPartnerManagement.jsx'))
+const TicketManagement = lazy(() => import('./Dashboard/Admin/TicketManagement.jsx'))
 const ProfileManagement = lazy(() => import('./Dashboard/Customer/ProfileManagement.jsx'))
 const DestinationExploration = lazy(() => import('./Dashboard/Customer/DestinationExploration.jsx'))
 const DestinationDetail = lazy(() => import('./Dashboard/Customer/DestinationDetail.jsx'))
@@ -58,6 +59,7 @@ const InvoicesBookingHistory = lazy(() => import('./Dashboard/Customer/InvoicesB
 import Wishlist from './Dashboard/Customer/Wishlist.jsx'
 const TripAlerts = lazy(() => import('./Dashboard/Customer/TripAlerts.jsx'))
 const ReferralRewards = lazy(() => import('./Dashboard/Customer/ReferralRewards.jsx'))
+const CustomerSupport = lazy(() => import('./Dashboard/Customer/CustomerSupport.jsx'))
 
 // Lightweight loading fallback so LCP isn't blocked by a heavy spinner
 const LoadingFallback = () => null
@@ -145,6 +147,14 @@ createRoot(document.getElementById('root')).render(
           element={
             <ProtectedRoute allowedRoles={['admin']}>
               <HotelPartnerManagement />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/tickets" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <TicketManagement />
             </ProtectedRoute>
           } 
         />
@@ -283,6 +293,14 @@ createRoot(document.getElementById('root')).render(
           element={
             <ProtectedRoute allowedRoles={['customer']}>
               <ReferralRewards />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/customer/support" 
+          element={
+            <ProtectedRoute allowedRoles={['customer']}>
+              <CustomerSupport />
             </ProtectedRoute>
           } 
         />

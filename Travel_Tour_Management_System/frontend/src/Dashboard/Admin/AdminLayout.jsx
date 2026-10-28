@@ -1,4 +1,4 @@
-import { BarChart3, Users, MapPin, Calendar, Ticket, FileText, PieChart, Settings, Shield, LogOut, Bed, Bell, Menu, Sun, Moon, CreditCard, Building } from 'lucide-react'
+import { BarChart3, Users, MapPin, Calendar, Ticket, FileText, PieChart, Settings, Shield, LogOut, Bed, Bell, Menu, Sun, Moon, CreditCard, Building, Headset } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import '../Dashboard.css'
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/admin/itinerary', match: 'itinerary', label: 'Itinerary & Hotels', icon: Calendar },
   { to: '/admin/rooms', match: 'rooms', label: 'Rooms & Availability', icon: Bed },
   { to: '/admin/hotel-partners', match: 'hotel-partners', label: 'Hotel Partners', icon: Building },
+  { to: '/admin/tickets', match: 'tickets', label: 'Support Tickets', icon: Headset },
   { to: '/admin/bookings', match: 'bookings', label: 'Bookings & Payments', icon: Ticket },
   { to: '/admin/refunds', match: 'refunds', label: 'Refund Oversight', icon: CreditCard },
   { to: '/admin/invoices', match: 'invoices', label: 'Invoices & Reviews', icon: FileText },
