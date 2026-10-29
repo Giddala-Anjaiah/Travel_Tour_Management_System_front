@@ -21,6 +21,7 @@ const OperatorItineraryBuilderPage = lazy(() => import('./Dashboard/Operator/Ope
 const OperatorPricingPage = lazy(() => import('./Dashboard/Operator/OperatorPricingPage.jsx'))
 const OperatorBookingsPage = lazy(() => import('./Dashboard/Operator/OperatorBookingsPage.jsx'))
 const OperatorCustomersPage = lazy(() => import('./Dashboard/Operator/OperatorCustomersPage.jsx'))
+const OperatorCustomerCommunication = lazy(() => import('./Dashboard/Operator/OperatorCustomerCommunication.jsx'))
 const OperatorReviewsPage = lazy(() => import('./Dashboard/Operator/OperatorReviewsPage.jsx'))
 const OperatorRevenueNotificationsPage = lazy(() => import('./Dashboard/Operator/OperatorRevenueNotificationsPage.jsx'))
 const OperatorSettingsPage = lazy(() => import('./Dashboard/Operator/OperatorSettingsPage.jsx'))
@@ -375,6 +376,14 @@ createRoot(document.getElementById('root')).render(
           element={
             <ProtectedRoute allowedRoles={['tour_operator']}>
               <OperatorCustomersPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/tour-operator/communication" 
+          element={
+            <ProtectedRoute allowedRoles={['tour_operator']}>
+              <OperatorCustomerCommunication />
             </ProtectedRoute>
           } 
         />

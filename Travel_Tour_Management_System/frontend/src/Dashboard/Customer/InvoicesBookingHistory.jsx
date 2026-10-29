@@ -152,7 +152,7 @@ const InvoicesBookingHistory = () => {
           </div>
         </div>
         <div className="cd-card" style={{ textAlign: 'center', padding: '3rem' }}>
-          <p style={{ color: '#64748b' }}>Loading invoices…</p>
+          <p style={{ color: 'var(--customer-text-secondary)' }}>Loading invoices…</p>
         </div>
       </CustomerLayout>
     )
@@ -168,11 +168,11 @@ const InvoicesBookingHistory = () => {
           </div>
           <div className="page-status-badges">
             <div className="stat-badge">
-              <Sparkles className="h-4 w-4" />
+              <Sparkles className="h-4 w-4" style={{ color: 'var(--customer-primary-teal)' }} />
               <span>{totalCount} invoices</span>
             </div>
             <div className="stat-badge">
-              <Shield className="h-4 w-4" />
+              <Shield className="h-4 w-4" style={{ color: 'var(--customer-accent-emerald)' }} />
               <span>Digital records</span>
             </div>
           </div>
@@ -182,39 +182,43 @@ const InvoicesBookingHistory = () => {
       {error && <div className="cd-card cd-alert warning" style={{ marginBottom: '1rem' }}>{error}</div>}
 
       <div className="stats-grid enhanced">
-        <div className="stat-card enhanced">
-          <Receipt className="stat-icon" />
-          <div className="stat-content">
-            <h3>Total Invoices</h3>
-            <p className="stat-number">{totalCount}</p>
+        <div className="cd-kpi" style={{ '--accent': 'var(--customer-primary-teal)' }}>
+          <div className="cd-kpi-head">
+            <div className="cd-kpi-icon"><Receipt size={22} /></div>
           </div>
+          <div className="cd-kpi-label">Total Invoices</div>
+          <p className="cd-kpi-value">{totalCount}</p>
+          <div className="cd-kpi-sub">All generated invoices</div>
         </div>
-        <div className="stat-card enhanced">
-          <CheckCircle className="stat-icon" />
-          <div className="stat-content">
-            <h3>Paid</h3>
-            <p className="stat-number">{paidCount}</p>
+        <div className="cd-kpi" style={{ '--accent': 'var(--customer-accent-emerald)' }}>
+          <div className="cd-kpi-head">
+            <div className="cd-kpi-icon"><CheckCircle size={22} /></div>
           </div>
+          <div className="cd-kpi-label">Paid</div>
+          <p className="cd-kpi-value">{paidCount}</p>
+          <div className="cd-kpi-sub">Successfully paid</div>
         </div>
-        <div className="stat-card enhanced">
-          <Clock className="stat-icon" />
-          <div className="stat-content">
-            <h3>Pending</h3>
-            <p className="stat-number">{pendingCount}</p>
+        <div className="cd-kpi" style={{ '--accent': 'var(--cp-warning)' }}>
+          <div className="cd-kpi-head">
+            <div className="cd-kpi-icon"><Clock size={22} /></div>
           </div>
+          <div className="cd-kpi-label">Pending</div>
+          <p className="cd-kpi-value">{pendingCount}</p>
+          <div className="cd-kpi-sub">Awaiting payment</div>
         </div>
-        <div className="stat-card enhanced">
-          <DollarSign className="stat-icon" />
-          <div className="stat-content">
-            <h3>Total Billed</h3>
-            <p className="stat-number">₹{totalBilled.toLocaleString()}</p>
+        <div className="cd-kpi" style={{ '--accent': 'var(--customer-primary-teal)' }}>
+          <div className="cd-kpi-head">
+            <div className="cd-kpi-icon"><DollarSign size={22} /></div>
           </div>
+          <div className="cd-kpi-label">Total Billed</div>
+          <p className="cd-kpi-value">₹{totalBilled.toLocaleString()}</p>
+          <div className="cd-kpi-sub">Total amount billed</div>
         </div>
       </div>
 
-      <div className="filters-section enhanced">
+      <div className="cd-card filters-section enhanced">
         <div className="search-bar enhanced">
-          <Search className="search-icon" />
+          <Search className="search-icon" style={{ color: 'var(--customer-primary-teal)' }} />
           <input
             type="text"
             placeholder="Search invoices, bookings..."
@@ -249,7 +253,7 @@ const InvoicesBookingHistory = () => {
                 <div className="invoice-info">
                   <h3>{invoice.package}</h3>
                   <div className="invoice-id">
-                    <Receipt className="h-4 w-4" />
+                    <Receipt className="h-4 w-4" style={{ color: 'var(--customer-primary-teal)' }} />
                     <span>{invoice.invoiceNo}</span>
                   </div>
                 </div>
@@ -263,14 +267,14 @@ const InvoicesBookingHistory = () => {
 
               <div className="invoice-details enhanced">
                 <div className="detail-item">
-                  <CalendarIcon className="h-4 w-4" />
+                  <CalendarIcon className="h-4 w-4" style={{ color: 'var(--customer-primary-teal)' }} />
                   <div>
                     <small>Invoice Date</small>
                     <strong>{formatDate(invoice.date)}</strong>
                   </div>
                 </div>
                 <div className="detail-item">
-                  <Clock className="h-4 w-4" />
+                  <Clock className="h-4 w-4" style={{ color: 'var(--customer-primary-teal)' }} />
                   <div>
                     <small>Due Date</small>
                     <strong>{formatDate(invoice.dueDate)}</strong>

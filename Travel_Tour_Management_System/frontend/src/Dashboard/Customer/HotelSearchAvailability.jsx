@@ -177,12 +177,12 @@ const HotelSearchAvailability = () => {
 
   const getCategoryBadge = (category) => {
     const badges = {
-      luxury: { label: 'Luxury', color: '#8b5cf6' },
-      premium: { label: 'Premium', color: '#0ea5e9' },
-      boutique: { label: 'Boutique', color: '#f59e0b' },
-      heritage: { label: 'Heritage', color: '#ef4444' },
-      resort: { label: 'Resort', color: '#22c55e' },
-      standard: { label: 'Standard', color: '#64748b' }
+      luxury: { label: 'Luxury', color: 'var(--customer-primary-teal)' },
+      premium: { label: 'Premium', color: 'var(--customer-primary-teal)' },
+      boutique: { label: 'Boutique', color: 'var(--customer-accent-emerald)' },
+      heritage: { label: 'Heritage', color: 'var(--customer-accent-emerald)' },
+      resort: { label: 'Resort', color: 'var(--customer-accent-emerald)' },
+      standard: { label: 'Standard', color: 'var(--customer-text-secondary)' }
     }
     return badges[category] || badges.standard
   }

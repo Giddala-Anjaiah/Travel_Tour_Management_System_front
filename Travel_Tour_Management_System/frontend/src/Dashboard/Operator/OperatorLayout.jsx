@@ -1,4 +1,4 @@
-import { BarChart3, Users, MapPin, Calendar, Ticket, PieChart, Settings, LogOut, Building, TrendingUp, Star, User, Menu, X, Sun, Moon } from 'lucide-react'
+import { BarChart3, Users, MapPin, Calendar, Ticket, PieChart, Settings, LogOut, Building, TrendingUp, Star, User, Menu, X, Sun, Moon, Mail } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import '../Dashboard.css'
@@ -11,6 +11,7 @@ const navItems = [
   { to: '/tour-operator/pricing', match: 'pricing', label: 'Pricing & Availability', icon: TrendingUp },
   { to: '/tour-operator/bookings', match: 'bookings', label: 'Booking Management', icon: Ticket },
   { to: '/tour-operator/customers', match: 'customers', label: 'Customer Information', icon: Users },
+  { to: '/tour-operator/communication', match: 'communication', label: 'Customer Communication', icon: Mail },
   { to: '/tour-operator/reviews', match: 'reviews', label: 'Reviews & Ratings', icon: Star },
   { to: '/tour-operator/revenue', match: 'revenue', label: 'Revenue & Notifications', icon: PieChart },
   { to: '/tour-operator/settings', match: 'settings', label: 'Settings', icon: Settings }

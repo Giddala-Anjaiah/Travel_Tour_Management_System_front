@@ -241,35 +241,35 @@ const kpis = [
       trendUp: true
     },
     {
-      icon: Wallet, accent: 'var(--cp-success)',
+      icon: Wallet, accent: 'var(--cp-accent)',
       label: 'Total Spent', value: s.totalSpent ?? 0, prefix: '₹',
       sub: formatCurrency(s.rangeSpent || 0) + ' in range',
       trend: s.rangeSpent > 0 ? '+' + Math.round((s.rangeSpent / Math.max(1, s.totalSpent)) * 100) + '%' : '0%',
       trendUp: s.rangeSpent > 0
     },
     {
-      icon: MapPin, accent: 'var(--cp-purple)',
+      icon: MapPin, accent: 'var(--cp-accent)',
       label: 'Destinations', value: s.topDestinations?.length || 0,
       sub: 'Places you have visited',
       trend: s.topDestinations?.length > 0 ? 'Traveler' : 'Beginner',
       trendUp: true
     },
     {
-      icon: Award, accent: 'var(--cp-gold)',
+      icon: Award, accent: 'var(--customer-accent-emerald)',
       label: 'Loyalty Tier', value: s.loyaltyTier || 'Explorer',
       sub: 'Based on your spending',
       trend: s.loyaltyTier === 'Gold' ? 'Premium' : s.loyaltyTier === 'Silver' ? 'Regular' : 'New',
       trendUp: s.loyaltyTier === 'Gold' || s.loyaltyTier === 'Silver'
     },
     {
-      icon: TrendingUpIcon, accent: 'var(--cp-info)',
+      icon: TrendingUpIcon, accent: 'var(--customer-accent-emerald)',
       label: 'Avg Trip Value', value: avgTripValue, prefix: '₹',
       sub: 'Per booking average',
       trend: avgTripValue > 0 ? 'Per booking' : 'No trips',
       trendUp: avgTripValue > 0
     },
     {
-      icon: Clock, accent: 'var(--cp-danger)',
+      icon: Clock, accent: 'var(--customer-primary-teal)',
       label: 'Pending Payments', value: s.paymentStatus?.partial + s.paymentStatus?.pending || 0,
       sub: 'Awaiting confirmation',
       trend: s.alerts?.pendingPayments > 0 ? 'Needs attention' : 'All clear',
@@ -301,7 +301,7 @@ const kpis = [
         </div>
         <div className="cd-toolbar-right">
           {lastUpdated && (
-            <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
+            <span style={{ fontSize: '0.78rem', color: 'var(--customer-text-secondary)' }}>
               Updated {lastUpdated.toLocaleTimeString()}
             </span>
           )}
@@ -379,20 +379,20 @@ const kpis = [
           {recPackages.length > 0 && (
             <div className="cd-card">
               <div className="cd-card-head">
-                <h3 className="cd-card-title"><Sparkles size={18} style={{ color: '#4f46e5' }} /> {recPackageSource === 'popular' ? 'Popular Packages' : 'Recommended For You'}</h3>
-                <Link to="/customer/packages" style={{ fontSize: '0.8rem', color: '#4f46e5', fontWeight: 600, whiteSpace: 'nowrap' }}>View all</Link>
+                <h3 className="cd-card-title"><Sparkles size={18} style={{ color: 'var(--customer-primary-teal)' }} /> {recPackageSource === 'popular' ? 'Popular Packages' : 'Recommended For You'}</h3>
+                <Link to="/customer/packages" style={{ fontSize: '0.8rem', color: 'var(--customer-primary-teal)', fontWeight: 600, whiteSpace: 'nowrap' }}>View all</Link>
               </div>
               <div className="cd-list">
                 {recPackages.map(pkg => (
                   <div key={pkg._id} className="cd-list-item">
-                    <div className="cd-list-icon" style={{ background: '#e0e7ff', color: '#3730a3' }}><MapPin size={18} /></div>
+                    <div className="cd-list-icon" style={{ background: 'var(--primary-50)', color: 'var(--customer-primary-teal)' }}><MapPin size={18} /></div>
                     <div className="cd-list-content">
                       <div className="cd-list-title">{pkg.name}</div>
                       <div className="cd-list-sub">{pkg.destination}{pkg.duration ? ` · ${pkg.duration}` : ''}{pkg.reason ? ` · ${pkg.reason}` : ''}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div className="cd-list-amount">{formatCurrency(pkg.price || 0)}</div>
-                      <Link to={`/customer/bookings?packageId=${pkg._id}`} style={{ fontSize: '0.72rem', color: '#4f46e5', fontWeight: 600 }}>Book</Link>
+                      <Link to={`/customer/bookings?packageId=${pkg._id}`} style={{ fontSize: '0.72rem', color: 'var(--customer-primary-teal)', fontWeight: 600 }}>Book</Link>
                     </div>
                   </div>
                 ))}
@@ -403,20 +403,20 @@ const kpis = [
           {recHotels.length > 0 && (
             <div className="cd-card">
               <div className="cd-card-head">
-                <h3 className="cd-card-title"><Bed size={18} style={{ color: '#0ea5e9' }} /> {recHotelSource === 'popular' ? 'Popular Hotels' : 'Hotels For You'}</h3>
-                <Link to="/customer/hotels" style={{ fontSize: '0.8rem', color: '#4f46e5', fontWeight: 600, whiteSpace: 'nowrap' }}>View all</Link>
+                <h3 className="cd-card-title"><Bed size={18} style={{ color: 'var(--customer-accent-emerald)' }} /> {recHotelSource === 'popular' ? 'Popular Hotels' : 'Hotels For You'}</h3>
+                <Link to="/customer/hotels" style={{ fontSize: '0.8rem', color: 'var(--customer-primary-teal)', fontWeight: 600, whiteSpace: 'nowrap' }}>View all</Link>
               </div>
               <div className="cd-list">
                 {recHotels.map(hotel => (
                   <div key={hotel._id} className="cd-list-item">
-                    <div className="cd-list-icon" style={{ background: '#e0f2fe', color: '#0369a1' }}><Bed size={18} /></div>
+                    <div className="cd-list-icon" style={{ background: 'var(--info-light)', color: 'var(--customer-accent-emerald)' }}><Bed size={18} /></div>
                     <div className="cd-list-content">
                       <div className="cd-list-title">{hotel.name}</div>
                       <div className="cd-list-sub">{hotel.location}{hotel.reason ? ` · ${hotel.reason}` : ''}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div className="cd-list-amount">{hotel.minPrice ? formatCurrency(hotel.minPrice) : 'On request'}</div>
-                      <div style={{ fontSize: '0.7rem', color: '#64748b' }}>per night</div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--customer-text-secondary)' }}>per night</div>
                     </div>
                   </div>
                 ))}
@@ -428,8 +428,8 @@ const kpis = [
       <div className="cd-grid-2">
         <div className="cd-card">
           <div className="cd-card-head">
-            <h3 className="cd-card-title"><TrendingUp size={18} style={{ color: '#4f46e5' }} /> Spending Trend <small>· 6 months</small></h3>
-            <span style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 600 }}>{formatCurrency(s.totalSpent || 0)} total</span>
+            <h3 className="cd-card-title"><TrendingUp size={18} style={{ color: 'var(--customer-primary-teal)' }} /> Spending Trend <small>· 6 months</small></h3>
+            <span style={{ color: 'var(--customer-text-secondary)', fontSize: '0.85rem', fontWeight: 600 }}>{formatCurrency(s.totalSpent || 0)} total</span>
           </div>
           <SparkBars data={s.revenueTrend || []} valueKey="revenue" />
           <div className="cd-spark-labels">
@@ -441,8 +441,8 @@ const kpis = [
 
         <div className="cd-card">
           <div className="cd-card-head">
-            <h3 className="cd-card-title"><Calendar size={18} style={{ color: '#3b82f6' }} /> Booking Status</h3>
-            <span style={{ color: '#64748b', fontSize: '0.85rem', fontWeight: 600 }}>{s.totalBookings || 0} total</span>
+            <h3 className="cd-card-title"><Calendar size={18} style={{ color: 'var(--customer-accent-emerald)' }} /> Booking Status</h3>
+            <span style={{ color: 'var(--customer-text-secondary)', fontSize: '0.85rem', fontWeight: 600 }}>{s.totalBookings || 0} total</span>
           </div>
           {bookingSegments.length > 0 ? (
             <div className="cd-donut-flex">
@@ -454,7 +454,7 @@ const kpis = [
                       <span className="cd-legend-dot" style={{ background: seg.color }} />
                       {seg.label}
                     </div>
-                    <strong style={{ color: '#0f172a' }}>{seg.value}</strong>
+                    <strong style={{ color: 'var(--customer-text-main)' }}>{seg.value}</strong>
                   </div>
                 ))}
               </div>
@@ -468,7 +468,7 @@ const kpis = [
       <div className="cd-grid-3">
         <div className="cd-card">
           <div className="cd-card-head">
-            <h3 className="cd-card-title"><CreditCard size={18} style={{ color: '#10b981' }} /> Payment Mix</h3>
+            <h3 className="cd-card-title"><CreditCard size={18} style={{ color: 'var(--customer-accent-emerald)' }} /> Payment Mix</h3>
           </div>
           {paymentSegments.length > 0 ? (
             <div className="cd-donut-flex">
@@ -480,7 +480,7 @@ const kpis = [
                       <span className="cd-legend-dot" style={{ background: seg.color }} />
                       {seg.label}
                     </div>
-                    <strong style={{ color: '#0f172a' }}>{seg.value}</strong>
+                    <strong style={{ color: 'var(--customer-text-main)' }}>{seg.value}</strong>
                   </div>
                 ))}
               </div>
@@ -492,7 +492,7 @@ const kpis = [
 
         <div className="cd-card">
           <div className="cd-card-head">
-            <h3 className="cd-card-title"><MapPin size={18} style={{ color: '#ec4899' }} /> Top Destinations</h3>
+            <h3 className="cd-card-title"><MapPin size={18} style={{ color: 'var(--customer-accent-emerald)' }} /> Top Destinations</h3>
           </div>
           {(s.topDestinations || []).length === 0 ? (
             <div className="cd-empty">No trips booked yet</div>
@@ -513,7 +513,7 @@ const kpis = [
 
         <div className="cd-card">
           <div className="cd-card-head">
-            <h3 className="cd-card-title"><Star size={18} style={{ color: '#f59e0b' }} /> Recent Reviews</h3>
+            <h3 className="cd-card-title"><Star size={18} style={{ color: 'var(--customer-accent-emerald)' }} /> Recent Reviews</h3>
           </div>
           {(s.recentReviews || []).length === 0 ? (
             <div className="cd-empty">No reviews yet</div>
@@ -521,7 +521,7 @@ const kpis = [
             <div className="cd-list">
               {s.recentReviews.slice(0, 5).map(r => (
                 <div key={r._id} className="cd-list-item">
-                  <div className="cd-list-icon" style={{ background: '#fef3c7', color: '#92400e' }}><Star size={18} /></div>
+                  <div className="cd-list-icon" style={{ background: 'var(--primary-50)', color: 'var(--customer-accent-emerald)' }}><Star size={18} /></div>
                   <div className="cd-list-content">
                     <div className="cd-list-title">{r.package}</div>
                     <div className="cd-list-sub">{'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)} · {r.comment?.slice(0, 50)}{r.comment?.length > 50 ? '...' : ''}</div>
@@ -536,16 +536,16 @@ const kpis = [
       <div className="cd-grid-2">
         <div className="cd-card">
           <div className="cd-card-head">
-            <h3 className="cd-card-title"><Calendar size={18} style={{ color: '#4f46e5' }} /> Upcoming Trips</h3>
-            <Eye size={14} style={{ color: '#94a3b8' }} />
+            <h3 className="cd-card-title"><Calendar size={18} style={{ color: 'var(--customer-accent-emerald)' }} /> Upcoming Trips</h3>
+            <Eye size={14} style={{ color: 'var(--customer-text-secondary)' }} />
           </div>
           {(s.upcomingTrips || []).length === 0 ? (
-            <div className="cd-empty">No upcoming trips. <a href="/customer/packages" style={{ color: '#4f46e5' }}>Browse packages</a></div>
+            <div className="cd-empty">No upcoming trips. <a href="/customer/packages" style={{ color: 'var(--customer-primary-teal)' }}>Browse packages</a></div>
           ) : (
             <div className="cd-list">
               {s.upcomingTrips.slice(0, 5).map(b => (
                 <div key={b._id} className="cd-list-item">
-                  <div className="cd-list-icon" style={{ background: '#dbeafe', color: '#1e40af' }}><Ticket size={18} /></div>
+                  <div className="cd-list-icon" style={{ background: 'var(--primary-100)', color: 'var(--customer-primary-teal)' }}><Ticket size={18} /></div>
                   <div className="cd-list-content">
                     <div className="cd-list-title">{b.package}</div>
                     <div className="cd-list-sub">{b.dates} · {b.travelers || 1} traveler{(b.travelers || 1) !== 1 ? 's' : ''}</div>
@@ -562,7 +562,7 @@ const kpis = [
 
         <div className="cd-card">
           <div className="cd-card-head">
-            <h3 className="cd-card-title"><Clock size={18} style={{ color: '#8b5cf6' }} /> Recent Bookings</h3>
+            <h3 className="cd-card-title"><Clock size={18} style={{ color: 'var(--customer-accent-emerald)' }} /> Recent Bookings</h3>
           </div>
           {(s.recentBookings || []).length === 0 ? (
             <div className="cd-empty">No bookings yet</div>
@@ -570,7 +570,7 @@ const kpis = [
             <div className="cd-list">
               {s.recentBookings.slice(0, 6).map(b => (
                 <div key={b._id} className="cd-list-item">
-                  <div className="cd-list-icon" style={{ background: '#e0e7ff', color: '#3730a3' }}><Calendar size={18} /></div>
+                  <div className="cd-list-icon" style={{ background: 'var(--primary-50)', color: 'var(--customer-primary-teal)' }}><Calendar size={18} /></div>
                   <div className="cd-list-content">
                     <div className="cd-list-title">{b.package}</div>
                     <div className="cd-list-sub">{formatDate(b.bookingDate)} · {b.status}</div>

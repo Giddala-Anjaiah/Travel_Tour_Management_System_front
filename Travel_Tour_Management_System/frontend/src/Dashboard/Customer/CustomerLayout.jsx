@@ -1,6 +1,7 @@
 import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon, Gift, BellRing, Headset } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { API_HOST } from '../../api'
 import NotificationBell from '../../components/NotificationBell'
 import '../Dashboard.css'
 
@@ -24,7 +25,8 @@ const CustomerLayout = ({ active, actions, children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'))
+
   const initials = (user.fullName || 'Customer')
     .split(' ')
     .filter(Boolean)
@@ -37,6 +39,14 @@ const CustomerLayout = ({ active, actions, children }) => {
     document.documentElement.style.colorScheme = theme
     localStorage.setItem('theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    const handleUserUpdate = () => {
+      setUser(JSON.parse(localStorage.getItem('user') || '{}'))
+    }
+    window.addEventListener('user-updated', handleUserUpdate)
+    return () => window.removeEventListener('user-updated', handleUserUpdate)
+  }, [])
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
@@ -110,7 +120,20 @@ const CustomerLayout = ({ active, actions, children }) => {
               <span>Logout</span>
             </button>
             <div className="user-info">
-              <span className="cp-avatar">{initials}</span>
+              {user.avatar ? (
+                <img
+                  src={`${API_HOST}${user.avatar}`}
+                  alt="Profile"
+                  className="cp-avatar cp-avatar-image"
+                  onError={(e) => {
+                    const img = e.target;
+                    img.style.display = 'none';
+                    img.parentElement?.querySelector('.cp-avatar-initials')?.classList.remove('hidden');
+                  }}
+                />
+              ) : (
+                <span className="cp-avatar cp-avatar-initials">{initials}</span>
+              )}
               <span>{user.fullName || 'Customer'}</span>
             </div>
           </div>

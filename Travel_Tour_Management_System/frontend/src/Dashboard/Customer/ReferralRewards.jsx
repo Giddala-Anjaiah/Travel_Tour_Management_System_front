@@ -130,7 +130,7 @@ const ReferralRewards = () => {
         <div className="rr-header">
           <div className="rr-header-left">
             <div className="rr-header-icon">
-              <Gift className="h-6 w-6" style={{ color: '#fbbf24' }} />
+              <Gift className="h-6 w-6" style={{ color: 'var(--customer-primary-teal)' }} />
             </div>
             <div>
               <h1 className="rr-page-title">Referral & Rewards</h1>
@@ -138,7 +138,7 @@ const ReferralRewards = () => {
             </div>
           </div>
           <div className="rr-points-pill">
-            <Star className="h-5 w-5" style={{ color: '#fbbf24' }} />
+            <Star className="h-5 w-5" style={{ color: 'var(--customer-accent-emerald)' }} />
             <span className="rr-points-value">{d.points}</span>
             <span className="rr-points-label">Points</span>
           </div>
@@ -148,7 +148,7 @@ const ReferralRewards = () => {
           <div className="rr-tier-card">
             <div className="rr-tier-header">
               <div className="rr-tier-avatar">
-                <Rocket className="h-5 w-5" style={{ color: '#94a3b8' }} />
+                <Rocket className="h-5 w-5" style={{ color: 'var(--customer-primary-teal)' }} />
               </div>
               <span className="rr-tier-name">Explorer</span>
             </div>
@@ -165,7 +165,7 @@ const ReferralRewards = () => {
           <div className="rr-tier-card">
             <div className="rr-tier-header">
               <div className="rr-tier-avatar">
-                <Target className="h-5 w-5" style={{ color: '#60a5fa' }} />
+                <Target className="h-5 w-5" style={{ color: 'var(--customer-primary-teal)' }} />
               </div>
               <span className="rr-tier-name rr-tier-name-silver">Silver</span>
             </div>
@@ -182,7 +182,7 @@ const ReferralRewards = () => {
           <div className="rr-tier-card">
             <div className="rr-tier-header">
               <div className="rr-tier-avatar">
-                <Flame className="h-5 w-5" style={{ color: '#f59e0b' }} />
+                <Flame className="h-5 w-5" style={{ color: 'var(--customer-accent-emerald)' }} />
               </div>
               <span className="rr-tier-name rr-tier-name-gold">Gold</span>
             </div>
@@ -207,7 +207,7 @@ const ReferralRewards = () => {
               <div className="rr-code-row">
                 <input type="text" readOnly value={d.referralCode} className="rr-code-input" />
                 <button onClick={copyCode} className="rr-copy-btn">
-                  {copied ? <CheckCircle size={16} style={{ color: '#16a34a' }} /> : <CopyIcon size={16} />}
+                  {copied ? <CheckCircle size={16} style={{ color: 'var(--customer-accent-emerald)' }} /> : <CopyIcon size={16} style={{ color: 'var(--customer-primary-teal)' }} />}
                   <span>{copied ? 'Copied!' : 'Copy code'}</span>
                 </button>
               </div>
@@ -225,7 +225,7 @@ const ReferralRewards = () => {
 
           <div className="rr-card">
             <div className="rr-card-head">
-              <h3 className="rr-card-title"><Wallet className="h-5 w-5" style={{ color: 'var(--cp-success)' }} /> How You Earn</h3>
+              <h3 className="rr-card-title"><Wallet className="h-5 w-5" style={{ color: 'var(--customer-accent-emerald)' }} /> How You Earn</h3>
             </div>
             <div className="rr-earnings-grid">
               {d.earnings.map((e, i) => (
@@ -244,7 +244,7 @@ const ReferralRewards = () => {
         <div className="rr-grid-2">
           <div className="rr-card">
             <div className="rr-card-head">
-              <h3 className="rr-card-title"><Award className="h-5 w-5" style={{ color: '#f59e0b' }} /> Redeem Rewards</h3>
+              <h3 className="rr-card-title"><Award className="h-5 w-5" style={{ color: 'var(--customer-accent-emerald)' }} /> Redeem Rewards</h3>
               <span className="rr-redeem-value">{pointsToRupees(d.points)} rupees value</span>
             </div>
             <div className="rr-rewards-list">
@@ -276,12 +276,12 @@ const ReferralRewards = () => {
 
           <div className="rr-card">
             <div className="rr-card-head">
-              <h3 className="rr-card-title"><Clock className="h-5 w-5" style={{ color: 'var(--cp-muted)' }} /> Recent Referrals</h3>
+              <h3 className="rr-card-title"><Clock className="h-5 w-5" style={{ color: 'var(--customer-accent-emerald)' }} /> Recent Referrals</h3>
             </div>
             <div className="rr-referrals-wrap">
               {(d.referrals || []).length === 0 ? (
                 <div className="rr-empty-state">
-                  <Star className="h-8 w-8" style={{ color: '#cbd5e1', marginBottom: '0.75rem' }} />
+                  <Star className="h-8 w-8" style={{ color: 'var(--customer-accent-emerald)', marginBottom: '0.75rem' }} />
                   <p className="rr-empty-title">No referrals yet</p>
                   <p className="rr-empty-sub">Share your referral code to start earning points.</p>
                 </div>
@@ -290,7 +290,7 @@ const ReferralRewards = () => {
                   {d.referrals.map((r, i) => (
                     <div key={i} className="rr-list-item">
                       <div className="rr-list-avatar">
-                        <User className="h-4 w-4" style={{ color: '#64748b' }} />
+                        <User className="h-4 w-4" style={{ color: 'var(--customer-accent-emerald)' }} />
                       </div>
                       <div className="rr-list-info">
                         <span className="rr-list-name">{r.name || 'Friend'}</span>

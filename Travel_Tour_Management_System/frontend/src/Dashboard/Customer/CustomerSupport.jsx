@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Ticket, ChevronRight, ShieldCheck } from 'lucide-react'
+import { Ticket, ChevronRight, ShieldCheck, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import { api, formatDate } from '../../api'
 import CustomerLayout from './CustomerLayout'
 
@@ -96,6 +96,11 @@ const CustomerSupport = () => {
   }
 
   useEffect(() => { Promise.resolve().then(() => loadTickets()) }, [])
+
+  const totalTickets = tickets.length
+  const activeTickets = tickets.filter(t => t.status === 'open' || t.status === 'in_progress').length
+  const resolvedTickets = tickets.filter(t => t.status === 'resolved').length
+  const pendingTickets = tickets.filter(t => t.status === 'open').length
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -195,10 +200,57 @@ const CustomerSupport = () => {
           </div>
         </div>
 
-        <div className="section-header">
-          <Ticket className="h-5 w-5" />
-          <h2>Your Support Tickets</h2>
+        <div className="tickets-section-header">
+          <div>
+            <Ticket className="h-5 w-5" />
+            <div>
+              <h2>Your Support Tickets</h2>
+              <p>Track your requests and get updates from our support team.</p>
+            </div>
+          </div>
+          <span className="ticket-count-badge">{totalTickets} ticket{totalTickets !== 1 ? 's' : ''}</span>
         </div>
+
+        {!loading && tickets.length > 0 && (
+          <div className="support-stats">
+            <div className="stat-card">
+              <div className="stat-icon">
+                <Ticket className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="stat-label">Total Tickets</div>
+                <div className="stat-value">{totalTickets}</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">
+                <Clock className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="stat-label">Open / In Progress</div>
+                <div className="stat-value">{activeTickets}</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">
+                <CheckCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="stat-label">Resolved</div>
+                <div className="stat-value">{resolvedTickets}</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon">
+                <AlertCircle className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="stat-label">Pending Response</div>
+                <div className="stat-value">{pendingTickets}</div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {showForm && (
           <div className="section-card enhanced form-card">
@@ -260,30 +312,63 @@ const CustomerSupport = () => {
             <p>You haven't submitted any support tickets yet. Create one to get help.</p>
           </div>
         ) : (
-          <div className="table-container enhanced">
+          <div className="ticket-list-container">
             <table className="data-table enhanced">
               <thead>
                 <tr>
-                  <th>Ticket ID</th><th>Subject</th><th>Category</th><th>Priority</th><th>Status</th><th>Created</th><th>Messages</th><th>Actions</th>
+                  <th>Ticket ID</th><th>Subject</th><th>Category</th><th>Priority</th><th>Status</th><th>Created</th><th>Messages</th><th className="actions-col">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {tickets.map((t) => (
-                  <tr key={t.id}>
-                    <td className="cell-ellipsis" title={t.ticketId}>{t.ticketId}</td>
-                    <td className="cell-ellipsis" title={t.subject}>{t.subject}</td>
-                    <td className="cell-nowrap">{categoryLabel(t.category)}</td>
+                  <tr key={t.id} className="ticket-row">
+                    <td className="cell-ellipsis ticket-id-col" title={t.ticketId}>{t.ticketId}</td>
+                    <td className="cell-ellipsis ticket-subject-col" title={t.subject}>{t.subject}</td>
+                    <td className="cell-nowrap ticket-category-col">{categoryLabel(t.category)}</td>
                     <td><span className={`priority-badge enhanced ${t.priority}`} style={{ backgroundColor: `${priorityColors[t.priority]}15`, color: priorityColors[t.priority] }}>{priorityLabel(t.priority)}</span></td>
                     <td><span className={`status-badge enhanced ${t.status}`} style={{ backgroundColor: `${statusColors[t.status]}15`, color: statusColors[t.status] }}>{statusLabel(t.status)}</span></td>
                     <td>{t.createdAt}</td>
                     <td>{t.messageCount}</td>
-                    <td>
+                    <td className="ticket-actions-col">
                       <button onClick={() => { setSelectedTicket(null); setShowDetail(true); loadTicketDetail(t.id) }} className="icon-btn enhanced view" title="View Details"><ChevronRight className="h-4 w-4" /></button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+
+            <div className="ticket-mobile-cards">
+              {tickets.map((t) => (
+                <div key={t.id} className="ticket-card mobile-card">
+                  <div className="ticket-card-header">
+                    <div className="ticket-id">{t.ticketId}</div>
+                    <span className={`status-badge enhanced ${t.status}`} style={{ backgroundColor: `${statusColors[t.status]}15`, color: statusColors[t.status] }}>{statusLabel(t.status)}</span>
+                  </div>
+                  <div className="ticket-card-subject">{t.subject}</div>
+                  <div className="ticket-card-meta">
+                    <div className="meta-item">
+                      <span className="meta-label">Category</span>
+                      <span className="meta-value">{categoryLabel(t.category)}</span>
+                    </div>
+                    <div className="meta-item">
+                      <span className="meta-label">Priority</span>
+                      <span className={`priority-badge enhanced ${t.priority}`} style={{ backgroundColor: `${priorityColors[t.priority]}15`, color: priorityColors[t.priority] }}>{priorityLabel(t.priority)}</span>
+                    </div>
+                    <div className="meta-item">
+                      <span className="meta-label">Created</span>
+                      <span className="meta-value">{t.createdAt}</span>
+                    </div>
+                    <div className="meta-item">
+                      <span className="meta-label">Messages</span>
+                      <span className="meta-value">{t.messageCount}</span>
+                    </div>
+                  </div>
+                  <button onClick={() => { setSelectedTicket(null); setShowDetail(true); loadTicketDetail(t.id) }} className="btn-primary enhanced" style={{ width: '100%', marginTop: '0.5rem' }}>
+                    View Details
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 

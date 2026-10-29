@@ -3,7 +3,7 @@ import { User, Mail, Save, Camera, Sparkles, Award, CheckCircle, Shield, Phone, 
 import { useNavigate } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
 import AccountSecurityPanel from '../../components/AccountSecurityPanel'
-import { api } from '../../api'
+import { api, API_BASE, API_HOST } from '../../api'
 import '../Dashboard.css'
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
@@ -23,6 +23,8 @@ const ProfileManagement = () => {
   const [isEditing, setIsEditing] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const [removeConfirm, setRemoveConfirm] = useState(false)
   const [message, setMessage] = useState('')
   const [messageType, setMessageType] = useState('info')
   const [profileData, setProfileData] = useState(emptyProfile)
@@ -45,6 +47,11 @@ const ProfileManagement = () => {
           address: p.address || '',
           avatar: p.avatar || ''
         })
+
+        const stored = JSON.parse(localStorage.getItem('user') || '{}')
+        stored.avatar = p.avatar || ''
+        localStorage.setItem('user', JSON.stringify(stored))
+        window.dispatchEvent(new Event('user-updated'))
       } catch (err) {
         notify(err.message || 'Failed to load profile', 'warning')
       } finally {
@@ -102,7 +109,9 @@ const ProfileManagement = () => {
       stored.fullName = updated.fullName || stored.fullName
       stored.email = updated.email || stored.email
       stored.phone = updated.phone || stored.phone
+      stored.avatar = updated.avatar || stored.avatar
       localStorage.setItem('user', JSON.stringify(stored))
+      window.dispatchEvent(new Event('user-updated'))
 
       setIsEditing(false)
       if (previousEmail && updated.email && previousEmail !== updated.email) {
@@ -117,19 +126,114 @@ const ProfileManagement = () => {
     }
   }
 
-  const handleAvatarUpload = (event) => {
+  const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
+  const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+
+  const handleImageSelect = (event) => {
     const file = event.target.files?.[0]
     if (!file) return
-    if (file.size > 1024 * 512) {
-      notify('Pick an image smaller than 500 KB', 'warning')
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      notify('Only JPEG, JPG, PNG and WEBP images are allowed', 'warning')
+      event.target.value = ''
       return
     }
+
+    if (file.size > MAX_FILE_SIZE) {
+      notify('Image must be smaller than 5 MB', 'warning')
+      event.target.value = ''
+      return
+    }
+
     const reader = new FileReader()
     reader.onload = () => {
       setProfileData(prev => ({ ...prev, avatar: String(reader.result) }))
-      notify('Avatar selected. Save your profile to apply it.', 'info')
+      notify('Preview updated. Upload to apply the change.', 'info')
     }
     reader.readAsDataURL(file)
+  }
+
+  const handleUploadImage = async (event) => {
+    const input = event.target
+    const file = input.files?.[0]
+    if (!file) return
+
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      notify('Only JPEG, JPG, PNG and WEBP images are allowed', 'warning')
+      input.value = ''
+      return
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      notify('Image must be smaller than 5 MB', 'warning')
+      input.value = ''
+      return
+    }
+
+    setUploading(true)
+    setMessage('')
+    try {
+      const formData = new FormData()
+      formData.append('avatar', file)
+
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${API_BASE}/customer/profile/image`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.message || 'Upload failed')
+      }
+
+      const updated = data.profile || {}
+      setProfileData(prev => ({ ...prev, avatar: updated.avatar || '' }))
+
+      const stored = JSON.parse(localStorage.getItem('user') || '{}')
+      stored.avatar = updated.avatar || ''
+      localStorage.setItem('user', JSON.stringify(stored))
+      window.dispatchEvent(new Event('user-updated'))
+
+      input.value = ''
+      notify('Profile image uploaded successfully!', 'info')
+    } catch (err) {
+      notify(err.message || 'Failed to upload image', 'warning')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleRemoveImage = async () => {
+    setRemoveConfirm(false)
+    setUploading(true)
+    setMessage('')
+    try {
+      const token = localStorage.getItem('token')
+      const response = await fetch(`${API_BASE}/customer/profile/image`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(data.message || 'Remove failed')
+      }
+
+      const updated = data.profile || {}
+      setProfileData(prev => ({ ...prev, avatar: updated.avatar || '' }))
+
+      const stored = JSON.parse(localStorage.getItem('user') || '{}')
+      stored.avatar = updated.avatar || ''
+      localStorage.setItem('user', JSON.stringify(stored))
+      window.dispatchEvent(new Event('user-updated'))
+
+      notify('Profile image removed.', 'info')
+    } catch (err) {
+      notify(err.message || 'Failed to remove image', 'warning')
+    } finally {
+      setUploading(false)
+    }
   }
 
   const getInitials = (name) => {
@@ -141,6 +245,8 @@ const ProfileManagement = () => {
       .join('')
       .toUpperCase()
   }
+
+  const hasAvatar = Boolean(profileData.avatar && !profileData.avatar.startsWith('data:'))
 
   return (
     <CustomerLayout active="profile">
@@ -176,23 +282,82 @@ const ProfileManagement = () => {
 
       <div className="profile-section enhanced">
         <div className="profile-header enhanced">
-          <div className="profile-avatar enhanced">
-            <div className="avatar-circle" style={{ background: 'var(--cp-accent)' }}>
-              {profileData.avatar
-                ? <img src={profileData.avatar} alt="" className="avatar-image" />
-                : <span className="avatar-initials">{getInitials(profileData.fullName)}</span>}
+          <div className="profile-avatar-wrapper">
+            <div className="avatar-circle">
+              {hasAvatar ? (
+                <img
+                  src={`${API_HOST}${profileData.avatar}`}
+                  alt="Profile"
+                  className="avatar-image"
+                  onError={(e) => {
+                    e.target.style.display = 'none'
+                    e.target.parentElement?.querySelector('.avatar-initials')?.classList.remove('hidden')
+                  }}
+                />
+              ) : null}
+              <span className={`avatar-initials${hasAvatar ? ' hidden' : ''}`}>{getInitials(profileData.fullName)}</span>
             </div>
-            <label className="avatar-upload-btn" style={{ background: 'var(--cp-card)', borderColor: 'var(--cp-line)' }}>
-              <Camera className="h-4 w-4" />
-              <input
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={handleAvatarUpload}
-                disabled={!isEditing}
-              />
-            </label>
+
+            {!hasAvatar ? (
+              <label className="avatar-upload-label" htmlFor="avatar-upload" aria-label="Upload profile photo">
+                <Camera className="h-5 w-5" />
+                <input
+                  id="avatar-upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleUploadImage}
+                  disabled={uploading || saving}
+                  className="sr-only"
+                />
+                <span className="upload-btn-text">Upload Photo</span>
+              </label>
+            ) : (
+              <div className="avatar-actions">
+                <label className="avatar-upload-label" htmlFor="avatar-upload" aria-label="Change profile photo">
+                  <Camera className="h-4 w-4" />
+                  <input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleUploadImage}
+                    disabled={uploading || saving}
+                    className="sr-only"
+                  />
+                  <span className="upload-btn-text">Change Photo</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setRemoveConfirm(true)}
+                  className="avatar-remove-btn"
+                  aria-label="Remove profile photo"
+                >
+                  Remove
+                </button>
+              </div>
+            )}
+
+            {removeConfirm && (
+              <div className="avatar-remove-confirm">
+                <p>Remove this photo?</p>
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  disabled={uploading}
+                  className="btn-danger-sm"
+                >
+                  Remove
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRemoveConfirm(false)}
+                  className="btn-cancel-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
           </div>
+
           <div className="profile-info enhanced">
             <h2 style={{ color: 'var(--cp-ink)' }}>{profileData.fullName || 'Customer'}</h2>
             <p className="profile-email" style={{ color: 'var(--cp-muted)' }}>{profileData.email}</p>
@@ -207,17 +372,20 @@ const ProfileManagement = () => {
               </span>
             </div>
           </div>
-          <button
-            onClick={() => {
-              setIsEditing(!isEditing)
-              setMessage('')
-            }}
-            className={`btn-primary enhanced ${isEditing ? 'cancel' : ''}`}
-            disabled={saving}
-            style={{ '--accent': isEditing ? 'var(--cp-danger)' : 'var(--cp-accent)' }}
-          >
-            {isEditing ? 'Cancel' : <><Save className="h-4 w-4" /> Edit Profile</>}
-          </button>
+
+          <div className="profile-actions">
+            <button
+              onClick={() => {
+                setIsEditing(!isEditing)
+                setMessage('')
+              }}
+              className={`btn-primary enhanced ${isEditing ? 'cancel' : ''}`}
+              disabled={saving}
+              style={{ '--accent': isEditing ? 'var(--cp-danger)' : 'var(--cp-accent)' }}
+            >
+              {isEditing ? 'Cancel' : <><Save className="h-4 w-4" /> Edit Profile</>}
+            </button>
+          </div>
         </div>
 
         <form className="profile-form enhanced" onSubmit={handleSave}>

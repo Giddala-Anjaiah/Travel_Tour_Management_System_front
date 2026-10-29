@@ -761,7 +761,7 @@ const totalCount = stats?.total ?? meta.total
                   {selectedBooking.discountAmount > 0 && (
                     <div className="summary-row">
                       <span>Discount</span>
-                      <strong style={{ color: '#22c55e' }}>-₹{(selectedBooking.discountAmount || 0).toLocaleString()}</strong>
+                      <strong style={{ color: 'var(--customer-accent-emerald)' }}>-₹{(selectedBooking.discountAmount || 0).toLocaleString()}</strong>
                     </div>
                   )}
                   <div className="summary-row">
@@ -826,14 +826,14 @@ const totalCount = stats?.total ?? meta.total
               {formError && <div className="cd-alert warning" style={{ marginBottom: '1rem' }}>{formError}</div>}
               <div className="booking-summary" style={{ padding: '1rem', background: '#f8fafc', borderRadius: '0.5rem', marginBottom: '1rem', border: '1px solid #e2e8f0' }}>
                 <h4 style={{ margin: '0 0 0.5rem 0' }}>{bookingType === 'package' ? form.package : form.hotelName}</h4>
-                <p style={{ margin: 0, color: '#64748b' }}>{bookingType === 'package' ? 'Package Booking' : 'Hotel Booking'}</p>
+                <p style={{ margin: 0, color: 'var(--customer-text-secondary)' }}>{bookingType === 'package' ? 'Package Booking' : 'Hotel Booking'}</p>
                 {form.amount > 0 && (
                   <div style={{ marginTop: '0.75rem' }}>
-                    <p style={{ margin: '0 0 0.25rem 0', fontWeight: 700, color: '#0f172a' }}>Original Amount: ₹{form.amount.toLocaleString()}</p>
+                    <p style={{ margin: '0 0 0.25rem 0', fontWeight: 700, color: 'var(--customer-text-main)' }}>Original Amount: ₹{form.amount.toLocaleString()}</p>
                     {appliedCoupon && discountAmount > 0 && (
                       <>
-                        <p style={{ margin: '0 0 0.25rem 0', fontWeight: 600, color: '#22c55e' }}>Discount ({appliedCoupon.code}): -₹{discountAmount.toLocaleString()}</p>
-                        <p style={{ margin: '0 0 0.25rem 0', fontWeight: 700, color: '#0f172a', fontSize: '1.1rem' }}>Final Amount: ₹{finalAmount.toLocaleString()}</p>
+                        <p style={{ margin: '0 0 0.25rem 0', fontWeight: 600, color: 'var(--customer-accent-emerald)' }}>Discount ({appliedCoupon.code}): -₹{discountAmount.toLocaleString()}</p>
+                        <p style={{ margin: '0 0 0.25rem 0', fontWeight: 700, color: 'var(--customer-text-main)', fontSize: '1.1rem' }}>Final Amount: ₹{finalAmount.toLocaleString()}</p>
                       </>
                     )}
                   </div>

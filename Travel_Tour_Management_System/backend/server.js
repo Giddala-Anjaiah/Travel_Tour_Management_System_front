@@ -8,6 +8,9 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 import {
   recordCustomerActivity,
   getPackageRecommendations,
@@ -47,6 +50,38 @@ app.use(cors({
 }));
 app.set('trust proxy', 1);
 app.use(express.json());
+
+// --- Profile image storage (local filesystem) ---
+const AVATAR_DIR = path.join(process.cwd(), 'uploads', 'avatars');
+fs.mkdirSync(AVATAR_DIR, { recursive: true });
+
+const avatarStorage = multer.diskStorage({
+  destination: AVATAR_DIR,
+  filename: (_req, file, cb) => {
+    const safeName = String(file.originalname).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const unique = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}-${safeName}`;
+    cb(null, unique);
+  },
+});
+
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = /jpeg|jpg|png|webp/;
+    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mimeOk = allowed.test(file.mimetype);
+    if (extOk && mimeOk) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only JPEG, JPG, PNG and WEBP images are allowed'));
+    }
+  },
+}).single('avatar');
+
+// Serve uploaded avatars statically so the frontend can reference them by URL.
+app.use('/api/uploads/avatars', express.static(AVATAR_DIR));
+
 app.use(passport.initialize());
 
 // MongoDB Connection
@@ -944,6 +979,52 @@ const notificationPreferenceSchema = new mongoose.Schema({
 });
 
 const NotificationPreference = mongoose.model('NotificationPreference', notificationPreferenceSchema);
+
+// Communication Audit Trail Schema — records every operator-to-customer
+// message (booking/itinerary updates) sent through the platform.
+const communicationSchema = new mongoose.Schema({
+  operatorId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true
+  },
+  type: {
+    type: String,
+    enum: ['booking_update', 'itinerary_update', 'general', 'disruption'],
+    required: true
+  },
+  channel: {
+    type: String,
+    enum: ['in_app', 'email', 'both'],
+    required: true
+  },
+  title: { type: String, required: true },
+  message: { type: String, required: true },
+  recipientType: {
+    type: String,
+    enum: ['single', 'booking', 'package', 'all_confirmed'],
+    required: true
+  },
+  recipientCount: { type: Number, default: 0 },
+  relatedBookingId: { type: mongoose.Schema.Types.ObjectId, ref: 'Booking' },
+  relatedPackageId: { type: mongoose.Schema.Types.ObjectId, ref: 'Package' },
+  relatedItineraryId: { type: mongoose.Schema.Types.ObjectId },
+  status: {
+    type: String,
+    enum: ['sent', 'partial', 'failed'],
+    default: 'sent'
+  },
+  emailSent: { type: Boolean, default: false },
+  inAppSent: { type: Boolean, default: false },
+  errorMessage: String,
+  sentAt: { type: Date, default: Date.now }
+});
+
+communicationSchema.index({ operatorId: 1, sentAt: -1 });
+communicationSchema.index({ type: 1, sentAt: -1 });
+communicationSchema.index({ relatedBookingId: 1 });
+
+const Communication = mongoose.model('Communication', communicationSchema);
 
 // Pricing Schema
 const pricingSchema = new mongoose.Schema({
@@ -5719,6 +5800,164 @@ app.post('/api/operator/disruptions', async (req, res) => {
 });
 
 // =============================================================================
+// Customer Communication — operator sends booking/itinerary updates to
+// customers through the platform with a full audit trail.
+// =============================================================================
+app.get('/api/operator/communication', async (req, res) => {
+  try {
+    const filter = { operatorId: req.user.userId };
+    const search = searchFilter(['title', 'message'], req.query.search);
+    if (search) Object.assign(filter, search);
+    if (req.query.type) filter.type = req.query.type;
+    if (req.query.channel) filter.channel = req.query.channel;
+    if (req.query.status) filter.status = req.query.status;
+
+    const { docs, total, page, limit, totalPages, hasNext, hasPrev } = await findPage(Communication, filter, {
+      query: req.query,
+      sort: { sentAt: -1 }
+    });
+    pagedResponse(res, 'communications', { docs, total, page, limit, totalPages, hasNext, hasPrev });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching communications' });
+  }
+});
+
+app.get('/api/operator/communication/:id', async (req, res) => {
+  try {
+    const communication = await Communication.findOne({
+      _id: req.params.id,
+      operatorId: req.user.userId
+    });
+    if (!communication) {
+      return res.status(404).json({ message: 'Communication not found' });
+    }
+    res.status(200).json({ communication });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching communication' });
+  }
+});
+
+app.post('/api/operator/communication', async (req, res) => {
+  try {
+    const {
+      type,
+      channel,
+      title,
+      message,
+      recipientType,
+      customerId,
+      bookingId,
+      packageId
+    } = req.body;
+
+    if (!type || !channel || !title || !message || !recipientType) {
+      return res.status(400).json({ message: 'type, channel, title, message and recipientType are required' });
+    }
+
+    let customerIds = [];
+    let relatedBooking = null;
+    let relatedPackage = null;
+
+    if (recipientType === 'single') {
+      if (!customerId) {
+        return res.status(400).json({ message: 'customerId is required for single recipient' });
+      }
+      customerIds = [customerId];
+    } else if (recipientType === 'booking') {
+      if (!bookingId) {
+        return res.status(400).json({ message: 'bookingId is required for booking recipient' });
+      }
+      relatedBooking = await Booking.findOne({ _id: bookingId, operatorId: req.user.userId });
+      if (!relatedBooking) {
+        return res.status(404).json({ message: 'Booking not found' });
+      }
+      customerIds = relatedBooking.customerId ? [relatedBooking.customerId.toString()] : [];
+    } else if (recipientType === 'package') {
+      if (!packageId) {
+        return res.status(400).json({ message: 'packageId is required for package recipient' });
+      }
+      relatedPackage = await Package.findOne({ _id: packageId, operatorId: req.user.userId });
+      if (!relatedPackage) {
+        return res.status(404).json({ message: 'Package not found' });
+      }
+      const packageBookings = await Booking.find({ packageId: relatedPackage._id, status: { $in: ['pending', 'confirmed'] } }).select('customerId');
+      customerIds = [...new Set(packageBookings.map(b => b.customerId?.toString()).filter(Boolean))];
+    } else if (recipientType === 'all_confirmed') {
+      const confirmedBookings = await Booking.find({ operatorId: req.user.userId, status: 'confirmed' }).select('customerId');
+      customerIds = [...new Set(confirmedBookings.map(b => b.customerId?.toString()).filter(Boolean))];
+    } else {
+      return res.status(400).json({ message: 'Invalid recipientType' });
+    }
+
+    if (!customerIds.length) {
+      return res.status(404).json({ message: 'No customers found for the selected recipients' });
+    }
+
+    let inAppSent = false;
+    let emailSent = channel === 'email' || channel === 'both';
+    let errorMessage = null;
+    let successCount = 0;
+
+    const notificationType = type === 'itinerary_update' ? 'itinerary_change'
+      : type === 'booking_update' ? 'booking'
+      : type === 'disruption' ? 'disruption' : 'system';
+
+    for (const custId of customerIds) {
+      try {
+        const notification = await createNotification({
+          userId: custId,
+          type: notificationType,
+          title,
+          message,
+          relatedId: relatedBooking ? relatedBooking._id : undefined,
+          bookingId: relatedBooking ? relatedBooking._id : undefined,
+          actionUrl: relatedBooking ? `/customer/bookings/${relatedBooking._id}/tracker` : '/customer/trip-alerts',
+          severity: type === 'disruption' ? 'warning' : 'info',
+          email: channel === 'email' || channel === 'both',
+          emailSubject: title
+        });
+        if (notification) {
+          inAppSent = true;
+          successCount += 1;
+        }
+      } catch (err) {
+        console.error('Communication in-app failed for', custId, err.message);
+        errorMessage = errorMessage || err.message;
+      }
+    }
+
+    const status = successCount === customerIds.length ? 'sent' : successCount > 0 ? 'partial' : 'failed';
+
+    const communication = new Communication({
+      operatorId: req.user.userId,
+      type,
+      channel,
+      title,
+      message,
+      recipientType,
+      recipientCount: customerIds.length,
+      relatedBookingId: relatedBooking ? relatedBooking._id : undefined,
+      relatedPackageId: relatedPackage ? relatedPackage._id : undefined,
+      status,
+      emailSent,
+      inAppSent,
+      errorMessage
+    });
+    await communication.save();
+
+    res.status(201).json({
+      message: 'Communication sent',
+      communication,
+      recipientCount: customerIds.length,
+      successCount
+    });
+  } catch (error) {
+    console.error('Error sending communication:', error);
+    res.status(500).json({ message: 'Error sending communication' });
+  }
+});
+
+// =============================================================================
 // Public Routes
 // =============================================================================
 
@@ -5959,6 +6198,76 @@ app.put('/api/customer/profile', async (req, res) => {
   } catch (error) {
     console.error('Error updating profile:', error);
     res.status(500).json({ message: 'Error updating profile' });
+  }
+});
+
+// --- Customer profile image upload ---
+app.post('/api/customer/profile/image', authenticate, requireCustomer, async (req, res) => {
+  uploadAvatar(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Image must be smaller than 5 MB' });
+      }
+      return res.status(400).json({ message: err.message || 'Upload failed' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file provided' });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      // Clean up the orphaned file
+      fs.unlink(req.file.path, () => {});
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Remove the previous avatar file if it is a locally stored one
+    const prevAvatar = user.avatar || '';
+    if (prevAvatar && prevAvatar.includes('/api/uploads/avatars/')) {
+      const prevFileName = path.basename(prevAvatar);
+      const prevPath = path.join(AVATAR_DIR, prevFileName);
+      fs.unlink(prevPath, () => {});
+    }
+
+    const avatarUrl = `/api/uploads/avatars/${req.file.filename}`;
+    user.avatar = avatarUrl;
+    await user.save();
+    invalidateSecurityStateCache(req.user.userId);
+
+    res.status(200).json({
+      message: 'Profile image uploaded successfully',
+      profile: serializeProfile(user),
+      avatarUrl,
+    });
+  });
+});
+
+// Remove customer profile image
+app.delete('/api/customer/profile/image', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const prevAvatar = user.avatar || '';
+    if (prevAvatar && prevAvatar.includes('/api/uploads/avatars/')) {
+      const prevFileName = path.basename(prevAvatar);
+      const prevPath = path.join(AVATAR_DIR, prevFileName);
+      fs.unlink(prevPath, () => {});
+    }
+
+    user.avatar = '';
+    await user.save();
+    invalidateSecurityStateCache(req.user.userId);
+
+    res.status(200).json({
+      message: 'Profile image removed',
+      profile: serializeProfile(user),
+    });
+  } catch (error) {
+    console.error('Error removing profile image:', error);
+    res.status(500).json({ message: 'Error removing profile image' });
   }
 });
 

@@ -409,7 +409,7 @@ const Wishlist = () => {
                       <div className="wishlist-footer enhanced">
                         <div className="wishlist-price enhanced">
                           <small>Starting from</small>
-                          <strong style={{ color: '#4f46e5' }}>
+                          <strong style={{ color: 'var(--customer-primary-teal)' }}>
                             {item.price ? '₹' + item.price.toLocaleString() + (isHotel ? '/ night' : '') : 'Price on request'}
                           </strong>
                         </div>
@@ -502,7 +502,7 @@ const Wishlist = () => {
             ) : (
               notifications.map(notif => (
                 <div key={notif._id} className={`notification-card enhanced ${!notif.read ? 'unread' : ''}`}>
-                  <div className="notification-icon enhanced" style={{ backgroundColor: '#4f46e5' }}>
+                  <div className="notification-icon enhanced" style={{ backgroundColor: 'var(--customer-primary-teal)' }}>
                     <Bell className="h-4 w-4" />
                   </div>
                   <div className="notification-content enhanced">
