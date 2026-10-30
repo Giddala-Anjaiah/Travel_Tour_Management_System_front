@@ -14,7 +14,7 @@ import ProtectedRoute from './ProtectedRoute.jsx'
 // Route-level code splitting: each dashboard chunk loads only when visited
 const CustomerDashboard = lazy(() => import('./Dashboard/Customer/CustomerDashboard.jsx'))
 const OperatorDashboard = lazy(() => import('./Dashboard/Operator/OperatorDashboard.jsx'))
-const OperatorProfilePage = lazy(() => import('./Dashboard/Operator/OperatorProfilePage.jsx'))
+const OperatorProfile = lazy(() => import('./Dashboard/Operator/OperatorProfile.jsx'))
 const OperatorPackagesPage = lazy(() => import('./Dashboard/Operator/OperatorPackagesPage.jsx'))
 const OperatorItinerariesPage = lazy(() => import('./Dashboard/Operator/OperatorItinerariesPage.jsx'))
 const OperatorItineraryBuilderPage = lazy(() => import('./Dashboard/Operator/OperatorItineraryBuilderPage.jsx'))
@@ -26,7 +26,7 @@ const OperatorReviewsPage = lazy(() => import('./Dashboard/Operator/OperatorRevi
 const OperatorRevenueNotificationsPage = lazy(() => import('./Dashboard/Operator/OperatorRevenueNotificationsPage.jsx'))
 const OperatorSettingsPage = lazy(() => import('./Dashboard/Operator/OperatorSettingsPage.jsx'))
 const HotelDashboard = lazy(() => import('./Dashboard/Hotel/HotelDashboard.jsx'))
-const HotelProfilePage = lazy(() => import('./Dashboard/Hotel/HotelProfilePage.jsx'))
+const HotelProfile = lazy(() => import('./Dashboard/Hotel/HotelProfile.jsx'))
 const HotelRoomsPage = lazy(() => import('./Dashboard/Hotel/HotelRoomsPage.jsx'))
 const HotelPricingPage = lazy(() => import('./Dashboard/Hotel/HotelPricingPage.jsx'))
 const HotelAvailabilityPage = lazy(() => import('./Dashboard/Hotel/HotelAvailabilityPage.jsx'))
@@ -48,6 +48,7 @@ const ReportsCouponsSettings = lazy(() => import('./Dashboard/Admin/ReportsCoupo
 const RefundOversight = lazy(() => import('./Dashboard/Admin/RefundOversight.jsx'))
 const HotelPartnerManagement = lazy(() => import('./Dashboard/Admin/HotelPartnerManagement.jsx'))
 const TicketManagement = lazy(() => import('./Dashboard/Admin/TicketManagement.jsx'))
+const AdminProfile = lazy(() => import('./Dashboard/Admin/AdminProfile.jsx'))
 const ProfileManagement = lazy(() => import('./Dashboard/Customer/ProfileManagement.jsx'))
 const DestinationExploration = lazy(() => import('./Dashboard/Customer/DestinationExploration.jsx'))
 const DestinationDetail = lazy(() => import('./Dashboard/Customer/DestinationDetail.jsx'))
@@ -56,11 +57,16 @@ const Itineraries = lazy(() => import('./Dashboard/Customer/Itineraries.jsx'))
 const HotelSearchAvailability = lazy(() => import('./Dashboard/Customer/HotelSearchAvailability.jsx'))
 const BookingsPayments = lazy(() => import('./Dashboard/Customer/BookingsPayments.jsx'))
 const BookingTracker = lazy(() => import('./Dashboard/Customer/BookingTracker.jsx'))
+const StripeSuccess = lazy(() => import('./Dashboard/Customer/StripeSuccess.jsx'))
+const StripeCancel = lazy(() => import('./Dashboard/Customer/StripeCancel.jsx'))
 const InvoicesBookingHistory = lazy(() => import('./Dashboard/Customer/InvoicesBookingHistory.jsx'))
 import Wishlist from './Dashboard/Customer/Wishlist.jsx'
 const TripAlerts = lazy(() => import('./Dashboard/Customer/TripAlerts.jsx'))
 const ReferralRewards = lazy(() => import('./Dashboard/Customer/ReferralRewards.jsx'))
 const CustomerSupport = lazy(() => import('./Dashboard/Customer/CustomerSupport.jsx'))
+const MembershipPage = lazy(() => import('./Dashboard/Customer/Membership.jsx'))
+const AdminMembershipManagement = lazy(() => import('./Dashboard/Admin/MembershipManagement.jsx'))
+const AdminUpiPayments = lazy(() => import('./Dashboard/Admin/AdminUpiPayments.jsx'))
 
 // Lightweight loading fallback so LCP isn't blocked by a heavy spinner
 const LoadingFallback = () => null
@@ -191,6 +197,30 @@ createRoot(document.getElementById('root')).render(
             </ProtectedRoute>
           } 
         />
+        <Route 
+          path="/admin/profile" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminProfile />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/membership-management" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminMembershipManagement />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/admin/upi-payments" 
+          element={
+            <ProtectedRoute allowedRoles={['admin']}>
+              <AdminUpiPayments />
+            </ProtectedRoute>
+          } 
+        />
         
         {/* Customer Routes */}
         <Route
@@ -258,6 +288,22 @@ createRoot(document.getElementById('root')).render(
           } 
         />
         <Route 
+          path="/customer/payment/success" 
+          element={
+            <ProtectedRoute allowedRoles={['customer']}>
+              <StripeSuccess />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/customer/payment/cancel" 
+          element={
+            <ProtectedRoute allowedRoles={['customer']}>
+              <StripeCancel />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
           path="/customer/invoices" 
           element={
             <ProtectedRoute allowedRoles={['customer']}>
@@ -305,6 +351,14 @@ createRoot(document.getElementById('root')).render(
             </ProtectedRoute>
           } 
         />
+        <Route 
+          path="/customer/membership" 
+          element={
+            <ProtectedRoute allowedRoles={['customer']}>
+              <MembershipPage />
+            </ProtectedRoute>
+          } 
+        />
         
         {/* Tour Operator Routes */}
         <Route 
@@ -319,7 +373,7 @@ createRoot(document.getElementById('root')).render(
           path="/tour-operator/profile" 
           element={
             <ProtectedRoute allowedRoles={['tour_operator']}>
-              <OperatorProfilePage />
+              <OperatorProfile />
             </ProtectedRoute>
           } 
         />
@@ -433,7 +487,7 @@ createRoot(document.getElementById('root')).render(
           path="/hotel-partner/profile" 
           element={
             <ProtectedRoute allowedRoles={['hotel_partner']}>
-              <HotelProfilePage />
+              <HotelProfile />
             </ProtectedRoute>
           } 
         />

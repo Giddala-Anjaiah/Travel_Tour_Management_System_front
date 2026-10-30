@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
-import { CreditCard, Search, Clock, CheckCircle, XCircle, AlertCircle, Download, Eye, Sparkles, Shield, Ticket, Calendar as CalendarIcon, Wallet, Zap, Users, MapPin, X, AlertTriangle, Calendar, Link as LinkIcon } from 'lucide-react'
-import { useSearchParams, useLocation } from 'react-router-dom'
+import { CreditCard, Search, Clock, CheckCircle, XCircle, AlertCircle, Download, Eye, Sparkles, Shield, Ticket, Calendar as CalendarIcon, Wallet, Zap, Users, MapPin, X, AlertTriangle, Calendar, Link as LinkIcon, QrCode, RefreshCcw } from 'lucide-react'
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom'
 import { Link } from 'react-router-dom'
 import CustomerLayout from './CustomerLayout'
-import { api, formatDate, readPagination } from '../../api'
+import { api, API_BASE, formatDate, readPagination } from '../../api'
 import Pagination from '../../components/Pagination'
 import '../Dashboard.css'
 
@@ -38,7 +38,6 @@ const BookingsPayments = () => {
   const [filterStatus, setFilterStatus] = useState('all')
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
-  const [paying, setPaying] = useState(false)
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [creating, setCreating] = useState(false)
   const [packages, setPackages] = useState([])
@@ -68,6 +67,7 @@ const BookingsPayments = () => {
   const [couponsLoading, setCouponsLoading] = useState(false)
   const [searchParams] = useSearchParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const [page, setPage] = useState(1)
   const [limit, setLimit] = useState(10)
   const [meta, setMeta] = useState({ page: 1, limit: 10, total: 0, totalPages: 1, hasNext: false, hasPrev: false })
@@ -77,6 +77,20 @@ const BookingsPayments = () => {
   const [cancelBooking, setCancelBooking] = useState(null)
   const [cancelReason, setCancelReason] = useState('')
   const [cancelRefundInfo, setCancelRefundInfo] = useState(null)
+  const [stripeCheckoutUrl, setStripeCheckoutUrl] = useState(null)
+  const [stripeLoading, setStripeLoading] = useState(false)
+  const [manualPaymentMethod, setManualPaymentMethod] = useState('upi')
+  const [manualTransactionId, setManualTransactionId] = useState('')
+  const [manualUpiId, setManualUpiId] = useState('')
+  const [manualNotes, setManualNotes] = useState('')
+  const [manualLoading, setManualLoading] = useState(false)
+  const [manualError, setManualError] = useState('')
+  const [manualSuccess, setManualSuccess] = useState('')
+  const [qrDataUrl, setQrDataUrl] = useState(null)
+  const [qrLoading, setQrLoading] = useState(false)
+  const [upiDetails, setUpiDetails] = useState(null)
+  const [paymentStatus, setPaymentStatus] = useState(null)
+  const [checkingStatus, setCheckingStatus] = useState(false)
 
   // Fire-and-forget browsing signal for the recommendation engine.
   // Failures are swallowed on purpose — tracking must never break booking.
@@ -255,28 +269,145 @@ const BookingsPayments = () => {
   const handlePayment = (booking) => {
     setSelectedBooking(booking)
     setShowPaymentModal(true)
+    setQrDataUrl(null)
+    setUpiDetails(null)
+    fetchQRPayment(booking)
   }
 
-  const processPayment = async (e) => {
-    e.preventDefault()
-    if (!selectedBooking) return
-    setPaying(true)
-    try {
-      const totalDue = selectedBooking.finalAmount || selectedBooking.amount
-      const remaining = totalDue - (selectedBooking.paidAmount || 0)
-      const data = await api(`/customer/bookings/${selectedBooking._id}/pay`, {
-        method: 'PUT',
-        body: JSON.stringify({ amount: remaining })
-      })
-      void data
-      setShowPaymentModal(false)
-      setSelectedBooking(null)
-      await fetchBookings()
-    } catch (err) {
-      alert(err.message || 'Payment failed')
-    } finally {
-      setPaying(false)
+  // Redirect effect: when a Stripe checkout URL is ready, send the customer
+  // to Stripe's hosted Checkout page (Sandbox mode).
+  useEffect(() => {
+    if (stripeCheckoutUrl) {
+      window.location.href = stripeCheckoutUrl
     }
+  }, [stripeCheckoutUrl])
+
+  const createStripeCheckout = async () => {
+    if (!selectedBooking) return
+    setStripeLoading(true)
+    setError('')
+    try {
+      const totalDue = (selectedBooking.finalAmount || selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)
+      const data = await api(`/customer/bookings/${selectedBooking._id}/stripe-checkout`, {
+        method: 'POST',
+        body: JSON.stringify({ amount: totalDue })
+      })
+      if (data.checkoutUrl) {
+        setStripeCheckoutUrl(data.checkoutUrl)
+      } else {
+        throw new Error(data.message || 'Failed to create checkout session')
+      }
+    } catch (err) {
+      setError(err.message || 'Payment failed')
+      setStripeLoading(false)
+    }
+  }
+
+  const createManualPayment = async () => {
+    if (!selectedBooking) return
+    setManualLoading(true)
+    setManualError('')
+    setManualSuccess('')
+    try {
+      const totalDue = (selectedBooking.finalAmount || selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)
+      const data = await api(`/customer/bookings/${selectedBooking._id}/manual-payment`, {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: totalDue,
+          paymentMethod: manualPaymentMethod,
+          transactionId: manualTransactionId.trim() || undefined,
+          upiId: manualUpiId.trim() || undefined,
+          notes: manualNotes.trim() || undefined
+        })
+      })
+      if (data.paymentStatus === 'paid') {
+        setManualSuccess('Payment recorded successfully! Your booking is now confirmed.')
+        setShowPaymentModal(false)
+        setTimeout(() => {
+          setManualSuccess('')
+          setManualPaymentMethod('upi')
+          setManualTransactionId('')
+          setManualUpiId('')
+          setManualNotes('')
+          fetchBookings({ page: 1 })
+        }, 1500)
+      } else {
+        setManualSuccess(`Partial payment of ₹${(selectedBooking.paidAmount || 0).toLocaleString()} recorded.`)
+      }
+    } catch (err) {
+      setManualError(err.message || 'Failed to record manual payment')
+    } finally {
+      setManualLoading(false)
+    }
+  }
+
+  const fetchQRPayment = async (booking) => {
+    if (!booking) return
+    setQrLoading(true)
+    setManualError('')
+    setQrDataUrl(null)
+    setUpiDetails(null)
+    try {
+      const totalDue = (booking.finalAmount || booking.amount || 0) - (booking.paidAmount || 0)
+      if (totalDue <= 0) {
+        setManualError('No remaining amount due for this booking.')
+        setQrLoading(false)
+        return
+      }
+      console.debug('[QR] Fetching QR for booking:', booking._id, 'amount due:', totalDue)
+      const data = await api(`/customer/bookings/${booking._id}/qr-payment`, {
+        method: 'GET'
+      })
+      console.debug('[QR] Response keys:', Object.keys(data || {}), 'has qrDataUrl:', Boolean(data?.qrDataUrl))
+      setQrDataUrl(data.qrDataUrl || null)
+      setUpiDetails({
+        upiId: data.upiId,
+        merchantName: data.merchantName,
+        amount: data.amount,
+        bookingReference: data.bookingReference,
+        upiUrl: data.upiUrl
+      })
+    } catch (err) {
+      console.error('[QR] Fetch failed:', err.status, err.message)
+      setManualError(err.message || 'Failed to generate QR code.')
+    } finally {
+      setQrLoading(false)
+    }
+  }
+
+  const checkPaymentStatus = async () => {
+    if (!selectedBooking) return
+    setCheckingStatus(true)
+    try {
+      const data = await api(`/customer/bookings/${selectedBooking._id}/payment-status`, {
+        method: 'GET'
+      })
+      setPaymentStatus(data)
+      if (data.paymentState === 'SUCCEEDED' || data.paymentStatus === 'paid') {
+        setManualSuccess('Payment confirmed! Your booking is now verified.')
+        setShowPaymentModal(false)
+        setTimeout(() => {
+          setManualSuccess('')
+          fetchBookings({ page: 1 })
+        }, 1500)
+      } else if (data.paymentState === 'FAILED' || data.paymentState === 'EXPIRED' || data.paymentState === 'CANCELLED') {
+        setManualError(`Payment ${data.paymentState.toLowerCase()}. Please retry.`)
+      } else {
+        setManualError(`Payment status: ${data.paymentState || 'PENDING'}. Awaiting verification.`)
+      }
+    } catch (err) {
+      setManualError(err.message || 'Failed to check payment status')
+    } finally {
+      setCheckingStatus(false)
+    }
+  }
+
+  const retryPayment = () => {
+    setManualError('')
+    setPaymentStatus(null)
+    setQrDataUrl(null)
+    setUpiDetails(null)
+    fetchQRPayment()
   }
 
   const getPaymentProgress = (paid, total) => {
@@ -580,6 +711,9 @@ const totalCount = stats?.total ?? meta.total
                     {booking.coupon && (
                       <span style={{ color: 'var(--cp-success)' }}>Coupon: {booking.coupon.code} (-₹{(booking.discountAmount || 0).toLocaleString()})</span>
                     )}
+                    {booking.membershipDiscountPercentage && booking.membershipDiscountPercentage > 0 && (
+                      <span style={{ color: 'var(--customer-primary-teal)', fontSize: '0.75rem' }}>Member: -{booking.membershipDiscountPercentage}%</span>
+                    )}
                     <span>Paid: ₹{(booking.paidAmount || 0).toLocaleString()}</span>
                     <span>Total: ₹{(booking.finalAmount || booking.amount || 0).toLocaleString()}</span>
                   </div>
@@ -748,6 +882,20 @@ const totalCount = stats?.total ?? meta.total
                       <strong>{selectedBooking.coupon.code}</strong>
                     </div>
                   )}
+                  {selectedBooking.membershipDiscountPercentage && selectedBooking.membershipDiscountPercentage > 0 && (
+                    <>
+                      <div className="summary-row">
+                        <span>Membership Plan</span>
+                        <strong style={{ color: 'var(--customer-primary-teal)' }}>
+                          {selectedBooking.membershipDiscountPercentage}% Member
+                        </strong>
+                      </div>
+                      <div className="summary-row">
+                        <span>Membership Discount</span>
+                        <strong style={{ color: 'var(--customer-accent-emerald)' }}>-{selectedBooking.membershipDiscountPercentage}%</strong>
+                      </div>
+                    </>
+                  )}
                   {selectedBooking.originalAmount && selectedBooking.originalAmount !== selectedBooking.amount && (
                     <div className="summary-row">
                       <span>Original Amount</span>
@@ -772,42 +920,302 @@ const totalCount = stats?.total ?? meta.total
                     <span>Remaining Amount</span>
                     <strong>₹{((selectedBooking.finalAmount || selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)).toLocaleString()}</strong>
                   </div>
+                  {paymentStatus && (
+                    <div className="summary-row">
+                      <span>Payment Status</span>
+                      <strong style={{ color: paymentStatus.paymentState === 'SUCCEEDED' || paymentStatus.paymentStatus === 'paid' ? 'var(--customer-accent-emerald)' : paymentStatus.paymentState === 'PENDING' ? 'var(--customer-primary-teal)' : 'var(--customer-text-secondary)' }}>
+                        {paymentStatus.paymentState || paymentStatus.paymentStatus || '—'}
+                      </strong>
+                    </div>
+                  )}
                 </div>
               </div>
-              <form className="payment-form enhanced" onSubmit={processPayment}>
-                <div className="form-group">
-                  <label>Card Number</label>
-                  <input type="text" placeholder="1234 5678 9012 3456" required />
-                </div>
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Expiry Date</label>
-                    <input type="text" placeholder="MM/YY" required />
+              <form className="payment-form enhanced" onSubmit={(e) => { e.preventDefault(); createStripeCheckout() }}>
+                <div className="payment-summary enhanced">
+                  <div className="summary-header">
+                    <h4>Booking Summary</h4>
+                    <span className="booking-id-tag">{selectedBooking.bookingId}</span>
                   </div>
-                  <div className="form-group">
-                    <label>CVV</label>
-                    <input type="text" placeholder="123" required />
+                  <div className="summary-details">
+                    <div className="summary-row">
+                      <span>Package</span>
+                      <strong>{selectedBooking.package}</strong>
+                    </div>
+                    {selectedBooking.coupon && (
+                      <div className="summary-row">
+                        <span>Coupon</span>
+                        <strong>{selectedBooking.coupon.code}</strong>
+                      </div>
+                    )}
+                    {selectedBooking.membershipDiscountPercentage && selectedBooking.membershipDiscountPercentage > 0 && (
+                      <>
+                        <div className="summary-row">
+                          <span>Membership Plan</span>
+                          <strong style={{ color: 'var(--customer-primary-teal)' }}>
+                            {selectedBooking.membershipDiscountPercentage}% Member
+                          </strong>
+                        </div>
+                        <div className="summary-row">
+                          <span>Membership Discount</span>
+                          <strong style={{ color: 'var(--customer-accent-emerald)' }}>-{selectedBooking.membershipDiscountPercentage}%</strong>
+                        </div>
+                      </>
+                    )}
+                    {selectedBooking.originalAmount && selectedBooking.originalAmount !== selectedBooking.amount && (
+                      <div className="summary-row">
+                        <span>Original Amount</span>
+                        <strong>₹{(selectedBooking.originalAmount || 0).toLocaleString()}</strong>
+                      </div>
+                    )}
+                    <div className="summary-row">
+                      <span>Total Amount</span>
+                      <strong>₹{(selectedBooking.amount || 0).toLocaleString()}</strong>
+                    </div>
+                    {selectedBooking.discountAmount > 0 && (
+                      <div className="summary-row">
+                        <span>Discount</span>
+                        <strong style={{ color: 'var(--customer-accent-emerald)' }}>-₹{(selectedBooking.discountAmount || 0).toLocaleString()}</strong>
+                      </div>
+                    )}
+                    <div className="summary-row">
+                      <span>Amount Paid</span>
+                      <strong>₹{(selectedBooking.paidAmount || 0).toLocaleString()}</strong>
+                    </div>
+                  <div className="summary-row highlight">
+                    <span>Remaining Amount</span>
+                    <strong>₹{((selectedBooking.finalAmount || selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)).toLocaleString()}</strong>
                   </div>
+                  {paymentStatus && (
+                    <div className="summary-row">
+                      <span>Payment Status</span>
+                      <strong style={{ color: paymentStatus.paymentState === 'SUCCEEDED' || paymentStatus.paymentStatus === 'paid' ? 'var(--customer-accent-emerald)' : paymentStatus.paymentState === 'PENDING' ? 'var(--customer-primary-teal)' : 'var(--customer-text-secondary)' }}>
+                        {paymentStatus.paymentState || paymentStatus.paymentStatus || '—'}
+                      </strong>
+                    </div>
+                  )}
                 </div>
-                <div className="form-group">
-                  <label>Cardholder Name</label>
-                  <input type="text" placeholder="Name on card" required />
-                </div>
-                <div className="payment-amount-display">
-                  <span>Amount to Pay</span>
-                  <strong>₹{((selectedBooking.finalAmount || selectedBooking.amount || 0) - (selectedBooking.paidAmount || 0)).toLocaleString()}</strong>
-                </div>
-                <div className="form-actions">
-                  <button type="button" onClick={() => setShowPaymentModal(false)} className="btn-secondary">
-                    Cancel
+              </div>
+                <div className="stripe-pay-section enhanced">
+                  <button
+                    type="submit"
+                    className="btn-primary enhanced"
+                    disabled={stripeLoading}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                  >
+                    <CreditCard className="h-4 w-4" />
+                    {stripeLoading ? 'Redirecting to Stripe...' : 'Pay with Stripe'}
                   </button>
-                  <button type="submit" className="btn-primary enhanced" disabled={paying}>
-                    <Zap className="h-4 w-4" /> {paying ? 'Processing...' : 'Pay Securely'}
-                  </button>
+                  <p className="stripe-notice">
+                    You will be redirected to Stripe's secure checkout page (Sandbox mode) to complete the payment.
+                  </p>
                 </div>
-                <div className="secure-payment-notice">
-                  <Shield className="h-4 w-4" />
-                  <span>Your payment is secured with 256-bit SSL encryption</span>
+
+                <div className="pay-divider enhanced">
+                  <span>Or</span>
+                </div>
+
+                <div className="manual-pay-section enhanced">
+                  <div className="manual-pay-header enhanced">
+                    <Wallet className="h-5 w-5" style={{ color: 'var(--customer-primary-teal)' }} />
+                    <div>
+                      <h4 style={{ margin: 0, color: 'var(--customer-text-main)' }}>Pay via QR / Manual</h4>
+                      <p style={{ margin: '0.125rem 0 0 0', color: 'var(--customer-text-secondary)', fontSize: '0.85rem' }}>UPI • QR • Bank Transfer</p>
+                    </div>
+                  </div>
+
+                  {manualSuccess && (
+                    <div className="cd-alert info" style={{ marginBottom: '0.75rem' }}>
+                      <CheckCircle className="h-4 w-4" style={{ color: 'var(--customer-accent-emerald)', marginRight: '0.5rem' }} />
+                      <span style={{ color: 'var(--customer-text-main)' }}>{manualSuccess}</span>
+                    </div>
+                  )}
+                  {manualError && (
+                    <div className="cd-alert warning" style={{ marginBottom: '0.75rem' }}>
+                      <AlertCircle className="h-4 w-4" style={{ color: 'var(--customer-text-secondary)', marginRight: '0.5rem' }} />
+                      <span style={{ color: 'var(--customer-text-main)' }}>{manualError}</span>
+                    </div>
+                  )}
+
+                  <div className="manual-pay-methods enhanced">
+                    <label className={`manual-pay-option${manualPaymentMethod === 'upi' ? ' active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="manualPaymentMethod"
+                        value="upi"
+                        checked={manualPaymentMethod === 'upi'}
+                        onChange={(e) => setManualPaymentMethod(e.target.value)}
+                      />
+                      <div className="manual-pay-option-icon enhanced">
+                        <Wallet className="h-4 w-4" style={{ color: 'var(--customer-accent-emerald)' }} />
+                      </div>
+                      <div>
+                        <strong style={{ color: 'var(--customer-text-main)' }}>UPI Payment</strong>
+                        <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'var(--customer-text-secondary)' }}>Pay via UPI app</p>
+                      </div>
+                    </label>
+                    <label className={`manual-pay-option${manualPaymentMethod === 'qr' ? ' active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="manualPaymentMethod"
+                        value="qr"
+                        checked={manualPaymentMethod === 'qr'}
+                        onChange={(e) => setManualPaymentMethod(e.target.value)}
+                      />
+                      <div className="manual-pay-option-icon enhanced">
+                        <QrCode className="h-4 w-4" style={{ color: 'var(--customer-primary-teal)' }} />
+                      </div>
+                      <div>
+                        <strong style={{ color: 'var(--customer-text-main)' }}>QR Scan</strong>
+                        <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'var(--customer-text-secondary)' }}>Scan merchant QR</p>
+                      </div>
+                    </label>
+                    <label className={`manual-pay-option${manualPaymentMethod === 'manual' ? ' active' : ''}`}>
+                      <input
+                        type="radio"
+                        name="manualPaymentMethod"
+                        value="manual"
+                        checked={manualPaymentMethod === 'manual'}
+                        onChange={(e) => setManualPaymentMethod(e.target.value)}
+                      />
+                      <div className="manual-pay-option-icon enhanced">
+                        <CreditCard className="h-4 w-4" style={{ color: 'var(--customer-text-secondary)' }} />
+                      </div>
+                      <div>
+                        <strong style={{ color: 'var(--customer-text-main)' }}>Manual / Other</strong>
+                        <p style={{ margin: '0.125rem 0 0 0', fontSize: '0.75rem', color: 'var(--customer-text-secondary)' }}>Cash, card or bank</p>
+                      </div>
+                    </label>
+                  </div>
+
+                  {manualPaymentMethod === 'upi' && (
+                    <div className="upi-card enhanced">
+                      <div className="upi-card-head enhanced">
+                        <Wallet className="h-4 w-4" style={{ color: 'var(--customer-accent-emerald)' }} />
+                        <span style={{ color: 'var(--customer-text-main)', fontWeight: 600, marginLeft: '0.5rem' }}>Pay to Merchant</span>
+                      </div>
+                      <div className="upi-card-body enhanced">
+                        <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--customer-text-secondary)', marginBottom: '0.375rem', fontWeight: 600 }}>Your UPI ID</label>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <input
+                            type="text"
+                            value={manualUpiId}
+                            onChange={(e) => setManualUpiId(e.target.value)}
+                            placeholder="name@upi"
+                            style={{ flex: 1, padding: '0.625rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--customer-border)', background: 'var(--customer-card-bg)', color: 'var(--customer-text-main)' }}
+                          />
+                          <span style={{ fontSize: '0.8rem', color: 'var(--customer-text-secondary)', padding: '0.625rem 0', whiteSpace: 'nowrap' }}>@upi</span>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: 'var(--customer-text-secondary)', marginTop: '0.5rem' }}>
+                          Pay to: <strong style={{ color: 'var(--customer-primary-teal)' }}>{upiDetails?.upiId || 'merchant@upi'}</strong>
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {manualPaymentMethod === 'qr' && (
+                    <div className="qr-card enhanced">
+                      <div className="qr-card-head enhanced">
+                        <QrCode className="h-4 w-4" style={{ color: 'var(--customer-primary-teal)' }} />
+                        <span style={{ color: 'var(--customer-text-main)', fontWeight: 600, marginLeft: '0.5rem' }}>Scan to Pay</span>
+                      </div>
+                      <div className="qr-card-body enhanced">
+                      {qrLoading ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem', padding: '2rem', color: 'var(--customer-text-secondary)' }}>
+                          <Clock className="h-5 w-5" style={{ animation: 'spin 1s linear infinite' }} />
+                          <span>Generating QR code...</span>
+                        </div>
+                      ) : manualError && !qrDataUrl ? (
+                        <div className="cd-alert warning" style={{ marginBottom: '0.75rem', textAlign: 'center' }}>
+                          <AlertCircle className="h-4 w-4" style={{ color: 'var(--customer-text-secondary)', marginRight: '0.5rem' }} />
+                          <span style={{ color: 'var(--customer-text-main)', fontSize: '0.85rem' }}>{manualError}</span>
+                        </div>
+                      ) : qrDataUrl ? (
+                          <>
+                            <img
+                              src={qrDataUrl}
+                              alt="UPI QR Code"
+                              style={{ width: '160px', height: '160px', borderRadius: '1rem', background: '#ffffff', padding: '0.5rem', border: '1px solid var(--customer-border)', display: 'block', margin: '0 auto 0.75rem auto' }}
+                            />
+                            <p style={{ fontSize: '0.8rem', color: 'var(--customer-text-secondary)', marginBottom: '0.25rem', textAlign: 'center' }}>
+                              UPI ID: <strong style={{ color: 'var(--customer-primary-teal)', wordBreak: 'break-all', display: 'block' }}>{upiDetails?.upiId || 'merchant@upi'}</strong>
+                            </p>
+                            <p style={{ fontSize: '0.8rem', color: 'var(--customer-text-secondary)', marginBottom: '0.25rem', textAlign: 'center' }}>
+                              Amount: <strong style={{ color: 'var(--customer-primary-teal)' }}>₹{upiDetails?.amount?.toLocaleString() || 0}</strong>
+                            </p>
+                            <p style={{ fontSize: '0.75rem', color: 'var(--customer-text-secondary)', textAlign: 'center', marginBottom: 0 }}>
+                              Ref: {upiDetails?.bookingReference || ''}
+                            </p>
+                          </>
+                        ) : (
+                          <div className="qr-placeholder enhanced" style={{ width: '140px', height: '140px', border: '2px dashed var(--customer-border)', borderRadius: '1rem', margin: '0 auto 0.75rem auto', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--customer-muted-bg)' }}>
+                            <QrCode className="h-10 w-10" style={{ color: 'var(--customer-primary-teal)' }} />
+                            <span style={{ display: 'block', marginTop: '0.625rem', fontSize: '0.7rem', color: 'var(--customer-text-secondary)' }}>Scan QR</span>
+                          </div>
+                        )}
+                        <p style={{ fontSize: '0.8rem', color: 'var(--customer-text-secondary)', textAlign: 'center' }}>
+                          Pay to: <strong style={{ color: 'var(--customer-primary-teal)' }}>{upiDetails?.merchantName || 'Travel Tour Merchant'}</strong>
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="form-group enhanced">
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--customer-text-secondary)', marginBottom: '0.375rem', fontWeight: 600 }}>Transaction Reference ID</label>
+                    <input
+                      type="text"
+                      value={manualTransactionId}
+                      onChange={(e) => setManualTransactionId(e.target.value)}
+                      placeholder="Enter transaction/reference ID"
+                      style={{ width: '100%', padding: '0.625rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--customer-border)', background: 'var(--customer-card-bg)', color: 'var(--customer-text-main)' }}
+                    />
+                  </div>
+
+                  <div className="form-group enhanced">
+                    <label style={{ display: 'block', fontSize: '0.8rem', color: 'var(--customer-text-secondary)', marginBottom: '0.375rem', fontWeight: 600 }}>Notes</label>
+                    <textarea
+                      value={manualNotes}
+                      onChange={(e) => setManualNotes(e.target.value)}
+                      placeholder="Any payment notes (optional)"
+                      rows={2}
+                      style={{ width: '100%', padding: '0.625rem 0.75rem', borderRadius: '0.5rem', border: '1px solid var(--customer-border)', background: 'var(--customer-card-bg)', color: 'var(--customer-text-main)' }}
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    className="btn-primary enhanced"
+                    disabled={manualLoading}
+                    style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '0.25rem', background: 'linear-gradient(135deg, var(--customer-primary-teal) 0%, var(--customer-accent-emerald) 100%)', border: 'none', color: 'white' }}
+                    onClick={createManualPayment}
+                  >
+                    {manualLoading ? <><Clock className="h-4 w-4" /> Recording...</> : <><Wallet className="h-4 w-4" /> Record Payment</>}
+                  </button>
+                  {paymentStatus && (
+                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                      <button
+                        type="button"
+                        disabled={checkingStatus}
+                        className="btn-secondary enhanced"
+                        style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                        onClick={checkPaymentStatus}
+                      >
+                        {checkingStatus ? <><Clock className="h-4 w-4" /> Checking...</> : <><RefreshCcw className="h-4 w-4" /> Check Status</>}
+                      </button>
+                      {(paymentStatus.paymentState === 'FAILED' || paymentStatus.paymentState === 'EXPIRED' || paymentStatus.paymentState === 'CANCELLED') && (
+                        <button
+                          type="button"
+                          className="btn-primary enhanced"
+                          style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', background: 'linear-gradient(135deg, var(--customer-primary-teal) 0%, var(--customer-accent-emerald) 100%)', border: 'none', color: 'white' }}
+                          onClick={retryPayment}
+                        >
+                          <ArrowRight className="h-4 w-4" /> Retry Payment
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  <p className="stripe-notice" style={{ fontSize: '0.75rem', marginTop: '0.5rem', color: 'var(--customer-text-secondary)' }}>
+                    Your payment will be verified manually. You will receive a confirmation once approved.
+                  </p>
                 </div>
               </form>
             </div>

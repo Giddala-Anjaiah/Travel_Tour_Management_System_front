@@ -4,6 +4,7 @@ import {
   LogOut, CheckCircle, Sun, Moon, Menu
 } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
+import { API_HOST } from '../../api'
 import '../Dashboard.css'
 import './HotelDashboard.css'
 
@@ -25,13 +26,26 @@ const HotelLayout = ({ active, actions, children }) => {
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'))
+  const [sidebarShowIcon, setSidebarShowIcon] = useState(
+    !user.avatar || user.avatar.startsWith('data:')
+  )
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     document.documentElement.style.colorScheme = theme
     localStorage.setItem('theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    const handleUserUpdate = () => {
+      const next = JSON.parse(localStorage.getItem('user') || '{}')
+      setUser(next)
+      setSidebarShowIcon(!next.avatar || next.avatar.startsWith('data:'))
+    }
+    window.addEventListener('user-updated', handleUserUpdate)
+    return () => window.removeEventListener('user-updated', handleUserUpdate)
+  }, [])
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light')
@@ -65,9 +79,21 @@ const HotelLayout = ({ active, actions, children }) => {
 
   return (
     <div className="dashboard-container hotel-partner">
-      <aside className={sidebarClassName}>
+        <aside className={sidebarClassName}>
         <div className="sidebar-header">
-          <Building className="h-8 w-8" />
+          {sidebarShowIcon ? (
+            <Building className="h-8 w-8" />
+          ) : (
+            <img
+              src={`${API_HOST}${user.avatar}`}
+              alt="Hotel Partner"
+              className="hotel-sidebar-avatar"
+              onError={(e) => {
+                e.target.style.display = 'none'
+                setSidebarShowIcon(true)
+              }}
+            />
+          )}
           <h2>Hotel Partner</h2>
         </div>
         <nav className="sidebar-nav">
@@ -114,6 +140,16 @@ const HotelLayout = ({ active, actions, children }) => {
               <span>Logout</span>
             </button>
             <div className="user-info">
+              {user.avatar && !user.avatar.startsWith('data:') && (
+                <img
+                  src={`${API_HOST}${user.avatar}`}
+                  alt="Profile"
+                  className="hotel-header-avatar"
+                  onError={(e) => {
+                    e.target.style.display = 'none'
+                  }}
+                />
+              )}
               <span>Welcome, {user.fullName || 'Hotel Partner'}</span>
             </div>
           </div>

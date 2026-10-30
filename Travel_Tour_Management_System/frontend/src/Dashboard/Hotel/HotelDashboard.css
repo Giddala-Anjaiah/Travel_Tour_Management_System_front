@@ -1499,3 +1499,35 @@
 [data-theme="dark"] .hotel-partner .dashboard-sidebar {
   background: linear-gradient(180deg, var(--dark-bg) 0%, #0a0b0d 100%);
 }
+
+/* ---- Hotel partner sidebar & header avatar ---- */
+.hotel-partner .hotel-sidebar-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  flex-shrink: 0;
+}
+
+.hotel-partner .hotel-header-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  margin-right: 0.5rem;
+  flex-shrink: 0;
+}
+
+/* Sidebar header - ensure avatar + title align */
+.hotel-partner .sidebar-header {
+  align-items: center;
+  gap: 0.75rem;
+}

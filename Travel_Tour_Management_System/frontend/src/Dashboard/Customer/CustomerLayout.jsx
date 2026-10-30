@@ -1,4 +1,4 @@
-import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon, Gift, BellRing, Headset } from 'lucide-react'
+import { BarChart3, Compass, MapPin, Ticket, Calendar, Building, CreditCard, FileText, Heart, User, LogOut, Menu, Sun, Moon, Gift, BellRing, Headset, Crown } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
 import { API_HOST } from '../../api'
@@ -13,6 +13,7 @@ const navItems = [
   { to: '/customer/hotels', match: 'hotels', label: 'Hotels', icon: Building },
   { to: '/customer/bookings', match: 'bookings', label: 'Bookings', icon: CreditCard },
   { to: '/customer/invoices', match: 'invoices', label: 'Invoices', icon: FileText },
+  { to: '/customer/membership', match: 'membership', label: 'My Membership', icon: Crown },
   { to: '/customer/trip-alerts', match: 'trip-alerts', label: 'Trip Alerts', icon: BellRing },
   { to: '/customer/wishlist', match: 'wishlist', label: 'Wishlist', icon: Heart },
   { to: '/customer/profile', match: 'profile', label: 'Profile', icon: User },

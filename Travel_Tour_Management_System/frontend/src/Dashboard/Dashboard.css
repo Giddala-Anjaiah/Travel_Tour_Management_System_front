@@ -85,6 +85,14 @@
   --customer-text-secondary: #64748B;
   --customer-border: #DFE8E5;
   --customer-muted-bg: rgba(8, 127, 115, 0.05);
+
+  /* Customer portal component aliases (used by ProfileManagement, StripeSuccess, StripeCancel) */
+  --cp-ink: var(--text-primary);
+  --cp-muted: var(--text-secondary);
+  --cp-card: var(--card-bg);
+  --cp-line: var(--border-color);
+  --cp-gold: #c5a045;
+  --cp-success-bg: rgba(16, 185, 129, 0.1);
 }
 
 /* ===== Theme: dark mode ===== */
@@ -367,6 +375,203 @@
 
 
 /* ============================================
+   CUSTOMER PORTAL - Navy & Teal Color System
+   ============================================ */
+
+.customer-portal .dashboard-sidebar {
+  background: linear-gradient(180deg, var(--customer-sidebar-bg) 0%, #0a1a2b 100%);
+  border-right-color: rgba(255, 255, 255, 0.05);
+}
+
+.customer-portal .sidebar-header {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+.customer-portal .sidebar-header svg {
+  color: var(--customer-accent-emerald);
+}
+
+.customer-portal .nav-item {
+  color: rgba(255, 255, 255, 0.75);
+  border-left: 3px solid transparent;
+}
+
+.customer-portal .nav-item:hover {
+  background: rgba(8, 127, 115, 0.15);
+  color: white;
+  padding-left: 1.25rem;
+}
+
+.customer-portal .nav-item.active {
+  background: linear-gradient(90deg, rgba(8, 127, 115, 0.2) 0%, transparent 100%);
+  color: var(--customer-accent-emerald);
+  font-weight: 600;
+  border-left-color: var(--customer-accent-emerald);
+}
+
+.customer-portal .nav-item svg {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.customer-portal .nav-item.active svg {
+  color: var(--customer-accent-emerald);
+}
+
+.customer-portal .dashboard-header h1 {
+  background: linear-gradient(135deg, var(--customer-primary-teal) 0%, var(--customer-accent-emerald) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.customer-portal .user-info {
+  background: rgba(8, 127, 115, 0.08);
+  border: 1px solid rgba(8, 127, 115, 0.15);
+}
+
+.customer-portal .user-info span {
+  color: var(--customer-text-secondary);
+}
+
+.customer-portal .page-head h1 {
+  color: var(--customer-text-main);
+}
+
+.customer-portal .page-head p {
+  color: var(--customer-text-secondary);
+}
+
+.customer-portal .cd-card {
+  background: var(--customer-card-bg);
+  border: 1px solid var(--customer-border);
+  color: var(--customer-text-main);
+}
+
+/* Manual / QR payment section in booking modal */
+.customer-portal .manual-pay-section {
+  background: var(--customer-card-bg);
+  border: 1px solid var(--customer-border);
+  border-radius: var(--radius-xl);
+  padding: 1.25rem;
+  margin-top: 1rem;
+}
+
+.customer-portal .manual-pay-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--customer-border);
+}
+
+.customer-portal .pay-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  margin: 0.75rem 0;
+  color: var(--customer-text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.customer-portal .pay-divider span {
+  padding: 0 0.75rem;
+  background: var(--customer-card-bg);
+}
+
+.customer-portal .manual-pay-methods {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.customer-portal .manual-pay-option {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 2px solid var(--customer-border);
+  border-radius: var(--radius-lg);
+  background: var(--customer-card-bg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.customer-portal .manual-pay-option.active {
+  border-color: var(--customer-primary-teal);
+  background: var(--customer-muted-bg);
+}
+
+.customer-portal .manual-pay-option input {
+  margin: 0;
+  accent-color: var(--customer-primary-teal);
+}
+
+.customer-portal .manual-pay-option-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: rgba(8, 127, 115, 0.1);
+  border: 1px solid var(--customer-border);
+  flex-shrink: 0;
+}
+
+.customer-portal .manual-pay-option.active .manual-pay-option-icon {
+  background: var(--customer-primary-teal);
+  border-color: var(--customer-primary-teal);
+}
+
+.customer-portal .manual-pay-option.active .manual-pay-option-icon svg {
+  color: white;
+}
+
+.customer-portal .manual-pay-option strong {
+  display: block;
+  font-size: 0.9rem;
+}
+
+.customer-portal .manual-pay-option p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--customer-text-secondary);
+}
+
+.customer-portal .upi-card,
+.customer-portal .qr-card {
+  background: var(--customer-card-bg);
+  border: 1px solid var(--customer-border);
+  border-radius: var(--radius-xl);
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.customer-portal .upi-card-head,
+.customer-portal .qr-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--customer-border);
+}
+
+.customer-portal .upi-card-body,
+.customer-portal .qr-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.customer-portal .qr-placeholder {
+  flex-direction: column;
+}
+
+/* ============================================
    ADMIN PORTAL - Layout Extensions
    ============================================ */
 
@@ -378,6 +583,10 @@
 .admin-portal .dashboard-sidebar.collapsed .sidebar-nav .nav-item {
   justify-content: center;
   padding: 0.75rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Admin header hamburger - always visible */
@@ -3198,9 +3407,10 @@
 }
 
 .stat-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 0.5rem;
+  width: fit-content;
   padding: 0.5rem 1rem;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(29, 78, 216, 0.2);
@@ -3209,6 +3419,24 @@
   font-weight: 500;
   color: #1d4ed8;
   backdrop-filter: blur(10px);
+}
+
+.stat-badge.verified-badge {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #059669;
+}
+
+.stat-badge.secure-badge {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #2563eb;
+}
+
+.stat-badge svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 /* Enhanced Stats Grid */
@@ -6020,6 +6248,7 @@
   height: 120px;
   background: linear-gradient(135deg, #1d4ed8 0%, #0e7490 100%);
   border-radius: 50%;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6029,32 +6258,562 @@
   box-shadow: 0 8px 24px rgba(29, 78, 216, 0.3);
 }
 
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+}
+
 .avatar-initials {
   font-size: 2rem;
   font-weight: 700;
 }
 
-.avatar-upload-btn {
-  position: absolute;
-  bottom: 0;
-  right: 0;
+/* Admin sidebar & header avatar — synced with profile image */
+.admin-portal .admin-sidebar-avatar {
   width: 40px;
   height: 40px;
-  background: white;
-  border: 2px solid rgba(29, 78, 216, 0.3);
   border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  color: #1d4ed8;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+.admin-portal .admin-header-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  margin-right: 0.5rem;
 }
 
-.avatar-upload-btn:hover {
-  background: #1d4ed8;
-  color: white;
-  border-color: #1d4ed8;
+/* Admin page header — heading left, badges right */
+.admin-portal .page-head {
+  margin-bottom: 1.25rem;
+}
+
+.admin-portal .page-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-portal .page-head-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-portal .page-head-row h1 {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem 0;
+  letter-spacing: -0.3px;
+}
+
+.admin-portal .page-head-row p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.admin-portal .page-status-badges {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+/* Hotel partner page header — heading left, badges right */
+.hotel-partner .page-head {
+  margin-bottom: 1.25rem;
+}
+
+.hotel-partner .page-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.hotel-partner .page-head-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.hotel-partner .page-head-row h1 {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem 0;
+  letter-spacing: -0.3px;
+}
+
+.hotel-partner .page-head-row p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.hotel-partner .page-status-badges {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+/* Admin profile upload controls */
+.admin-portal .avatar-upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.admin-portal .avatar-upload-label:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.admin-portal .avatar-upload-label .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.admin-portal .upload-btn-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.admin-portal .avatar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.admin-portal .avatar-remove-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--danger);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.admin-portal .avatar-remove-btn:hover {
+  background: var(--danger-bg, #fef2f2);
+  border-color: var(--danger);
+}
+
+.admin-portal .avatar-remove-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+}
+
+.admin-portal .avatar-remove-confirm p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.admin-portal .btn-danger-sm {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.admin-portal .btn-danger-sm:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.admin-portal .btn-danger-sm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.admin-portal .btn-cancel-sm {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.admin-portal .btn-cancel-sm:hover {
+  background: var(--muted-bg, #f1f5f9);
+  border-color: var(--border-color);
+}
+
+/* Hotel partner sidebar & header avatar — synced with profile logo */
+.hotel-partner .hotel-sidebar-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+.hotel-partner .hotel-header-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  margin-right: 0.5rem;
+}
+
+/* Hotel partner profile upload controls */
+.hotel-partner .avatar-upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.hotel-partner .avatar-upload-label:hover {
+  border-color: var(--customer-primary-teal);
+  color: var(--customer-primary-teal);
+}
+.hotel-partner .avatar-upload-label .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.hotel-partner .upload-btn-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.hotel-partner .avatar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+.hotel-partner .avatar-remove-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--danger);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.hotel-partner .avatar-remove-btn:hover {
+  background: var(--danger-bg, #fef2f2);
+  border-color: var(--danger);
+}
+.hotel-partner .avatar-remove-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+}
+.hotel-partner .avatar-remove-confirm p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.hotel-partner .btn-danger-sm {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.hotel-partner .btn-danger-sm:hover:not(:disabled) {
+  background: #b91c1c;
+}
+.hotel-partner .btn-danger-sm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.hotel-partner .btn-cancel-sm {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.hotel-partner .btn-cancel-sm:hover {
+  background: var(--muted-bg, #f1f5f9);
+  border-color: var(--border-color);
+}
+
+/* Operator sidebar & header avatar — synced with profile logo */
+.operator-portal .operator-sidebar-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+}
+.operator-portal .operator-header-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center;
+  display: block;
+  border: 1px solid var(--border-color);
+  background: var(--card-bg);
+  margin-right: 0.5rem;
+}
+
+/* Operator page header — heading left, badges right */
+.operator-portal .page-head {
+  margin-bottom: 1.25rem;
+}
+
+.operator-portal .page-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.operator-portal .page-head-row > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.operator-portal .page-head-row h1 {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  margin: 0 0 0.25rem 0;
+  letter-spacing: -0.3px;
+}
+
+.operator-portal .page-head-row p {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.operator-portal .page-status-badges {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-shrink: 0;
+}
+
+/* Operator profile upload controls */
+.operator-portal .avatar-upload-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  width: auto;
+}
+.operator-portal .avatar-upload-label:hover {
+  border-color: var(--customer-primary-teal);
+  color: var(--customer-primary-teal);
+}
+.operator-portal .avatar-upload-label .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.operator-portal .upload-btn-text {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.operator-portal .btn-danger-sm {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  width: auto;
+}
+.operator-portal .btn-danger-sm:hover:not(:disabled) {
+  background: #b91c1c;
+}
+.operator-portal .btn-danger-sm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.operator-portal .btn-cancel-sm {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  width: auto;
+}
+.operator-portal .btn-cancel-sm:hover {
+  background: var(--muted-bg, #f1f5f9);
+  border-color: var(--border-color);
+}
+
+.operator-portal .avatar-remove-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--danger);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.operator-portal .avatar-remove-btn:hover {
+  background: var(--danger-bg, #fef2f2);
+  border-color: var(--danger);
+}
+.operator-portal .avatar-remove-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 0.6rem;
+}
+.operator-portal .avatar-remove-confirm p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+.operator-portal .btn-danger-sm {
+  background: var(--danger);
+  color: #fff;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.operator-portal .btn-danger-sm:hover:not(:disabled) {
+  background: #b91c1c;
+}
+.operator-portal .btn-danger-sm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.operator-portal .btn-cancel-sm {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  border-radius: 0.5rem;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.operator-portal .btn-cancel-sm:hover {
+  background: var(--muted-bg, #f1f5f9);
+  border-color: var(--border-color);
 }
 
 .profile-info.enhanced {
@@ -16264,63 +17023,125 @@
 
 .operator-portal .profile-header.enhanced {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 1.75rem;
   padding-bottom: 1.5rem;
   border-bottom: 1px solid var(--cp-line, #e2e8f0);
   margin-bottom: 1.75rem;
+  justify-content: space-between;
+  flex-wrap: wrap;
 }
 
-.operator-portal .profile-avatar {
+/* Avatar section — image on top, action buttons below in a column */
+.operator-portal .avatar-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  flex-shrink: 0;
+}
+
+.operator-portal .operator-profile-avatar {
+  width: 96px;
+  height: 96px;
+  min-width: 96px;
+  border-radius: 50%;
+  overflow: hidden;
+  position: relative;
+  flex-shrink: 0;
+  background: #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.operator-portal .operator-profile-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 50%;
+}
+
+.operator-portal .operator-avatar-initials {
   width: 96px;
   height: 96px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6366f1 0%, #6d28d9 100%);
-  color: #ffffff;
+  background: linear-gradient(135deg, var(--customer-primary-teal) 0%, #14b8a6 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.75rem;
-  font-weight: 800;
-  flex-shrink: 0;
-  position: relative;
-  overflow: hidden;
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.3);
+  color: white;
+  font-size: 2rem;
+  font-weight: 700;
+  box-shadow: 0 8px 20px rgba(8, 127, 115, 0.25);
+}
+.operator-portal .operator-avatar-initials.hidden {
+  display: none;
 }
 
-.operator-portal .profile-avatar img {
+/* Stacked action buttons below the avatar (kept for fallback/other pages) */
+.operator-portal .avatar-actions.stacked {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.5rem;
   width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  object-fit: cover;
 }
 
-.operator-portal .avatar-upload {
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
+/* Action buttons side by side (row) */
+.operator-portal .avatar-actions.row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.operator-portal .operator-camera-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--cp-accent, #0d9488);
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--cp-accent, #0d9488);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  width: auto;
+  justify-content: center;
+}
+.operator-portal .operator-camera-btn:hover {
   background: var(--cp-accent, #0d9488);
   color: #ffffff;
-  border: 2px solid var(--cp-card, #ffffff);
-  display: flex;
+}
+.operator-portal .operator-camera-btn input {
+  display: none;
+}
+
+.operator-portal .operator-remove-btn {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--danger, #ef4444);
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--danger, #ef4444);
+  font-size: 0.875rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: transform 0.15s ease;
+  transition: all 0.18s ease;
+  width: auto;
+  justify-content: center;
 }
-
-.operator-portal .avatar-upload:hover {
-  transform: scale(1.1);
+.operator-portal .operator-remove-btn:hover {
+  background: var(--danger, #ef4444);
+  color: #ffffff;
 }
-
-.operator-portal .profile-info {
-  flex: 1;
-  min-width: 0;
-}
-
 .operator-portal .profile-info h2 {
   margin: 0 0 0.35rem;
   font-size: 1.5rem;
@@ -16403,14 +17224,6 @@
 
 [data-theme="dark"] .operator-portal .profile-header.enhanced {
   border-bottom-color: var(--cp-line, #26292f);
-}
-
-[data-theme="dark"] .operator-portal .profile-avatar {
-  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.25);
-}
-
-[data-theme="dark"] .operator-portal .avatar-upload {
-  border-color: var(--cp-card, #16181d);
 }
 
 [data-theme="dark"] .operator-portal .profile-info h2 {

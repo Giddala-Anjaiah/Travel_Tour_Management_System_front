@@ -17,8 +17,22 @@ import {
   getHotelRecommendations,
   ActivityValidationError
 } from './recommendationService.js';
+import Stripe from 'stripe';
+import QRCode from 'qrcode';
 
 dotenv.config();
+
+let stripeInstance = null;
+function getStripe() {
+  if (!stripeInstance) {
+    const key = process.env.STRIPE_SECRET_KEY;
+    if (!key || key.startsWith('sk_test_your') || key.trim() === '') {
+      throw new Error('STRIPE_SECRET_KEY is not configured. Set it in backend/.env and restart the server.');
+    }
+    stripeInstance = new Stripe(key, { apiVersion: '2024-12-18.acacia' });
+  }
+  return stripeInstance;
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -49,6 +63,31 @@ app.use(cors({
   credentials: true,
 }));
 app.set('trust proxy', 1);
+
+// --- Stripe webhook (must be BEFORE express.json() to capture raw body) ---
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  if (!sig) {
+    return res.status(400).json({ message: 'Missing stripe-signature header' });
+  }
+  let event;
+  try {
+    event = getStripe().webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET || '');
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message);
+    return res.status(400).json({ message: 'Invalid signature' });
+  }
+
+  try {
+    await handleStripeEvent(event);
+  } catch (err) {
+    console.error('Error handling stripe event:', err.message);
+    return res.status(500).json({ message: 'Webhook handler failed' });
+  }
+
+  res.json({ received: true });
+});
+
 app.use(express.json());
 
 // --- Profile image storage (local filesystem) ---
@@ -573,9 +612,45 @@ const bookingSchema = new mongoose.Schema({
     discountValue: Number,
     discountAmount: Number
   },
-   originalAmount: Number,
+  paymentMethod: {
+    type: String,
+    enum: ['stripe', 'upi', 'manual', 'qr', 'cash'],
+    default: 'stripe'
+  },
+  manualTransactionId: String,
+  manualPaymentNotes: String,
+  manualPaymentDate: Date,
+  manualPaymentMethod: String,
+  paymentReference: String,
+  paymentState: {
+    type: String,
+    enum: ['CREATED', 'PENDING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'PARTIAL']
+  },
+  paymentProvider: {
+    type: String,
+    enum: ['stripe', 'upi', 'manual']
+  },
+  paymentCreatedAt: Date,
+  paymentConfirmedAt: Date,
+  idempotencyKey: String,
+  originalAmount: Number,
    discountAmount: Number,
-   finalAmount: Number
+   finalAmount: Number,
+  membershipId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'MembershipSubscription'
+  },
+  membershipDiscountPercentage: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  membershipDiscountAmount: {
+    type: Number,
+    default: 0,
+    min: 0
+  }
 });
 
 bookingSchema.index({ customerId: 1, bookingDate: -1 });
@@ -609,6 +684,9 @@ const invoiceSchema = new mongoose.Schema({
   package: {
     type: String,
     required: true
+  },
+  hotelName: {
+    type: String
   },
   amount: {
     type: Number,
@@ -2010,16 +2088,121 @@ async function createPaidInvoice(booking) {
     invoiceNo: await nextInvoiceNo(),
     customer: booking.customer,
     email: booking.email,
-    package: booking.package,
+    package: booking.package || booking.hotelName || '',
+    hotelName: booking.hotelName || '',
     amount: booking.amount,
     status: 'paid',
     dueDate: due
   });
-  await invoice.save();
-  return invoice;
-}
+    await invoice.save();
+    return invoice;
+  }
 
-async function refreshPackageRating(packageName) {
+  // --- Stripe webhook event handler ---
+  async function handleStripeEvent(event) {
+    const eventType = event.type;
+    const session = event.data.object;
+
+    // Idempotency: ignore already-processed events by checking session status
+    if (eventType === 'checkout.session.completed' ||
+        eventType === 'checkout.session.async_payment_succeeded') {
+      if (session.payment_status !== 'paid') return;
+      await finalizeStripePayment(session);
+    } else if (eventType === 'checkout.session.async_payment_failed') {
+      await markStripeSessionFailed(session, 'failed');
+    } else if (eventType === 'checkout.session.expired') {
+      await markStripeSessionFailed(session, 'expired');
+    }
+  }
+
+  async function finalizeStripePayment(session) {
+    const bookingId = session.metadata?.bookingId;
+    const customerId = session.client_reference_id;
+    if (!bookingId || !customerId) {
+      console.error('Stripe session missing metadata:', session.id);
+      return;
+    }
+
+    const booking = await Booking.findOne({ _id: bookingId, customerId });
+    if (!booking) {
+      console.error('Stripe booking not found:', bookingId);
+      return;
+    }
+
+    // Verify expected amount/currency before marking paid
+    const amountPaid = Math.round((session.amount_total || 0) / 100); // smallest unit -> major
+    const currency = (session.currency || 'inr').toLowerCase();
+    const totalDue = Math.ceil((booking.finalAmount || booking.amount || 0) - (booking.paidAmount || 0));
+    if (currency !== 'inr' || amountPaid < totalDue) {
+      console.error('Stripe amount/currency mismatch:', { amountPaid, currency, totalDue });
+      return;
+    }
+
+    if (booking.paymentStatus === 'paid') {
+      // Already processed — idempotent
+      return;
+    }
+
+    booking.paymentStatus = 'paid';
+    booking.status = 'confirmed';
+    booking.paidAmount = booking.finalAmount || booking.amount;
+    booking.stripeSessionStatus = 'paid';
+    booking.stripePaymentIntent = session.payment_intent || null;
+    booking.timeline.push({
+      status: 'paid',
+      date: new Date(),
+      note: `Stripe webhook confirmed payment of ₹${booking.paidAmount} via session ${session.id}`,
+    });
+
+    const invoice = await createPaidInvoice(booking);
+
+    await Notification.create({
+      userId: customerId,
+      type: 'payment',
+      title: 'Payment Confirmed',
+      message: `Stripe payment of ₹${booking.paidAmount} received. Your booking (${booking.bookingId}) is now confirmed.`,
+      relatedId: booking._id,
+      read: false,
+    });
+
+    if (booking.email) {
+      try {
+        const pdfBuffer = await generateInvoicePDF(invoice, booking);
+        await sendCardEmailWithAttachment(
+          booking.email,
+          'Payment Confirmation & Invoice',
+          'Payment Confirmed!',
+          `Stripe payment of ₹${booking.paidAmount} received. Your booking <strong>${booking.bookingId}</strong> is now confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
+          [{ name: `invoice_${invoice.invoiceNo || 'invoice'}.pdf`, content: pdfBuffer }]
+        );
+      } catch (err) {
+        console.error('Invoice email failed:', err.message);
+      }
+    }
+
+    await booking.save();
+  }
+
+  async function markStripeSessionFailed(session, status) {
+    const bookingId = session.metadata?.bookingId;
+    const customerId = session.client_reference_id;
+    if (!bookingId || !customerId) return;
+    const booking = await Booking.findOne({ _id: bookingId, customerId });
+    if (!booking) return;
+    if (booking.paymentStatus === 'paid') return;
+    booking.stripeSessionStatus = status;
+    if (status === 'failed') {
+      booking.paymentStatus = 'failed';
+    }
+    booking.timeline.push({
+      status: status,
+      date: new Date(),
+      note: `Stripe session ${status}: ${session.id}`,
+    });
+    await booking.save();
+  }
+
+  async function refreshPackageRating(packageName) {
   if (!packageName) return;
   const approved = await Review.find({ package: packageName, status: 'approved' });
   const avg = approved.length
@@ -4959,6 +5142,74 @@ app.put('/api/operator/profile', async (req, res) => {
   }
 });
 
+// --- Operator profile image upload ---
+app.post('/api/operator/profile/image', authenticate, requireTourOperator, async (req, res) => {
+  uploadAvatar(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Image must be smaller than 5 MB' });
+      }
+      return res.status(400).json({ message: err.message || 'Upload failed' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file provided' });
+    }
+
+    const profile = await OperatorProfile.findOne({ userId: req.user.userId });
+    if (!profile) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(404).json({ message: 'Operator profile not found' });
+    }
+
+    const prevLogo = profile.logo || '';
+    if (prevLogo && prevLogo.includes('/api/uploads/avatars/')) {
+      const prevFileName = path.basename(prevLogo);
+      const prevPath = path.join(AVATAR_DIR, prevFileName);
+      fs.unlink(prevPath, () => {});
+    }
+
+    const logoUrl = `/api/uploads/avatars/${req.file.filename}`;
+    profile.logo = logoUrl;
+    await profile.save();
+    invalidateSecurityStateCache(req.user.userId);
+
+    res.status(200).json({
+      message: 'Profile image uploaded successfully',
+      profile,
+      avatarUrl: logoUrl,
+    });
+  });
+});
+
+// Remove operator profile image
+app.delete('/api/operator/profile/image', authenticate, requireTourOperator, async (req, res) => {
+  try {
+    const profile = await OperatorProfile.findOne({ userId: req.user.userId });
+    if (!profile) {
+      return res.status(404).json({ message: 'Operator profile not found' });
+    }
+
+    const prevLogo = profile.logo || '';
+    if (prevLogo && prevLogo.includes('/api/uploads/avatars/')) {
+      const prevFileName = path.basename(prevLogo);
+      const prevPath = path.join(AVATAR_DIR, prevFileName);
+      fs.unlink(prevPath, () => {});
+    }
+
+    profile.logo = '';
+    await profile.save();
+    invalidateSecurityStateCache(req.user.userId);
+
+    res.status(200).json({
+      message: 'Profile image removed',
+      profile,
+    });
+  } catch (error) {
+    console.error('Error removing operator profile image:', error);
+    res.status(500).json({ message: 'Error removing profile image' });
+  }
+});
+
 // --- Account security ---
 registerAccountSecurityRoutes('/api/operator');
 
@@ -6271,8 +6522,158 @@ app.delete('/api/customer/profile/image', authenticate, requireCustomer, async (
   }
 });
 
+// =============================================================================
+// Admin Profile (require authenticate + requireAdmin)
+// =============================================================================
+app.get('/api/admin/profile', async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.status(200).json({ profile: serializeProfile(user) });
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching profile' });
+  }
+});
+
+app.put('/api/admin/profile', async (req, res) => {
+  try {
+    const updates = pickUpdates(req.body, ['fullName', 'email', 'phone', 'alternatePhone', 'address', 'avatar']);
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ message: 'No profile changes to save' });
+    }
+
+    if (updates.email) updates.email = String(updates.email).trim().toLowerCase();
+    if (updates.phone) updates.phone = String(updates.phone).trim();
+    if (updates.alternatePhone) updates.alternatePhone = String(updates.alternatePhone).trim();
+
+    const contactCheck = validateContactDetails({
+      fullName: updates.fullName,
+      email: updates.email,
+      phone: updates.phone
+    });
+    if (!contactCheck.valid) {
+      return res.status(400).json({ message: contactCheck.message });
+    }
+    if (updates.alternatePhone && !PHONE_PATTERN.test(updates.alternatePhone)) {
+      return res.status(400).json({ message: 'Alternate phone number is not valid' });
+    }
+
+    const previous = await User.findById(req.user.userId).select('email').lean();
+    const emailChanged = Boolean(updates.email) && updates.email !== previous?.email;
+
+    if (emailChanged) {
+      const existing = await User.findOne({ email: updates.email, _id: { $ne: req.user.userId } });
+      if (existing) {
+        return res.status(400).json({ message: 'Email already in use' });
+      }
+    }
+
+    const user = await User.findByIdAndUpdate(req.user.userId, updates, { new: true }).select('-password');
+    invalidateSecurityStateCache(req.user.userId);
+
+    let revokedSessions = 0;
+    if (emailChanged) {
+      revokedSessions = await revokeOtherSessions(req.user.userId, req.user.jti);
+      if (previous?.email) {
+        await sendNotificationEmail(
+          previous.email,
+          'Your admin account email was changed',
+          `The sign-in email on your TravelTour admin account was changed to ${updates.email}. If this was not you, reset your password immediately.`
+        ).catch(err => console.error('Admin profile change email failed:', err.message));
+      }
+      await sendNotificationEmail(
+        updates.email,
+        'Your admin account email was updated',
+        `The sign-in email on your TravelTour admin account is now ${updates.email}. Other devices have been signed out.`
+      ).catch(err => console.error('Admin profile change email failed:', err.message));
+    }
+
+    res.status(200).json({
+      message: emailChanged
+        ? 'Profile updated. Other devices have been signed out.'
+        : 'Profile updated successfully',
+      profile: serializeProfile(user),
+      revokedSessions
+    });
+  } catch (error) {
+    console.error('Error updating admin profile:', error);
+    res.status(500).json({ message: 'Error updating profile' });
+  }
+});
+
+// --- Admin profile image upload ---
+app.post('/api/admin/profile/image', authenticate, requireAdmin, async (req, res) => {
+  uploadAvatar(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Image must be smaller than 5 MB' });
+      }
+      return res.status(400).json({ message: err.message || 'Upload failed' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file provided' });
+    }
+
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const prevAvatar = user.avatar || '';
+    if (prevAvatar && prevAvatar.includes('/api/uploads/avatars/')) {
+      const prevFileName = path.basename(prevAvatar);
+      const prevPath = path.join(AVATAR_DIR, prevFileName);
+      fs.unlink(prevPath, () => {});
+    }
+
+    const avatarUrl = `/api/uploads/avatars/${req.file.filename}`;
+    user.avatar = avatarUrl;
+    await user.save();
+    invalidateSecurityStateCache(req.user.userId);
+
+    res.status(200).json({
+      message: 'Profile image uploaded successfully',
+      profile: serializeProfile(user),
+      avatarUrl,
+    });
+  });
+});
+
+// Remove admin profile image
+app.delete('/api/admin/profile/image', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const prevAvatar = user.avatar || '';
+    if (prevAvatar && prevAvatar.includes('/api/uploads/avatars/')) {
+      const prevFileName = path.basename(prevAvatar);
+      const prevPath = path.join(AVATAR_DIR, prevFileName);
+      fs.unlink(prevPath, () => {});
+    }
+
+    user.avatar = '';
+    await user.save();
+    invalidateSecurityStateCache(req.user.userId);
+
+    res.status(200).json({
+      message: 'Profile image removed',
+      profile: serializeProfile(user),
+    });
+  } catch (error) {
+    console.error('Error removing admin profile image:', error);
+    res.status(500).json({ message: 'Error removing profile image' });
+  }
+});
+
 // --- Account security ---
 registerAccountSecurityRoutes('/api/customer');
+registerAccountSecurityRoutes('/api/admin');
 
 // --- Packages (customer view of published packages) ---
 app.get('/api/customer/packages', async (req, res) => {
@@ -6350,9 +6751,12 @@ async function reservePackageSeats(packageId, bookingDate, travelers) {
     availableSeats: { $gte: travelers }
   }).sort({ availableSeats: 1 });
   if (!availability) {
-    const err = new Error('Not enough seats available for the selected date');
-    err.statusCode = 400;
-    throw err;
+    console.warn(`[reservePackageSeats] No availability record for package ${packageId} on ${startOfDay.toISOString().split('T')[0]} — proceeding without seat deduction`);
+    return null;
+  }
+  if ((availability.availableSeats || 0) < travelers) {
+    console.warn(`[reservePackageSeats] Insufficient seats for package ${packageId} on ${startOfDay.toISOString().split('T')[0]} (available=${availability.availableSeats}, requested=${travelers}) — proceeding without seat deduction`);
+    return null;
   }
   availability.availableSeats = (availability.availableSeats || 0) - travelers;
   availability.soldSeats = ((availability.soldSeats || 0) + travelers);
@@ -6436,6 +6840,25 @@ app.post('/api/customer/bookings', async (req, res) => {
     if (couponInfo) {
       payload.coupon = couponInfo;
     }
+
+    // Apply membership discount on top of coupon discount (no stacking beyond max)
+    try {
+      const membershipDiscount = await applyMembershipDiscount(req.user.userId, finalAmount, true);
+      if (membershipDiscount.membershipId) {
+        payload.membershipId = membershipDiscount.membershipId;
+        payload.membershipDiscountPercentage = membershipDiscount.discountPercentage;
+        payload.membershipDiscountAmount = membershipDiscount.discountAmount;
+        // Recompute final amount after membership discount (coupon already applied)
+        finalAmount = membershipDiscount.finalAmount;
+        payload.amount = finalAmount;
+        payload.finalAmount = finalAmount;
+        payload.discountAmount = (payload.discountAmount || 0) + membershipDiscount.discountAmount;
+      }
+    } catch (membershipErr) {
+      console.error('Membership discount error:', membershipErr.message);
+      // Non-fatal: proceed without membership discount
+    }
+
     if (packageId) {
       payload.packageId = packageId;
       const pkg = await Package.findById(packageId);
@@ -6669,6 +7092,550 @@ app.put('/api/customer/bookings/:id/pay', async (req, res) => {
     res.status(200).json({ message: 'Payment processed', booking });
   } catch (error) {
     res.status(500).json({ message: 'Error processing payment' });
+  }
+});
+
+// --- Stripe Checkout Session ---
+app.post('/api/customer/bookings/:id/stripe-checkout', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const booking = await Booking.findOne({ _id: req.params.id, customerId: req.user.userId });
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+    if (booking.status === 'cancelled' || booking.status === 'rejected') {
+      return res.status(400).json({ message: 'Booking is not payable' });
+    }
+    if (booking.paymentStatus === 'paid') {
+      return res.status(400).json({ message: 'Booking is already paid' });
+    }
+
+    const totalDue = Math.ceil((booking.finalAmount || booking.amount || 0) - (booking.paidAmount || 0));
+    if (totalDue <= 0) {
+      return res.status(400).json({ message: 'No amount due' });
+    }
+
+    // Reuse existing pending stripe session if present
+    if (booking.stripeSessionId && booking.stripeSessionStatus === 'pending') {
+      try {
+        const existing = await getStripe().checkout.sessions.retrieve(booking.stripeSessionId);
+        if (existing.payment_status === 'unpaid') {
+          return res.status(200).json({
+            checkoutUrl: existing.url,
+            sessionId: existing.id,
+            bookingId: booking._id,
+            message: 'Reusing existing checkout session',
+          });
+        }
+      } catch (err) {
+        // Session may be expired; fall through to create a new one
+      }
+    }
+
+    const session = await getStripe().checkout.sessions.create({
+      payment_method_types: ['card', 'upi'],
+      line_items: [{
+        price_data: {
+          currency: 'inr',
+          product_data: {
+            name: booking.package || booking.hotelName || 'Travel Tour Booking',
+            description: booking.bookingId,
+          },
+          unit_amount: totalDue * 100, // INR -> paise
+        },
+        quantity: 1,
+      }],
+      mode: 'payment',
+      success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/customer/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/customer/bookings`,
+      metadata: {
+        bookingId: booking._id.toString(),
+        customerId: req.user.userId,
+        bookingReference: booking.bookingId,
+      },
+      client_reference_id: req.user.userId,
+    });
+
+    booking.stripeSessionId = session.id;
+    booking.stripeSessionStatus = 'pending';
+    booking.stripeAmount = totalDue;
+    booking.stripeCurrency = 'inr';
+    booking.stripeCreatedAt = new Date();
+    await booking.save();
+
+    res.status(200).json({
+      message: 'Checkout session created',
+      checkoutUrl: session.url,
+      sessionId: session.id,
+      bookingId: booking._id,
+      bookingReference: booking.bookingId,
+      amount: totalDue,
+    });
+  } catch (error) {
+    console.error('Stripe checkout error:', error.message);
+    res.status(500).json({ message: 'Error creating checkout session' });
+  }
+});
+
+// --- Stripe Session Verify ---
+app.get('/api/customer/bookings/:id/stripe-verify/:sessionId', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const booking = await Booking.findOne({ _id: req.params.id, customerId: req.user.userId });
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    const session = await getStripe().checkout.sessions.retrieve(req.params.sessionId);
+
+    // Verify session belongs to this booking/customer
+    if (session.metadata.bookingId !== booking._id.toString()) {
+      return res.status(400).json({ message: 'Session does not match this booking' });
+    }
+    if (session.client_reference_id !== req.user.userId) {
+      return res.status(400).json({ message: 'Session does not belong to this customer' });
+    }
+
+    // Update booking based on session status (idempotent)
+    const sessionStatus = session.payment_status;
+    let changed = false;
+    if (sessionStatus === 'paid' && booking.paymentStatus !== 'paid') {
+      booking.paymentStatus = 'paid';
+      booking.status = 'confirmed';
+      booking.paidAmount = booking.finalAmount || booking.amount;
+      booking.stripeSessionStatus = 'paid';
+      changed = true;
+      booking.timeline.push({
+        status: 'paid',
+        date: new Date(),
+        note: `Stripe payment of ₹${booking.paidAmount} confirmed via session ${session.id}`,
+      });
+      const invoice = await createPaidInvoice(booking);
+      await Notification.create({
+        userId: req.user.userId,
+        type: 'payment',
+        title: 'Payment Confirmed',
+        message: `Stripe payment of ₹${booking.paidAmount} received. Your booking (${booking.bookingId}) is now confirmed.`,
+        relatedId: booking._id,
+        read: false,
+      });
+      if (req.user.email) {
+        const pdfBuffer = await generateInvoicePDF(invoice, booking);
+        await sendCardEmailWithAttachment(
+          req.user.email,
+          'Payment Confirmation & Invoice',
+          'Payment Confirmed!',
+          `Stripe payment of ₹${booking.paidAmount} received. Your booking <strong>${booking.bookingId}</strong> is now confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
+          [{ name: `invoice_${invoice.invoiceNo || 'invoice'}.pdf`, content: pdfBuffer }]
+        ).catch(err => console.error('Invoice email failed:', err.message));
+      }
+    } else if (sessionStatus === 'unpaid' && booking.stripeSessionStatus !== 'unpaid') {
+      booking.stripeSessionStatus = 'unpaid';
+      changed = true;
+    }
+    if (changed) {
+      await booking.save();
+    }
+
+    res.status(200).json({
+      message: 'Session verified',
+      sessionId: session.id,
+      paymentStatus: sessionStatus,
+      booking: {
+        id: booking._id,
+        bookingReference: booking.bookingId,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        paidAmount: booking.paidAmount,
+        amount: booking.amount,
+      },
+    });
+  } catch (error) {
+    console.error('Stripe verify error:', error.message);
+    res.status(500).json({ message: 'Error verifying session' });
+  }
+});
+
+// --- Stripe Session Verify (sessionId only, for success page) ---
+app.get('/api/stripe/verify-session/:sessionId', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const session = await getStripe().checkout.sessions.retrieve(req.params.sessionId);
+    const bookingId = session.metadata?.bookingId;
+    const customerId = session.client_reference_id;
+    if (!bookingId || !customerId) {
+      return res.status(400).json({ message: 'Session missing booking metadata' });
+    }
+    if (customerId !== req.user.userId) {
+      return res.status(400).json({ message: 'Session does not belong to this customer' });
+    }
+
+    const booking = await Booking.findOne({ _id: bookingId, customerId });
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    // Idempotent: if already marked paid, return current state
+    if (booking.paymentStatus === 'paid') {
+      return res.status(200).json({
+        message: 'Already verified',
+        sessionId: session.id,
+        paymentStatus: 'paid',
+        booking: {
+          id: booking._id,
+          bookingReference: booking.bookingId,
+          status: booking.status,
+          paymentStatus: booking.paymentStatus,
+          paidAmount: booking.paidAmount,
+          amount: booking.amount,
+        },
+      });
+    }
+
+    // Sync with Stripe state
+    const sessionStatus = session.payment_status;
+    let changed = false;
+    if (sessionStatus === 'paid' && booking.paymentStatus !== 'paid') {
+      booking.paymentStatus = 'paid';
+      booking.status = 'confirmed';
+      booking.paidAmount = booking.finalAmount || booking.amount;
+      booking.stripeSessionStatus = 'paid';
+      booking.stripePaymentIntent = session.payment_intent || null;
+      changed = true;
+      booking.timeline.push({
+        status: 'paid',
+        date: new Date(),
+        note: `Stripe verify confirmed payment of ₹${booking.paidAmount} via session ${session.id}`,
+      });
+      const invoice = await createPaidInvoice(booking);
+      await Notification.create({
+        userId: req.user.userId,
+        type: 'payment',
+        title: 'Payment Confirmed',
+        message: `Stripe payment of ₹${booking.paidAmount} received. Your booking (${booking.bookingId}) is now confirmed.`,
+        relatedId: booking._id,
+        read: false,
+      });
+      if (booking.email) {
+        try {
+          const pdfBuffer = await generateInvoicePDF(invoice, booking);
+          await sendCardEmailWithAttachment(
+            booking.email,
+            'Payment Confirmation & Invoice',
+            'Payment Confirmed!',
+            `Stripe payment of ₹${booking.paidAmount} received. Your booking <strong>${booking.bookingId}</strong> is now confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
+            [{ name: `invoice_${invoice.invoiceNo || 'invoice'}.pdf`, content: pdfBuffer }]
+          );
+        } catch (err) {
+          console.error('Invoice email failed:', err.message);
+        }
+      }
+    } else if (sessionStatus === 'unpaid') {
+      booking.stripeSessionStatus = 'unpaid';
+      changed = true;
+    }
+    if (changed) {
+      await booking.save();
+    }
+
+    res.status(200).json({
+      message: 'Session verified',
+      sessionId: session.id,
+      paymentStatus: sessionStatus,
+      booking: {
+        id: booking._id,
+        bookingReference: booking.bookingId,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        paidAmount: booking.paidAmount,
+        amount: booking.amount,
+      },
+    });
+  } catch (error) {
+    console.error('Stripe verify-session error:', error.message);
+    res.status(500).json({ message: 'Error verifying session' });
+  }
+});
+// --- QR-based payment (UPI) ---
+
+// Generate a QR payment session for a booking. The booking is NOT marked paid
+// here — it enters PENDING state and must be confirmed by admin verification
+// (or a trusted provider webhook when a real QR provider is configured).
+app.get('/api/customer/bookings/:id/qr-payment', authenticate, requireCustomer, async (req, res) => {
+  console.debug('[QR] Endpoint called for booking:', req.params.id, 'user:', req.user?.userId, 'role:', req.user?.role);
+  const mongooseSession = await mongoose.startSession();
+  try {
+    await mongooseSession.withTransaction(async () => {
+      const booking = await Booking.findOne({ _id: req.params.id, customerId: req.user.userId }).session(mongooseSession);
+      if (!booking) {
+        console.debug('[QR] Booking not found:', req.params.id, 'for user:', req.user.userId);
+        const err = new Error('Booking not found');
+        err.statusCode = 404;
+        throw err;
+      }
+      console.debug('[QR] Booking found:', booking.bookingId, 'paymentStatus:', booking.paymentStatus, 'amount:', booking.amount, 'paidAmount:', booking.paidAmount, 'finalAmount:', booking.finalAmount);
+      if (booking.paymentStatus === 'paid') {
+        const err = new Error('Booking is already paid');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (booking.status === 'cancelled' || booking.status === 'rejected') {
+        const err = new Error('Booking is not payable');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const totalDue = Math.ceil((booking.finalAmount || booking.amount || 0) - (booking.paidAmount || 0));
+      console.debug('[QR] Total due calculated:', totalDue);
+      if (totalDue <= 0) {
+        const err = new Error('No amount due');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // Validate QR payment provider configuration before generating a QR code.
+      const upiId = process.env.UPI_ID || process.env.UPI_MERCHANT_ID;
+      const merchantName = process.env.UPI_MERCHANT_NAME || 'Travel Tour';
+      console.debug('[QR] UPI config present:', Boolean(upiId), 'upiId starts with:', upiId ? upiId.substring(0, 3) + '...' : 'none');
+      if (!upiId || upiId === 'merchant@upi' || upiId.includes('your_') || !upiId.includes('@')) {
+        const err = new Error('QR payment provider is not configured. Set UPI_ID in backend/.env.');
+        err.statusCode = 503;
+        throw err;
+      }
+      // Idempotency: reuse an existing pending QR payment for this booking
+      const existingIdem = booking.idempotencyKey || `qr-${booking._id}`;
+      const bookingRef = booking.bookingId || booking._id.toString();
+
+      const upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(merchantName)}&am=${totalDue}&cu=INR&tn=${encodeURIComponent(bookingRef)}`;
+
+      let qrDataUrl = null;
+      try {
+        qrDataUrl = await QRCode.toDataURL(upiUrl, {
+          width: 300,
+          margin: 2,
+          color: { dark: '#087F73', light: '#ffffff' }
+        });
+        console.debug('[QR] QR code generated, dataUrl length:', qrDataUrl ? qrDataUrl.length : 0);
+      } catch (qrErr) {
+        console.error('QR generation error:', qrErr.message);
+        const err = new Error('Failed to generate QR code');
+        err.statusCode = 500;
+        throw err;
+      }
+
+      booking.paymentReference = existingIdem;
+      booking.paymentState = 'PENDING';
+      booking.paymentProvider = 'upi';
+      booking.paymentMethod = 'qr';
+      booking.paymentCreatedAt = new Date();
+      booking.idempotencyKey = existingIdem;
+      booking.timeline.push({
+        status: 'PENDING',
+        date: new Date(),
+        note: `QR payment session created for ₹${totalDue} (reference: ${existingIdem})`
+      });
+      await booking.save({ session: mongooseSession });
+
+      res.status(200).json({
+        message: 'QR payment session created',
+        qrDataUrl,
+        upiId,
+        merchantName,
+        amount: totalDue,
+        bookingReference: bookingRef,
+        paymentReference: existingIdem,
+        paymentState: 'PENDING',
+        upiUrl
+      });
+    });
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    console.error('QR payment error:', error.message);
+    res.status(500).json({ message: 'Error creating QR payment session' });
+  } finally {
+    mongooseSession.endSession();
+  }
+});
+
+// Customer records a manual/QR payment they made. This only creates a PENDING
+// record — the booking is NOT marked paid until an admin verifies it.
+app.post('/api/customer/bookings/:id/manual-payment', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const { paymentMethod = 'upi', transactionId, upiId, notes } = req.body || {};
+    const booking = await Booking.findOne({ _id: req.params.id, customerId: req.user.userId });
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+    if (booking.paymentStatus === 'paid') {
+      return res.status(400).json({ message: 'Booking is already paid' });
+    }
+    if (booking.status === 'cancelled' || booking.status === 'rejected') {
+      return res.status(400).json({ message: 'Booking is not payable' });
+    }
+
+    const totalDue = Math.ceil((booking.finalAmount || booking.amount || 0) - (booking.paidAmount || 0));
+    if (totalDue <= 0) {
+      return res.status(400).json({ message: 'No amount due' });
+    }
+
+    const amountPaid = Math.min(Number(req.body.amount) || totalDue, totalDue);
+    const paymentRef = `manual-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    booking.paymentReference = paymentRef;
+    booking.paymentState = 'PENDING';
+    booking.paymentProvider = 'manual';
+    booking.paymentMethod = paymentMethod;
+    booking.paymentCreatedAt = new Date();
+    booking.manualTransactionId = transactionId || '';
+    booking.manualPaymentNotes = notes || '';
+    booking.manualPaymentDate = new Date();
+    booking.manualPaymentMethod = paymentMethod;
+    booking.idempotencyKey = paymentRef;
+    booking.timeline.push({
+      status: 'PENDING',
+      date: new Date(),
+      note: `Manual/QR payment of ₹${amountPaid} via ${paymentMethod} submitted for verification (reference: ${paymentRef})${transactionId ? ` (txn: ${transactionId})` : ''}`
+    });
+    await booking.save();
+
+    await Notification.create({
+      userId: req.user.userId,
+      type: 'payment',
+      title: 'Payment Submitted for Verification',
+      message: `Manual/QR payment of ₹${amountPaid} via ${paymentMethod} has been submitted and is pending verification. Booking: ${booking.bookingId}`,
+      relatedId: booking._id,
+      read: false,
+    });
+
+    res.status(200).json({
+      message: 'Manual payment submitted for verification',
+      paymentReference: paymentRef,
+      paymentState: 'PENDING',
+      booking: {
+        id: booking._id,
+        bookingReference: booking.bookingId,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        paidAmount: booking.paidAmount,
+        amount: booking.amount,
+        paymentMethod: booking.paymentMethod,
+        paymentState: booking.paymentState
+      },
+    });
+  } catch (error) {
+    console.error('Manual payment error:', error.message);
+    res.status(500).json({ message: 'Error recording manual payment' });
+  }
+});
+
+// Check QR / manual payment status (customer-owned only).
+app.get('/api/customer/bookings/:id/payment-status', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const booking = await Booking.findOne({ _id: req.params.id, customerId: req.user.userId });
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    res.status(200).json({
+      bookingReference: booking.bookingId,
+      paymentStatus: booking.paymentStatus,
+      paymentState: booking.paymentState || 'NONE',
+      paymentProvider: booking.paymentProvider,
+      paymentMethod: booking.paymentMethod,
+      paymentReference: booking.paymentReference,
+      amount: booking.amount,
+      paidAmount: booking.paidAmount,
+      remaining: Math.ceil((booking.finalAmount || booking.amount || 0) - (booking.paidAmount || 0)),
+      paymentCreatedAt: booking.paymentCreatedAt,
+      paymentConfirmedAt: booking.paymentConfirmedAt,
+    });
+  } catch (error) {
+    console.error('Payment status error:', error.message);
+    res.status(500).json({ message: 'Error fetching payment status' });
+  }
+});
+
+// Admin verifies a pending manual/QR payment and marks the booking paid.
+app.post('/api/admin/bookings/:id/verify-payment', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { confirm, amount, notes } = req.body || {};
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+    if (booking.paymentStatus === 'paid') {
+      return res.status(400).json({ message: 'Booking is already paid' });
+    }
+
+    const totalDue = Math.ceil((booking.finalAmount || booking.amount || 0) - (booking.paidAmount || 0));
+    if (totalDue <= 0) {
+      return res.status(400).json({ message: 'No amount due' });
+    }
+
+    const amountPaid = confirm ? Math.min(Number(amount) || totalDue, totalDue) : 0;
+    if (amountPaid <= 0) {
+      return res.status(400).json({ message: 'Invalid payment amount' });
+    }
+
+    booking.paidAmount = (booking.paidAmount || 0) + amountPaid;
+    if (booking.paidAmount >= (booking.finalAmount || booking.amount || 0)) {
+      booking.paymentStatus = 'paid';
+      booking.status = 'confirmed';
+      booking.paymentState = 'SUCCEEDED';
+      booking.paymentConfirmedAt = new Date();
+    } else {
+      booking.paymentState = 'PARTIAL';
+    }
+
+    booking.paymentProvider = booking.paymentProvider || 'manual';
+    booking.manualPaymentNotes = notes || booking.manualPaymentNotes;
+    booking.timeline.push({
+      status: booking.paymentState || 'SUCCEEDED',
+      date: new Date(),
+      note: `Admin verified payment of ₹${amountPaid}${confirm ? ' — booking confirmed' : ''}`
+    });
+    await booking.save();
+
+    if (booking.paymentStatus === 'paid') {
+      const invoice = await createPaidInvoice(booking);
+      await Notification.create({
+        userId: booking.customerId,
+        type: 'payment',
+        title: 'Payment Confirmed',
+        message: `Your payment of ₹${amountPaid} has been verified. Booking (${booking.bookingId}) is now confirmed.`,
+        relatedId: booking._id,
+        read: false,
+      });
+      if (booking.email) {
+        try {
+          const pdfBuffer = await generateInvoicePDF(invoice, booking);
+          await sendCardEmailWithAttachment(
+            booking.email,
+            'Payment Confirmation & Invoice',
+            'Payment Confirmed!',
+            `Payment of ₹${amountPaid} verified. Your booking <strong>${booking.bookingId}</strong> is now confirmed. Invoice: ${invoice.invoiceNo || 'N/A'}.`,
+            [{ name: `invoice_${invoice.invoiceNo || 'invoice'}.pdf`, content: pdfBuffer }]
+          ).catch(err => console.error('Verified invoice email failed:', err.message));
+        } catch (e) {
+          console.error('Verified invoice email failed:', e.message);
+        }
+      }
+    }
+
+    res.status(200).json({
+      message: confirm ? 'Payment verified successfully' : 'Payment amount recorded',
+      booking: {
+        id: booking._id,
+        bookingReference: booking.bookingId,
+        status: booking.status,
+        paymentStatus: booking.paymentStatus,
+        paymentState: booking.paymentState,
+        paidAmount: booking.paidAmount,
+        amount: booking.amount,
+      },
+    });
+  } catch (error) {
+    console.error('Payment verification error:', error.message);
+    res.status(500).json({ message: 'Error verifying payment' });
   }
 });
 
@@ -7926,8 +8893,75 @@ app.put('/api/hotel/profile', async (req, res) => {
     }
     res.status(200).json({ message: 'Profile updated successfully', profile });
   } catch (error) {
-    console.error('Error updating profile:', error);
+    console.error('Error updating hotel profile:', error);
     res.status(500).json({ message: 'Error updating profile' });
+  }
+});
+
+// --- Hotel partner profile image upload ---
+app.post('/api/hotel/profile/image', authenticate, requireHotelPartner, async (req, res) => {
+  uploadAvatar(req, res, async (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Image must be smaller than 5 MB' });
+      }
+      return res.status(400).json({ message: err.message || 'Upload failed' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: 'No image file provided' });
+    }
+
+    let profile = await HotelProfile.findOne({ userId: req.user.userId });
+    if (!profile) {
+      profile = new HotelProfile({ userId: req.user.userId });
+    }
+
+    const prevLogo = profile.logo || '';
+    if (prevLogo && prevLogo.includes('/api/uploads/avatars/')) {
+      const prevFileName = path.basename(prevLogo);
+      const prevPath = path.join(AVATAR_DIR, prevFileName);
+      fs.unlink(prevPath, () => {});
+    }
+
+    const logoUrl = `/api/uploads/avatars/${req.file.filename}`;
+    profile.logo = logoUrl;
+    await profile.save();
+    invalidateSecurityStateCache(req.user.userId);
+
+    res.status(200).json({
+      message: 'Profile image uploaded successfully',
+      profile,
+      avatarUrl: logoUrl,
+    });
+  });
+});
+
+// Remove hotel partner profile image
+app.delete('/api/hotel/profile/image', authenticate, requireHotelPartner, async (req, res) => {
+  try {
+    let profile = await HotelProfile.findOne({ userId: req.user.userId });
+    if (!profile) {
+      profile = new HotelProfile({ userId: req.user.userId });
+    }
+
+    const prevLogo = profile.logo || '';
+    if (prevLogo && prevLogo.includes('/api/uploads/avatars/')) {
+      const prevFileName = path.basename(prevLogo);
+      const prevPath = path.join(AVATAR_DIR, prevFileName);
+      fs.unlink(prevPath, () => {});
+    }
+
+    profile.logo = '';
+    await profile.save();
+    invalidateSecurityStateCache(req.user.userId);
+
+    res.status(200).json({
+      message: 'Profile image removed',
+      profile,
+    });
+  } catch (error) {
+    console.error('Error removing hotel profile image:', error);
+    res.status(500).json({ message: 'Error removing profile image' });
   }
 });
 
@@ -8708,6 +9742,1560 @@ app.get('/api/hotel/analytics', async (req, res) => {
     res.status(500).json({ message: 'Error fetching analytics' });
   }
 });
+
+// ============================================
+// MEMBERSHIP & SUBSCRIPTION MODELS
+// ============================================
+
+// Membership Plan — defines available subscription tiers (Basic, Premium, VIP).
+const membershipPlanSchema = new mongoose.Schema({
+  name: {
+    type: String,
+    required: true,
+    trim: true
+  },
+  slug: {
+    type: String,
+    required: true,
+    unique: true,
+    lowercase: true,
+    trim: true
+  },
+  description: {
+    type: String,
+    trim: true
+  },
+  price: {
+    type: Number,
+    required: true,
+    min: 0,
+    default: 0
+  },
+  currency: {
+    type: String,
+    default: 'INR',
+    uppercase: true,
+    trim: true
+  },
+  billingInterval: {
+    type: String,
+    enum: ['monthly', 'yearly', 'lifetime'],
+    default: 'yearly'
+  },
+  durationMonths: {
+    type: Number,
+    default: 12,
+    min: 0
+  },
+  discountPercentage: {
+    type: Number,
+    default: 0,
+    min: 0,
+    max: 100
+  },
+  maxDiscountLimit: {
+    type: Number,
+    min: 0
+  },
+  benefits: [{
+    type: String,
+    trim: true
+  }],
+  isActive: {
+    type: Boolean,
+    default: true
+  },
+  isLifetime: {
+    type: Boolean,
+    default: false
+  },
+  isPopular: {
+    type: Boolean,
+    default: false
+  },
+  sortOrder: {
+    type: Number,
+    default: 0
+  },
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+membershipPlanSchema.index({ slug: 1 });
+membershipPlanSchema.index({ isActive: 1, sortOrder: 1 });
+
+const MembershipPlan = mongoose.model('MembershipPlan', membershipPlanSchema);
+
+// Membership Subscription — customer's active/expired subscription record.
+const membershipSubscriptionSchema = new mongoose.Schema({
+  subscriptionId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  customerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
+  },
+  planId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'MembershipPlan'
+  },
+  planNameSnapshot: {
+    type: String,
+    required: true
+  },
+  priceSnapshot: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  discountSnapshot: {
+    type: Number,
+    required: true,
+    min: 0,
+    max: 100,
+    default: 0
+  },
+  startDate: {
+    type: Date,
+    required: true
+  },
+  endDate: {
+    type: Date,
+    required: true
+  },
+  status: {
+    type: String,
+    enum: ['active', 'expired', 'cancelled', 'suspended', 'pending'],
+    default: 'pending',
+    index: true
+  },
+  stripeCustomerId: String,
+  stripeSubscriptionId: {
+    type: String,
+    unique: true,
+    sparse: true
+  },
+  autoRenew: {
+    type: Boolean,
+    default: true
+  },
+  cancelledAt: Date,
+  upiPaymentReference: String,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+membershipSubscriptionSchema.index({ customerId: 1, status: 1 });
+membershipSubscriptionSchema.index({ endDate: 1, status: 1 });
+
+const MembershipSubscription = mongoose.model('MembershipSubscription', membershipSubscriptionSchema);
+
+// Membership Payment — records payments made for membership subscriptions.
+const membershipPaymentSchema = new mongoose.Schema({
+  paymentId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  customerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
+  },
+  subscriptionId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'MembershipSubscription'
+  },
+  amount: {
+    type: Number,
+    required: true,
+    min: 0
+  },
+  currency: {
+    type: String,
+    default: 'INR',
+    uppercase: true
+  },
+  paymentProvider: {
+    type: String,
+    enum: ['stripe', 'upi', 'manual'],
+    required: true
+  },
+  stripePaymentIntentId: {
+    type: String,
+    sparse: true,
+    index: true
+  },
+  stripeInvoiceId: {
+    type: String,
+    sparse: true
+  },
+  paymentStatus: {
+    type: String,
+    enum: ['paid', 'pending', 'failed', 'refunded'],
+    default: 'pending',
+    index: true
+  },
+  paymentReference: String,
+  upiTransactionId: {
+    type: String,
+    sparse: true
+  },
+  paymentNotes: String,
+  paidAt: Date,
+  createdAt: {
+    type: Date,
+    default: Date.now
+  }
+});
+
+membershipPaymentSchema.index({ customerId: 1, createdAt: -1 });
+
+const MembershipPayment = mongoose.model('MembershipPayment', membershipPaymentSchema);
+
+// Seed default membership plans if none exist
+async function ensureDefaultMembershipPlans() {
+  try {
+    const count = await MembershipPlan.countDocuments();
+    if (count === 0) {
+      await seedDefaultMembershipPlans();
+    }
+  } catch (error) {
+    console.error('Error ensuring default membership plans:', error.message);
+  }
+}
+
+// Try to seed immediately if already connected, otherwise wait for connection
+if (mongoose.connection.readyState === 1) {
+  ensureDefaultMembershipPlans();
+} else {
+  mongoose.connection.once('connected', ensureDefaultMembershipPlans);
+}
+
+// Also keep the event listener for reconnection scenarios
+mongoose.connection.on('connected', seedDefaultMembershipPlans);
+
+function generateMembershipId() {
+  return 'MEM-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+function generatePaymentId() {
+  return 'PAY-' + Date.now().toString().slice(-8) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+async function seedDefaultMembershipPlans() {
+  try {
+    const count = await MembershipPlan.countDocuments();
+    if (count > 0) return;
+
+    const plans = [
+      {
+        name: 'Basic',
+        slug: 'basic',
+        description: 'Free membership for exploring destinations and booking travel packages.',
+        price: 0,
+        currency: 'INR',
+        billingInterval: 'lifetime',
+        durationMonths: 0,
+        discountPercentage: 0,
+        maxDiscountLimit: 0,
+        isLifetime: true,
+        benefits: [
+          'Browse all travel destinations',
+          'View travel packages',
+          'Book available travel packages',
+          'Access customer dashboard',
+          'View booking history',
+          'Download booking invoices',
+          'Standard customer support',
+          'Manage profile and account security'
+        ],
+        isActive: true,
+        isPopular: false,
+        sortOrder: 1
+      },
+      {
+        name: 'Premium',
+        slug: 'premium',
+        description: 'Annual membership with 5% discount on travel packages and priority support.',
+        price: 999,
+        currency: 'INR',
+        billingInterval: 'yearly',
+        durationMonths: 12,
+        discountPercentage: 5,
+        maxDiscountLimit: 5000,
+        benefits: [
+          'All Basic features',
+          '5% discount on eligible travel packages',
+          'Priority customer support',
+          'Exclusive travel offers',
+          'Early access to selected travel packages',
+          'Special member-only deals',
+          'Membership dashboard',
+          'Membership payment history'
+        ],
+        isActive: true,
+        isPopular: true,
+        sortOrder: 2
+      },
+      {
+        name: 'VIP / Elite',
+        slug: 'vip',
+        description: 'Annual membership with 10% discount on travel packages and dedicated assistance.',
+        price: 1999,
+        currency: 'INR',
+        billingInterval: 'yearly',
+        durationMonths: 12,
+        discountPercentage: 10,
+        maxDiscountLimit: 15000,
+        benefits: [
+          'All Premium features',
+          '10% discount on eligible travel packages',
+          'Dedicated travel assistance',
+          'Complimentary itinerary consultation',
+          'Exclusive hotel deals',
+          'Priority booking assistance',
+          'VIP customer support',
+          'Special cancellation benefits where configured',
+          'Exclusive member offers'
+        ],
+        isActive: true,
+        isPopular: false,
+        sortOrder: 3
+      }
+    ];
+
+    for (const plan of plans) {
+      await MembershipPlan.create(plan);
+    }
+    console.log('Default membership plans seeded');
+  } catch (error) {
+    console.error('Error seeding membership plans:', error.message);
+  }
+}
+
+async function getActiveMembership(customerId) {
+  const now = new Date();
+  const subscription = await MembershipSubscription.findOne({
+    customerId,
+    status: 'active',
+    endDate: { $gte: now }
+  }).sort({ endDate: -1 }).lean();
+  return subscription;
+}
+
+async function applyMembershipDiscount(customerId, originalAmount, packageEligible = true) {
+  if (!packageEligible) return { discountPercentage: 0, discountAmount: 0, finalAmount: originalAmount, membershipId: null };
+
+  const membership = await getActiveMembership(customerId);
+  if (!membership || membership.discountSnapshot <= 0) {
+    return { discountPercentage: 0, discountAmount: 0, finalAmount: originalAmount, membershipId: null };
+  }
+
+  const discountPercentage = membership.discountSnapshot;
+  let discountAmount = Math.round((originalAmount * discountPercentage) / 100);
+
+  // Apply max discount limit if configured
+  // Find the plan to check maxDiscountLimit
+  const plan = await MembershipPlan.findById(membership.planId).lean();
+  if (plan && plan.maxDiscountLimit && discountAmount > plan.maxDiscountLimit) {
+    discountAmount = plan.maxDiscountLimit;
+  }
+
+  const finalAmount = Math.max(0, originalAmount - discountAmount);
+
+  return {
+    discountPercentage,
+    discountAmount,
+    finalAmount,
+    membershipId: membership._id,
+    planName: membership.planNameSnapshot
+  };
+}
+
+async function createMembershipNotification(userId, type, title, message, relatedId, actionUrl) {
+  const membershipTypes = ['booking', 'payment', 'system', 'offer'];
+  if (!membershipTypes.includes(type)) {
+    // Use generic system type for membership notifications
+    type = 'system';
+  }
+  return createNotification({
+    userId,
+    type,
+    title,
+    message,
+    relatedId,
+    actionUrl,
+    severity: 'info',
+    email: true
+  }).catch(err => console.error('Membership notification failed:', err.message));
+}
+
+// ============================================
+// CUSTOMER MEMBERSHIP APIs
+// ============================================
+
+// Get all active membership plans for customers.
+app.get('/api/customer/membership/plans', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const plans = await MembershipPlan.find({ isActive: true }).sort({ sortOrder: 1, price: 1 }).lean();
+    res.status(200).json({ plans });
+  } catch (error) {
+    console.error('Fetch membership plans error:', error.message);
+    res.status(500).json({ message: 'Error fetching membership plans' });
+  }
+});
+
+// Get customer's current active membership.
+app.get('/api/customer/membership/current', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const membership = await getActiveMembership(req.user.userId);
+    if (!membership) {
+      // Check if customer has any subscription (even expired)
+      const anySubscription = await MembershipSubscription.findOne({ customerId: req.user.userId })
+        .sort({ createdAt: -1 }).lean();
+      if (!anySubscription) {
+        // Assign Basic plan by default
+        const basicPlan = await MembershipPlan.findOne({ slug: 'basic', isActive: true }).lean();
+        if (basicPlan) {
+          const now = new Date();
+          const endDate = new Date(now);
+          endDate.setFullYear(endDate.getFullYear() + 100); // Lifetime
+          const subscription = new MembershipSubscription({
+          _id: new mongoose.Types.ObjectId(),
+          subscriptionId: generateMembershipId(),
+          customerId: req.user.userId,
+          planId: basicPlan._id,
+          planNameSnapshot: basicPlan.name,
+          priceSnapshot: basicPlan.price,
+          discountSnapshot: basicPlan.discountPercentage,
+          startDate: now,
+          endDate,
+          status: 'active',
+          autoRenew: false
+        });
+          await subscription.save();
+          return res.status(200).json({ membership: subscription });
+        }
+        return res.status(200).json({ membership: null });
+      }
+      return res.status(200).json({ membership: anySubscription });
+    }
+    res.status(200).json({ membership });
+  } catch (error) {
+    console.error('Get current membership error:', error.message);
+    res.status(500).json({ message: 'Error fetching current membership' });
+  }
+});
+
+// Get customer's membership payment/subscription history.
+app.get('/api/customer/membership/history', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const subscriptions = await MembershipSubscription.find({ customerId: req.user.userId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const payments = await MembershipPayment.find({ customerId: req.user.userId })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    res.status(200).json({ subscriptions, payments });
+  } catch (error) {
+    console.error('Get membership history error:', error.message);
+    res.status(500).json({ message: 'Error fetching membership history' });
+  }
+});
+
+// Subscribe to a membership plan (creates pending subscription, then checkout).
+app.post('/api/customer/membership/subscribe', authenticate, requireCustomer, async (req, res) => {
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const { planId } = req.body || {};
+
+      if (!planId) {
+        const err = new Error('Plan ID is required');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // Accept either MongoDB _id or plan slug.
+      // findById throws a CastError when planId is a slug, so catch it.
+      let plan = null;
+      try {
+        plan = await MembershipPlan.findById(planId).session(session);
+      } catch (castErr) {
+        // Invalid ObjectId format — fall through to slug lookup below
+        plan = null;
+      }
+      if (!plan) {
+        plan = await MembershipPlan.findOne({ slug: planId, isActive: true }).session(session);
+      }
+      if (!plan || !plan.isActive) {
+        const err = new Error('Membership plan not found or inactive');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      // Defensive: ensure plan has a valid _id
+      if (!plan._id) {
+        const err = new Error('Plan ID is invalid');
+        err.statusCode = 500;
+        throw err;
+      }
+
+      // Check for existing active subscription
+      const existingActive = await MembershipSubscription.findOne({
+        customerId: req.user.userId,
+        status: 'active',
+        endDate: { $gte: new Date() }
+      }).session(session);
+
+      if (existingActive) {
+        const err = new Error('You already have an active membership. Cancel or wait for expiry before subscribing to a new plan.');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      // Cancel any existing pending subscriptions
+      await MembershipSubscription.updateMany(
+        { customerId: req.user.userId, status: 'pending' },
+        { status: 'cancelled', cancelledAt: new Date() },
+        { session }
+      );
+
+      const now = new Date();
+      const endDate = new Date(now);
+      if (plan.billingInterval === 'lifetime' || plan.isLifetime) {
+        endDate.setFullYear(9999);
+      } else if (plan.billingInterval === 'yearly') {
+        endDate.setFullYear(endDate.getFullYear() + 1);
+      } else {
+        endDate.setMonth(endDate.getMonth() + 1);
+      }
+
+      const subscription = new MembershipSubscription({
+        _id: new mongoose.Types.ObjectId(),
+        subscriptionId: generateMembershipId(),
+        customerId: req.user.userId,
+        planId: plan._id,
+        planNameSnapshot: plan.name,
+        priceSnapshot: plan.price,
+        discountSnapshot: plan.discountPercentage,
+        startDate: now,
+        endDate,
+        status: plan.price === 0 ? 'active' : 'pending',
+        autoRenew: plan.price === 0 ? false : true
+      }, { session });
+
+      await subscription.save();
+
+      // Create payment record for paid plans
+      if (plan.price > 0) {
+        const payment = new MembershipPayment({
+          _id: new mongoose.Types.ObjectId(),
+          paymentId: generatePaymentId(),
+          customerId: req.user.userId,
+          subscriptionId: subscription._id,
+          amount: plan.price,
+          currency: plan.currency,
+          paymentProvider: 'stripe',
+          paymentStatus: 'pending',
+          paymentReference: subscription.subscriptionId
+        }, { session });
+        await payment.save();
+      }
+
+      res.status(200).json({
+        message: plan.price === 0 ? 'Membership activated' : 'Subscription created, proceed to payment',
+        subscription: {
+          id: subscription._id,
+          subscriptionId: subscription.subscriptionId,
+          planName: subscription.planNameSnapshot,
+          price: subscription.priceSnapshot,
+          status: subscription.status,
+          startDate: subscription.startDate,
+          endDate: subscription.endDate
+        },
+        requiresPayment: plan.price > 0
+      });
+    });
+  } catch (error) {
+    console.error('Subscribe membership error:', error.message);
+    console.error('Subscribe membership error stack:', error.stack);
+    console.error('Subscribe membership error details:', { planId: req.body?.planId, userId: req.user?.userId, errorName: error.name, errorCode: error.code, errorMessage: error.message });
+    if (error.errors) {
+      console.error('Subscribe membership validation errors:', JSON.stringify(error.errors, null, 2));
+    }
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Error subscribing to membership' });
+  } finally {
+    session.endSession();
+  }
+});
+
+// Create Stripe checkout session for membership payment.
+app.post('/api/customer/membership/checkout', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const { subscriptionId } = req.body || {};
+
+    if (!subscriptionId) {
+      return res.status(400).json({ message: 'Subscription ID is required' });
+    }
+
+    const subscription = await MembershipSubscription.findOne({
+      _id: subscriptionId,
+      customerId: req.user.userId,
+      status: 'pending'
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found or not pending' });
+    }
+
+    const plan = await MembershipPlan.findById(subscription.planId);
+    if (!plan || plan.price <= 0) {
+      return res.status(400).json({ message: 'Invalid plan or no payment required' });
+    }
+
+    // Check for existing Stripe subscription reference
+    if (subscription.stripeSubscriptionId) {
+      try {
+        const existing = await getStripe().checkout.sessions.retrieve(subscription.stripeSubscriptionId);
+        if (existing.payment_status === 'unpaid') {
+          return res.status(200).json({
+            checkoutUrl: existing.url,
+            sessionId: existing.id,
+            amount: plan.price,
+            message: 'Reusing existing checkout session'
+          });
+        }
+      } catch (err) {
+        // Session may be expired; fall through
+      }
+    }
+
+    const stripeSession = await getStripe().checkout.sessions.create({
+      payment_method_types: ['card', 'upi'],
+      line_items: [{
+        price_data: {
+          currency: plan.currency.toLowerCase(),
+          product_data: {
+            name: `Membership: ${plan.name}`,
+            description: `${plan.description || ''} - ${plan.durationMonths} months`
+          },
+          unit_amount: Math.round(plan.price * 100)
+        },
+        quantity: 1
+      }],
+      mode: 'payment',
+      success_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/customer/membership/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/customer/membership`,
+      metadata: {
+        subscriptionId: subscription._id.toString(),
+        customerId: req.user.userId,
+        planName: plan.name,
+        planPrice: plan.price.toString()
+      },
+      client_reference_id: req.user.userId
+    });
+
+    subscription.stripeSubscriptionId = stripeSession.id;
+    await subscription.save();
+
+    res.status(200).json({
+      message: 'Checkout session created',
+      checkoutUrl: stripeSession.url,
+      sessionId: stripeSession.id,
+      amount: plan.price,
+      currency: plan.currency
+    });
+  } catch (error) {
+    console.error('Membership checkout error:', error.message);
+    res.status(500).json({ message: 'Error creating membership checkout session' });
+  }
+});
+
+// Cancel membership subscription.
+app.post('/api/customer/membership/cancel', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const subscription = await MembershipSubscription.findOne({
+      customerId: req.user.userId,
+      status: 'active'
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ message: 'No active membership found' });
+    }
+
+    subscription.status = 'cancelled';
+    subscription.cancelledAt = new Date();
+    subscription.autoRenew = false;
+    await subscription.save();
+
+    await createMembershipNotification(
+      req.user.userId,
+      'system',
+      'Membership Cancelled',
+      `Your ${subscription.planNameSnapshot} membership has been cancelled.`,
+      subscription._id,
+      '/customer/membership'
+    );
+
+    res.status(200).json({ message: 'Membership cancelled successfully', subscription });
+  } catch (error) {
+    console.error('Cancel membership error:', error.message);
+    res.status(500).json({ message: 'Error cancelling membership' });
+  }
+});
+
+// Renew membership subscription.
+app.post('/api/customer/membership/renew', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const subscription = await MembershipSubscription.findOne({
+      customerId: req.user.userId,
+      status: { $in: ['expired', 'cancelled'] }
+    }).sort({ createdAt: -1 });
+
+    if (!subscription) {
+      return res.status(404).json({ message: 'No expired or cancelled membership found to renew' });
+    }
+
+    const plan = await MembershipPlan.findById(subscription.planId);
+    if (!plan || !plan.isActive) {
+      return res.status(400).json({ message: 'Membership plan is no longer available' });
+    }
+
+    // Reactivate with new dates
+    const now = new Date();
+    const endDate = new Date(now);
+    if (plan.billingInterval === 'lifetime') {
+      endDate.setFullYear(endDate.getFullYear() + 100);
+    } else if (plan.billingInterval === 'yearly') {
+      endDate.setFullYear(endDate.getFullYear() + 1);
+    } else {
+      endDate.setMonth(endDate.getMonth() + 1);
+    }
+
+    subscription.status = plan.price === 0 ? 'active' : 'pending';
+    subscription.startDate = now;
+    subscription.endDate = endDate;
+    subscription.cancelledAt = undefined;
+    subscription.priceSnapshot = plan.price;
+    subscription.discountSnapshot = plan.discountPercentage;
+    subscription.planNameSnapshot = plan.name;
+    await subscription.save();
+
+    if (plan.price > 0) {
+      const payment = new MembershipPayment({
+        paymentId: generatePaymentId(),
+        customerId: req.user.userId,
+        subscriptionId: subscription._id,
+        amount: plan.price,
+        currency: plan.currency,
+        paymentProvider: 'stripe',
+        paymentStatus: 'pending',
+        paymentReference: subscription.subscriptionId
+      });
+      await payment.save();
+    }
+
+    res.status(200).json({
+      message: plan.price === 0 ? 'Membership renewed' : 'Renewal created, proceed to payment',
+      subscription: {
+        id: subscription._id,
+        subscriptionId: subscription.subscriptionId,
+        planName: subscription.planNameSnapshot,
+        status: subscription.status,
+        startDate: subscription.startDate,
+        endDate: subscription.endDate
+      },
+      requiresPayment: plan.price > 0
+    });
+  } catch (error) {
+    console.error('Renew membership error:', error.message);
+    res.status(500).json({ message: 'Error renewing membership' });
+  }
+});
+
+// Generate UPI QR for membership payment.
+app.post('/api/customer/membership/upi-qr', authenticate, requireCustomer, async (req, res) => {
+  const mongooseSession = await mongoose.startSession();
+  try {
+    await mongooseSession.withTransaction(async () => {
+      const { subscriptionId } = req.body || {};
+
+      if (!subscriptionId) {
+        const err = new Error('Subscription ID is required');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const subscription = await MembershipSubscription.findOne({
+        _id: subscriptionId,
+        customerId: req.user.userId,
+        status: 'pending'
+      }).session(mongooseSession);
+
+      if (!subscription) {
+        const err = new Error('Subscription not found or not pending');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      const plan = await MembershipPlan.findById(subscription.planId).session(mongooseSession);
+      if (!plan || plan.price <= 0) {
+        const err = new Error('Invalid plan or no payment required');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const amount = subscription.priceSnapshot;
+      const paymentRef = `upi-mem-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+      const upiId = process.env.UPI_ID || process.env.UPI_MERCHANT_ID;
+      const merchantName = process.env.UPI_MERCHANT_NAME || 'Travel Tour';
+      if (!upiId || upiId === 'merchant@upi' || upiId.includes('your_') || !upiId.includes('@')) {
+        const err = new Error('QR payment provider is not configured. Set UPI_ID in backend/.env.');
+        err.statusCode = 503;
+        throw err;
+      }
+
+      const upiUrl = `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(merchantName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(`Membership ${plan.name}`)}`;
+
+      let qrDataUrl;
+      try {
+        qrDataUrl = await QRCode.toDataURL(upiUrl, {
+          width: 300,
+          margin: 2,
+          color: { dark: '#087F73', light: '#ffffff' }
+        });
+        if (!qrDataUrl) {
+          throw new Error('QR code generation returned empty data');
+        }
+      } catch (qrErr) {
+        console.error('QR generation error:', qrErr.message);
+        const err = new Error('Failed to generate QR code');
+        err.statusCode = 500;
+        throw err;
+      }
+
+      let payment = await MembershipPayment.findOne({
+        subscriptionId: subscription._id,
+        paymentProvider: 'upi',
+        paymentStatus: 'pending'
+      }).session(mongooseSession);
+
+      if (!payment) {
+        payment = new MembershipPayment({
+          _id: new mongoose.Types.ObjectId(),
+          paymentId: paymentRef,
+          customerId: req.user.userId,
+          subscriptionId: subscription._id,
+          amount,
+          currency: plan.currency,
+          paymentProvider: 'upi',
+          paymentStatus: 'pending',
+          paymentReference: paymentRef
+        }, { session: mongooseSession });
+        await payment.save();
+      }
+
+      subscription.upiPaymentReference = paymentRef;
+      await subscription.save({ session: mongooseSession });
+
+      res.status(200).json({
+        message: 'UPI QR payment session created',
+        qrDataUrl,
+        upiId,
+        merchantName,
+        amount,
+        currency: plan.currency,
+        bookingReference: subscription.subscriptionId,
+        paymentReference: paymentRef,
+        paymentState: 'PENDING',
+        upiUrl,
+        planName: plan.name
+      });
+    });
+  } catch (error) {
+    console.error('Membership UPI QR error:', error.message);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Error creating membership UPI QR payment' });
+  } finally {
+    mongooseSession.endSession();
+  }
+});
+
+// Customer submits UPI transaction reference for membership payment verification.
+app.post('/api/customer/membership/verify-upi', authenticate, requireCustomer, async (req, res) => {
+  try {
+    const { subscriptionId, transactionId, notes } = req.body || {};
+
+    if (!subscriptionId) {
+      return res.status(400).json({ message: 'Subscription ID is required' });
+    }
+    if (!transactionId) {
+      return res.status(400).json({ message: 'UPI transaction reference is required' });
+    }
+
+    const subscription = await MembershipSubscription.findOne({
+      _id: subscriptionId,
+      customerId: req.user.userId,
+      status: 'pending'
+    });
+
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found or not pending' });
+    }
+
+    const payment = await MembershipPayment.findOne({
+      subscriptionId: subscription._id,
+      paymentProvider: 'upi',
+      paymentStatus: 'pending'
+    });
+
+    if (!payment) {
+      return res.status(404).json({ message: 'No pending UPI payment found for this subscription' });
+    }
+
+    // Idempotency: if already submitted with same txn, return current state
+    if (payment.upiTransactionId === transactionId) {
+      return res.status(200).json({
+        message: 'Payment already submitted for verification',
+        paymentState: 'PENDING',
+        paymentReference: payment.paymentReference,
+        upiTransactionId: payment.upiTransactionId
+      });
+    }
+
+    payment.upiTransactionId = transactionId.trim();
+    payment.paymentReference = transactionId.trim();
+    payment.paymentNotes = notes || '';
+    await payment.save();
+
+    await createMembershipNotification(
+      req.user.userId,
+      'payment',
+      'Membership Payment Submitted for Verification',
+      `Your UPI payment of ₹${payment.amount} for ${subscription.planNameSnapshot} membership has been submitted and is pending admin verification. Transaction: ${transactionId}`,
+      subscription._id,
+      '/customer/membership'
+    );
+
+    res.status(200).json({
+      message: 'UPI payment submitted for verification',
+      paymentState: 'PENDING',
+      paymentReference: payment.paymentReference,
+      upiTransactionId: payment.upiTransactionId
+    });
+  } catch (error) {
+    console.error('Membership verify UPI error:', error.message);
+    res.status(500).json({ message: 'Error submitting UPI payment for verification' });
+  }
+});
+
+// ============================================
+// ADMIN MEMBERSHIP APIs
+// ============================================
+
+// Get all membership plans (admin).
+app.get('/api/admin/membership/plans', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const plans = await MembershipPlan.find().sort({ sortOrder: 1, createdAt: -1 }).lean();
+    res.status(200).json({ plans });
+  } catch (error) {
+    console.error('Admin fetch plans error:', error.message);
+    res.status(500).json({ message: 'Error fetching membership plans' });
+  }
+});
+
+// Create membership plan (admin).
+app.post('/api/admin/membership/plans', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const {
+      name, slug, description, price, currency, billingInterval,
+      durationMonths, discountPercentage, maxDiscountLimit,
+      benefits, isActive, isPopular, sortOrder
+    } = req.body || {};
+
+    if (!name || !slug) {
+      return res.status(400).json({ message: 'Name and slug are required' });
+    }
+
+    const existing = await MembershipPlan.findOne({ slug });
+    if (existing) {
+      return res.status(400).json({ message: 'Plan slug already exists' });
+    }
+
+    const plan = new MembershipPlan({
+      name,
+      slug,
+      description,
+      price: Number(price) || 0,
+      currency: currency || 'INR',
+      billingInterval: billingInterval || 'yearly',
+      durationMonths: Number(durationMonths) || 12,
+      discountPercentage: Number(discountPercentage) || 0,
+      maxDiscountLimit: maxDiscountLimit ? Number(maxDiscountLimit) : undefined,
+      benefits: Array.isArray(benefits) ? benefits : [],
+      isActive: isActive !== false,
+      isPopular: isPopular === true,
+      sortOrder: Number(sortOrder) || 0
+    });
+
+    await plan.save();
+    res.status(201).json({ message: 'Membership plan created', plan });
+  } catch (error) {
+    console.error('Admin create plan error:', error.message);
+    res.status(500).json({ message: 'Error creating membership plan' });
+  }
+});
+
+// Update membership plan (admin).
+app.put('/api/admin/membership/plans/:id', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const updates = pickUpdates(req.body, [
+      'name', 'slug', 'description', 'price', 'currency', 'billingInterval',
+      'durationMonths', 'discountPercentage', 'maxDiscountLimit',
+      'benefits', 'isActive', 'isPopular', 'sortOrder'
+    ]);
+    updates.updatedAt = new Date();
+
+    const plan = await MembershipPlan.findByIdAndUpdate(req.params.id, updates, { new: true });
+    if (!plan) {
+      return res.status(404).json({ message: 'Membership plan not found' });
+    }
+
+    res.status(200).json({ message: 'Membership plan updated', plan });
+  } catch (error) {
+    console.error('Admin update plan error:', error.message);
+    res.status(500).json({ message: 'Error updating membership plan' });
+  }
+});
+
+// Delete membership plan (admin).
+app.delete('/api/admin/membership/plans/:id', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const plan = await MembershipPlan.findByIdAndDelete(req.params.id);
+    if (!plan) {
+      return res.status(404).json({ message: 'Membership plan not found' });
+    }
+    res.status(200).json({ message: 'Membership plan deleted' });
+  } catch (error) {
+    console.error('Admin delete plan error:', error.message);
+    res.status(500).json({ message: 'Error deleting membership plan' });
+  }
+});
+
+// Get all customer membership subscriptions (admin).
+app.get('/api/admin/membership/subscriptions', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { search, status, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (status) filter.status = status;
+    if (search) {
+      const customers = await User.find({
+        $or: [
+          { fullName: new RegExp(search, 'i') },
+          { email: new RegExp(search, 'i') }
+        ]
+      }).select('_id').lean();
+      filter.customerId = { $in: customers.map(c => c._id) };
+    }
+
+    const subscriptions = await MembershipSubscription.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+      .lean();
+
+    const total = await MembershipSubscription.countDocuments(filter);
+
+    // Enrich with customer details
+    const enriched = await Promise.all(subscriptions.map(async (sub) => {
+      const customer = await User.findById(sub.customerId).select('fullName email').lean();
+      return {
+        ...sub,
+        customerName: customer ? customer.fullName : 'Unknown',
+        customerEmail: customer ? customer.email : 'Unknown'
+      };
+    }));
+
+    res.status(200).json({
+      subscriptions: enriched,
+      pagination: { page: Number(page), limit: Number(limit), total, totalPages: Math.ceil(total / Number(limit)) }
+    });
+  } catch (error) {
+    console.error('Admin fetch subscriptions error:', error.message);
+    res.status(500).json({ message: 'Error fetching subscriptions' });
+  }
+});
+
+// Get membership analytics (admin).
+app.get('/api/admin/membership/analytics', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const now = new Date();
+
+    const totalMembers = await MembershipSubscription.countDocuments({});
+    const basicMembers = await MembershipSubscription.countDocuments({
+      planNameSnapshot: 'Basic',
+      status: 'active',
+      endDate: { $gte: now }
+    });
+    const premiumMembers = await MembershipSubscription.countDocuments({
+      planNameSnapshot: 'Premium',
+      status: 'active',
+      endDate: { $gte: now }
+    });
+    const vipMembers = await MembershipSubscription.countDocuments({
+      planNameSnapshot: /VIP|Elite/i,
+      status: 'active',
+      endDate: { $gte: now }
+    });
+    const activeSubscriptions = await MembershipSubscription.countDocuments({
+      status: 'active',
+      endDate: { $gte: now }
+    });
+    const expiredSubscriptions = await MembershipSubscription.countDocuments({
+      status: 'expired'
+    });
+    const revenueAgg = await MembershipPayment.aggregate([
+      { $match: { paymentStatus: 'paid' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]);
+    const membershipRevenue = revenueAgg[0]?.total || 0;
+    const renewals = await MembershipSubscription.countDocuments({
+      status: 'active',
+      autoRenew: true
+    });
+
+    res.status(200).json({
+      totalMembers,
+      basicMembers,
+      premiumMembers,
+      vipMembers,
+      activeSubscriptions,
+      expiredSubscriptions,
+      membershipRevenue,
+      renewals
+    });
+  } catch (error) {
+    console.error('Admin membership analytics error:', error.message);
+    res.status(500).json({ message: 'Error fetching membership analytics' });
+  }
+});
+
+// Get subscription details (admin).
+app.get('/api/admin/membership/subscriptions/:id', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const subscription = await MembershipSubscription.findById(req.params.id).lean();
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+
+    const customer = await User.findById(subscription.customerId).select('fullName email phone').lean();
+    const payments = await MembershipPayment.find({ subscriptionId: subscription._id }).sort({ createdAt: -1 }).lean();
+
+    res.status(200).json({
+      ...subscription,
+      customer,
+      payments
+    });
+  } catch (error) {
+    console.error('Admin get subscription error:', error.message);
+    res.status(500).json({ message: 'Error fetching subscription details' });
+  }
+});
+
+// Update subscription status (admin - suspend/reactivate/cancel).
+app.put('/api/admin/membership/subscriptions/:id/status', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { status, notes } = req.body || {};
+
+    const validStatuses = ['active', 'expired', 'cancelled', 'suspended'];
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' });
+    }
+
+    const subscription = await MembershipSubscription.findById(req.params.id);
+    if (!subscription) {
+      return res.status(404).json({ message: 'Subscription not found' });
+    }
+
+    subscription.status = status;
+    if (status === 'cancelled' || status === 'suspended') {
+      subscription.cancelledAt = new Date();
+      subscription.autoRenew = false;
+    } else if (status === 'active') {
+      subscription.cancelledAt = undefined;
+    }
+    await subscription.save();
+
+    await createMembershipNotification(
+      subscription.customerId,
+      'system',
+      `Membership ${status.charAt(0).toUpperCase() + status.slice(1)}`,
+      `Your ${subscription.planNameSnapshot} membership has been ${status}.${notes ? ' ' + notes : ''}`,
+      subscription._id,
+      '/customer/membership'
+    );
+
+    res.status(200).json({ message: `Membership ${status} successfully`, subscription });
+  } catch (error) {
+    console.error('Admin update subscription status error:', error.message);
+    res.status(500).json({ message: 'Error updating subscription status' });
+  }
+});
+
+// List pending UPI membership payments for admin verification.
+app.get('/api/admin/membership/payments', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { status = 'pending', page = 1, limit = 50 } = req.query || {};
+    const filter = { paymentProvider: 'upi' };
+    if (status) filter.paymentStatus = status;
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [payments, total] = await Promise.all([
+      MembershipPayment.find(filter)
+        .populate('customerId', 'fullName email phone')
+        .populate('subscriptionId', 'planNameSnapshot priceSnapshot status startDate endDate subscriptionId')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      MembershipPayment.countDocuments(filter)
+    ]);
+
+    res.status(200).json({
+      payments,
+      total,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil(total / Number(limit))
+    });
+  } catch (error) {
+    console.error('Admin membership UPI payments error:', error.message);
+    res.status(500).json({ message: 'Error fetching membership UPI payments' });
+  }
+});
+
+// Admin verifies/approves or rejects a pending UPI membership payment.
+app.post('/api/admin/membership/payments/:id/verify', authenticate, requireAdmin, async (req, res) => {
+  const mongooseSession = await mongoose.startSession();
+  try {
+    await mongooseSession.withTransaction(async () => {
+      const { action, notes } = req.body || {};
+
+      if (!action || !['approve', 'reject'].includes(action)) {
+        const err = new Error('Invalid action. Use "approve" or "reject".');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const payment = await MembershipPayment.findById(req.params.id).session(mongooseSession);
+      if (!payment) {
+        const err = new Error('Payment not found');
+        err.statusCode = 404;
+        throw err;
+      }
+      if (payment.paymentProvider !== 'upi') {
+        const err = new Error('Payment is not a UPI payment');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (payment.paymentStatus !== 'pending') {
+        const err = new Error('Payment is not in pending state');
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const subscription = await MembershipSubscription.findById(payment.subscriptionId).session(mongooseSession);
+      if (!subscription) {
+        const err = new Error('Subscription not found');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      if (action === 'approve') {
+        payment.paymentStatus = 'paid';
+        payment.paidAt = new Date();
+        payment.paymentNotes = notes || '';
+        await payment.save();
+
+        subscription.status = 'active';
+        subscription.paymentConfirmedAt = new Date();
+        await subscription.save();
+
+        await createMembershipNotification(
+          subscription.customerId,
+          'payment',
+          'Membership Activated',
+          `Your ${subscription.planNameSnapshot} membership payment of ₹${payment.amount} has been verified and activated.`,
+          subscription._id,
+          '/customer/membership'
+        );
+      } else {
+        payment.paymentStatus = 'failed';
+        payment.paymentNotes = notes || 'Rejected by admin';
+        await payment.save();
+
+        subscription.status = 'cancelled';
+        subscription.cancelledAt = new Date();
+        await subscription.save();
+
+        await createMembershipNotification(
+          subscription.customerId,
+          'payment',
+          'Membership Payment Rejected',
+          `Your UPI payment for ${subscription.planNameSnapshot} membership has been rejected.${notes ? ' Reason: ' + notes : ''}`,
+          subscription._id,
+          '/customer/membership'
+        );
+      }
+
+      res.status(200).json({
+        message: `Payment ${action}d successfully`,
+        payment,
+        subscription
+      });
+    });
+  } catch (error) {
+    console.error('Admin verify membership UPI payment error:', error.message);
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ message: error.message });
+    }
+    res.status(500).json({ message: 'Error verifying membership UPI payment' });
+  } finally {
+    mongooseSession.endSession();
+  }
+});
+
+// List all pending UPI payments (membership + booking) for admin verification.
+app.get('/api/admin/upi-payments', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { status = 'pending', page = 1, limit = 50, type } = req.query || {};
+    const filter = { paymentProvider: 'upi' };
+    if (status) filter.paymentStatus = status;
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    let membershipQuery = MembershipPayment.find(filter)
+      .populate('customerId', 'fullName email phone')
+      .populate({
+        path: 'subscriptionId',
+        select: 'planNameSnapshot priceSnapshot status subscriptionId'
+      })
+      .sort({ createdAt: -1 });
+
+    let bookingQuery = Booking.find({
+      paymentProvider: 'upi',
+      paymentStatus: status
+    })
+      .populate('customerId', 'fullName email phone')
+      .sort({ createdAt: -1 });
+
+    const [membershipPayments, bookingPayments, totalMembership, totalBookings] =
+      await Promise.all([
+        membershipQuery.skip(skip).limit(Number(limit)).lean(),
+        bookingQuery.skip(skip).limit(Number(limit)).lean(),
+        MembershipPayment.countDocuments(filter),
+        Booking.countDocuments({ paymentProvider: 'upi', paymentStatus: status })
+      ]);
+
+    const allPayments = [
+      ...membershipPayments.map(p => ({
+        ...p,
+        paymentType: 'Membership',
+        itemName: p.subscriptionId?.planNameSnapshot || 'Membership',
+        originalAmount: p.amount,
+        discountAmount: 0,
+        finalAmount: p.amount,
+        customerName: p.customerId?.fullName || 'Unknown',
+        customerEmail: p.customerId?.email || '—',
+        upiTransactionRef: p.upiTransactionId || p.paymentReference,
+        paymentDate: p.createdAt
+      })),
+      ...bookingPayments.map(b => ({
+        ...b,
+        paymentType: 'Travel Booking',
+        itemName: b.package || b.hotelName || 'Booking',
+        originalAmount: b.originalAmount || b.amount,
+        discountAmount: b.discountAmount || 0,
+        finalAmount: b.finalAmount || b.amount,
+        customerName: b.customer || 'Unknown',
+        customerEmail: b.email || '—',
+        upiTransactionRef: b.manualTransactionId || b.paymentReference,
+        paymentDate: b.paymentCreatedAt || b.createdAt
+      }))
+    ].sort((a, b) => new Date(b.paymentDate) - new Date(a.paymentDate));
+
+    res.status(200).json({
+      payments: allPayments.slice(skip, skip + Number(limit)),
+      total: totalMembership + totalBookings,
+      page: Number(page),
+      limit: Number(limit),
+      totalPages: Math.ceil((totalMembership + totalBookings) / Number(limit))
+    });
+  } catch (error) {
+    console.error('Admin UPI payments error:', error.message);
+    res.status(500).json({ message: 'Error fetching UPI payments' });
+  }
+});
+
+// ============================================
+// STRIPE WEBHOOK EXTENSION FOR MEMBERSHIPS
+// ============================================
+
+// Extend handleStripeEvent to handle membership checkout sessions.
+// The existing handleStripeEvent handles booking payments; we add membership
+// checkout.session.completed handling here without modifying the original logic.
+
+const originalHandleStripeEvent = handleStripeEvent;
+async function handleStripeEventWithMembership(event) {
+  const eventType = event.type;
+  const session = event.data.object;
+
+  // Handle membership checkout sessions
+  if (eventType === 'checkout.session.completed' || eventType === 'checkout.session.async_payment_succeeded') {
+    const subscriptionId = session.metadata?.subscriptionId;
+    const customerId = session.client_reference_id;
+    if (subscriptionId && customerId && session.payment_status === 'paid') {
+      try {
+        const subscription = await MembershipSubscription.findById(subscriptionId);
+        if (!subscription) {
+          console.error('Membership subscription not found:', subscriptionId);
+          return;
+        }
+        if (subscription.status === 'active') {
+          // Already processed — idempotent
+          return;
+        }
+
+        const amountPaid = Math.round((session.amount_total || 0) / 100);
+        if (amountPaid < subscription.priceSnapshot) {
+          console.error('Membership payment amount mismatch:', { amountPaid, expected: subscription.priceSnapshot });
+          return;
+        }
+
+        subscription.status = 'active';
+        subscription.paymentConfirmedAt = new Date();
+        await subscription.save();
+
+        // Record payment
+        await MembershipPayment.findOneAndUpdate(
+          { subscriptionId: subscription._id, paymentStatus: 'pending' },
+          {
+            paymentStatus: 'paid',
+            paidAt: new Date(),
+            stripePaymentIntentId: session.payment_intent || null,
+            paymentReference: session.id
+          }
+        );
+
+        await createMembershipNotification(
+          customerId,
+          'payment',
+          'Membership Activated',
+          `Your ${subscription.planNameSnapshot} membership is now active.`,
+          subscription._id,
+          '/customer/membership'
+        );
+      } catch (err) {
+        console.error('Membership webhook processing error:', err.message);
+      }
+      return;
+    }
+  }
+
+  // Fall through to original handler for booking payments
+  return originalHandleStripeEvent(event);
+}
+
+// Replace the global handleStripeEvent reference used by the webhook route.
+// We redefine it so the existing /api/stripe/webhook route picks up membership handling.
+globalThis.handleStripeEvent = handleStripeEventWithMembership;
+
+// ============================================
+// MEMBERSHIP EXPIRY & RENEWAL SCHEDULER
+// ============================================
+
+function startMembershipExpiryScheduler() {
+  const run = async () => {
+    if (mongoose.connection.readyState !== 1) return;
+    try {
+      const now = new Date();
+
+      // Expire memberships whose endDate has passed
+      const expired = await MembershipSubscription.updateMany(
+        {
+          status: 'active',
+          endDate: { $lt: now }
+        },
+        {
+          $set: { status: 'expired' }
+        }
+      );
+
+      if (expired.modifiedCount > 0) {
+        console.log(`Membership scheduler: expired ${expired.modifiedCount} subscription(s)`);
+      }
+
+      // Send renewal reminders for memberships expiring in 7 days
+      const reminderDate = new Date(now);
+      reminderDate.setDate(reminderDate.getDate() + 7);
+
+      const expiringSoon = await MembershipSubscription.find({
+        status: 'active',
+        endDate: { $gte: now, $lte: reminderDate },
+        autoRenew: true
+      }).lean();
+
+      for (const sub of expiringSoon) {
+        await createMembershipNotification(
+          sub.customerId,
+          'system',
+          'Membership Expiring Soon',
+          `Your ${sub.planNameSnapshot} membership expires on ${sub.endDate.toISOString().split('T')[0]}. Renew to continue enjoying benefits.`,
+          sub._id,
+          '/customer/membership'
+        ).catch(() => {});
+      }
+    } catch (error) {
+      console.error('Membership expiry scheduler error:', error.message);
+    }
+  };
+
+  setTimeout(run, 30000);
+  const timer = setInterval(run, 24 * 60 * 60 * 1000); // Run every 24 hours
+  if (typeof timer.unref === 'function') timer.unref();
+}
+
+mongoose.connection.on('connected', startMembershipExpiryScheduler);
+
+// Seed default plans on connection
+mongoose.connection.on('connected', seedDefaultMembershipPlans);
 
 // Start server
 app.listen(PORT, () => {

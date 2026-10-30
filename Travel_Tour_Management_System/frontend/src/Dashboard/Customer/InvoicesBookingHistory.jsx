@@ -251,7 +251,7 @@ const InvoicesBookingHistory = () => {
             <div key={invoice._id} className="invoice-card enhanced">
               <div className="invoice-header enhanced">
                 <div className="invoice-info">
-                  <h3>{invoice.package}</h3>
+                  <h3>{invoice.package || invoice.hotelName || 'Booking'}</h3>
                   <div className="invoice-id">
                     <Receipt className="h-4 w-4" style={{ color: 'var(--customer-primary-teal)' }} />
                     <span>{invoice.invoiceNo}</span>
@@ -339,7 +339,7 @@ const InvoicesBookingHistory = () => {
                   </div>
                   <div className="info-row">
                     <span className="label">Package:</span>
-                    <span className="value">{selectedInvoice.package}</span>
+                    <span className="value">{selectedInvoice.package || selectedInvoice.hotelName || 'Booking'}</span>
                   </div>
                   <div className="info-row">
                     <span className="label">Invoice Date:</span>

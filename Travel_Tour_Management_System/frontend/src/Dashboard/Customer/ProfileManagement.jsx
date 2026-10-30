@@ -359,14 +359,14 @@ const ProfileManagement = () => {
           </div>
 
           <div className="profile-info enhanced">
-            <h2 style={{ color: 'var(--cp-ink)' }}>{profileData.fullName || 'Customer'}</h2>
-            <p className="profile-email" style={{ color: 'var(--cp-muted)' }}>{profileData.email}</p>
+            <h2 style={{ color: 'var(--customer-text-main)' }}>{profileData.fullName || 'Customer'}</h2>
+            <p className="profile-email" style={{ color: 'var(--customer-text-secondary)' }}>{profileData.email}</p>
             <div className="profile-badges">
-              <span className="profile-badge" style={{ background: 'rgba(16, 185, 129, 0.1)', color: 'var(--cp-success)', borderColor: 'rgba(16, 185, 129, 0.3)' }}>
+              <span className="profile-badge" style={{ background: 'var(--customer-muted-bg)', color: 'var(--customer-accent-emerald)', borderColor: 'rgba(24, 169, 153, 0.3)' }}>
                 <CheckCircle className="h-3 w-3" />
                 Email Verified
               </span>
-              <span className="profile-badge" style={{ background: 'rgba(196, 163, 90, 0.1)', color: 'var(--cp-gold)', borderColor: 'rgba(196, 163, 90, 0.3)' }}>
+              <span className="profile-badge" style={{ background: 'var(--customer-muted-bg)', color: 'var(--customer-primary-teal)', borderColor: 'rgba(8, 127, 115, 0.3)' }}>
                 <Award className="h-3 w-3" />
                 Premium Member
               </span>
@@ -381,7 +381,7 @@ const ProfileManagement = () => {
               }}
               className={`btn-primary enhanced ${isEditing ? 'cancel' : ''}`}
               disabled={saving}
-              style={{ '--accent': isEditing ? 'var(--cp-danger)' : 'var(--cp-accent)' }}
+              style={{ '--accent': isEditing ? 'var(--cp-danger)' : 'var(--customer-primary-teal)' }}
             >
               {isEditing ? 'Cancel' : <><Save className="h-4 w-4" /> Edit Profile</>}
             </button>
@@ -389,35 +389,35 @@ const ProfileManagement = () => {
         </div>
 
         <form className="profile-form enhanced" onSubmit={handleSave}>
-          <div className="form-section enhanced" style={{ background: 'var(--cp-card)', borderColor: 'var(--cp-line)' }}>
+          <div className="form-section enhanced" style={{ background: 'var(--customer-card-bg)', borderColor: 'var(--customer-border)' }}>
             <div className="section-header">
-              <User className="section-icon" style={{ background: 'var(--cp-accent)' }} />
-              <h3 style={{ color: 'var(--cp-ink)' }}>Personal Information</h3>
+              <User className="section-icon" style={{ background: 'var(--customer-primary-teal)' }} />
+              <h3 style={{ color: 'var(--customer-text-main)' }}>Personal Information</h3>
             </div>
             <div className="form-row enhanced">
               <div className="form-group enhanced">
-                <label style={{ color: 'var(--cp-ink)' }}>Full Name</label>
+                <label style={{ color: 'var(--customer-text-main)' }}>Full Name</label>
                 <input
                   type="text"
                   value={profileData.fullName}
                   onChange={(e) => setProfileData({ ...profileData, fullName: e.target.value })}
                   disabled={!isEditing}
                   placeholder="Enter your full name"
-                  style={{ background: 'var(--cp-surface)', borderColor: 'var(--cp-line)', color: 'var(--cp-ink)' }}
+                  style={{ background: 'var(--customer-surface)', borderColor: 'var(--customer-border)', color: 'var(--customer-text-main)' }}
                 />
               </div>
               <div className="form-group enhanced">
-                <label style={{ color: 'var(--cp-ink)' }}>Email Address</label>
+                <label style={{ color: 'var(--customer-text-main)' }}>Email Address</label>
                 <input
                   type="email"
                   value={profileData.email}
                   onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
                   disabled={!isEditing}
                   placeholder="Enter your email"
-                  style={{ background: 'var(--cp-surface)', borderColor: 'var(--cp-line)', color: 'var(--cp-ink)' }}
+                  style={{ background: 'var(--customer-surface)', borderColor: 'var(--customer-border)', color: 'var(--customer-text-main)' }}
                 />
                 {isEditing && (
-                  <small style={{ color: 'var(--cp-muted)' }}>
+                  <small style={{ color: 'var(--customer-text-secondary)' }}>
                     <Mail className="h-3 w-3" /> Changing this signs out your other devices
                   </small>
                 )}
@@ -425,28 +425,28 @@ const ProfileManagement = () => {
             </div>
             <div className="form-row enhanced">
               <div className="form-group enhanced">
-                <label style={{ color: 'var(--cp-ink)' }}>Phone Number</label>
+                <label style={{ color: 'var(--customer-text-main)' }}>Phone Number</label>
                 <input
                   type="tel"
                   value={profileData.phone}
                   onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
                   disabled={!isEditing}
                   placeholder="Enter your phone number"
-                  style={{ background: 'var(--cp-surface)', borderColor: 'var(--cp-line)', color: 'var(--cp-ink)' }}
+                  style={{ background: 'var(--customer-surface)', borderColor: 'var(--customer-border)', color: 'var(--customer-text-main)' }}
                 />
               </div>
               <div className="form-group enhanced">
-                <label style={{ color: 'var(--cp-ink)' }}>Alternate Phone</label>
+                <label style={{ color: 'var(--customer-text-main)' }}>Alternate Phone</label>
                 <input
                   type="tel"
                   value={profileData.alternatePhone}
                   onChange={(e) => setProfileData({ ...profileData, alternatePhone: e.target.value })}
                   disabled={!isEditing}
                   placeholder="Optional second number"
-                  style={{ background: 'var(--cp-surface)', borderColor: 'var(--cp-line)', color: 'var(--cp-ink)' }}
+                  style={{ background: 'var(--customer-surface)', borderColor: 'var(--customer-border)', color: 'var(--customer-text-main)' }}
                 />
                 {isEditing && (
-                  <small style={{ color: 'var(--cp-muted)' }}>
+                  <small style={{ color: 'var(--customer-text-secondary)' }}>
                     <Phone className="h-3 w-3" /> Used only for urgent trip updates
                   </small>
                 )}
@@ -454,17 +454,17 @@ const ProfileManagement = () => {
             </div>
             <div className="form-row enhanced">
               <div className="form-group enhanced">
-                <label style={{ color: 'var(--cp-ink)' }}>Address</label>
+                <label style={{ color: 'var(--customer-text-main)' }}>Address</label>
                 <input
                   type="text"
                   value={profileData.address}
                   onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
                   disabled={!isEditing}
                   placeholder="Optional mailing address"
-                  style={{ background: 'var(--cp-surface)', borderColor: 'var(--cp-line)', color: 'var(--cp-ink)' }}
+                  style={{ background: 'var(--customer-surface)', borderColor: 'var(--customer-border)', color: 'var(--customer-text-main)' }}
                 />
                 {isEditing && (
-                  <small style={{ color: 'var(--cp-muted)' }}>
+                  <small style={{ color: 'var(--customer-text-secondary)' }}>
                     <MapPin className="h-3 w-3" /> Used for invoices and pickup paperwork
                   </small>
                 )}

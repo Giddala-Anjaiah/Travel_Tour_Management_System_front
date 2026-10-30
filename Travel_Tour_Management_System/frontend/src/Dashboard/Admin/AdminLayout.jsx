@@ -1,6 +1,7 @@
-import { BarChart3, Users, MapPin, Calendar, Ticket, FileText, PieChart, Settings, Shield, LogOut, Bed, Bell, Menu, Sun, Moon, CreditCard, Building, Headset } from 'lucide-react'
+import { BarChart3, Users, MapPin, Calendar, Ticket, FileText, PieChart, Settings, Shield, LogOut, Bed, Bell, Menu, Sun, Moon, CreditCard, Building, Headset, User, Crown, QrCode } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { API_HOST } from '../../api'
 import '../Dashboard.css'
 
 const navItems = [
@@ -13,24 +14,40 @@ const navItems = [
   { to: '/admin/hotel-partners', match: 'hotel-partners', label: 'Hotel Partners', icon: Building },
   { to: '/admin/tickets', match: 'tickets', label: 'Support Tickets', icon: Headset },
   { to: '/admin/bookings', match: 'bookings', label: 'Bookings & Payments', icon: Ticket },
+  { to: '/admin/membership-management', match: 'membership-management', label: 'Membership Management', icon: Crown },
+  { to: '/admin/upi-payments', match: 'upi-payments', label: 'UPI Payments', icon: QrCode },
   { to: '/admin/refunds', match: 'refunds', label: 'Refund Oversight', icon: CreditCard },
   { to: '/admin/invoices', match: 'invoices', label: 'Invoices & Reviews', icon: FileText },
   { to: '/admin/notifications', match: 'notifications', label: 'Notifications', icon: Bell },
   { to: '/admin/reports', match: 'reports', label: 'Reports', icon: PieChart },
-  { to: '/admin/settings', match: 'settings', label: 'Administration', icon: Settings }
+  { to: '/admin/settings', match: 'settings', label: 'Administration', icon: Settings },
+  { to: '/admin/profile', match: 'profile', label: 'Profile', icon: User }
 ]
 
 const AdminLayout = ({ active, actions, children }) => {
   const navigate = useNavigate()
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'))
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
+  const [sidebarShowIcon, setSidebarShowIcon] = useState(
+    !user.avatar || user.avatar.startsWith('data:')
+  )
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     localStorage.setItem('theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    const handleUserUpdate = () => {
+      const next = JSON.parse(localStorage.getItem('user') || '{}')
+      setUser(next)
+      setSidebarShowIcon(!next.avatar || next.avatar.startsWith('data:'))
+    }
+    window.addEventListener('user-updated', handleUserUpdate)
+    return () => window.removeEventListener('user-updated', handleUserUpdate)
+  }, [])
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -54,11 +71,23 @@ const AdminLayout = ({ active, actions, children }) => {
 
   return (
     <div className="dashboard-container admin-portal">
-      <aside className={'dashboard-sidebar ' + (sidebarOpen ? 'open ' : '') + (sidebarCollapsed ? 'collapsed' : '')}>
-        <div className="sidebar-header">
-          <Shield className="h-8 w-8" />
-          <span className={sidebarCollapsed ? 'hidden' : ''}>Admin Panel</span>
-        </div>
+        <aside className={'dashboard-sidebar ' + (sidebarOpen ? 'open ' : '') + (sidebarCollapsed ? 'collapsed' : '')}>
+          <div className="sidebar-header">
+            {sidebarShowIcon ? (
+              <Shield className="h-5 w-5" />
+            ) : (
+              <img
+                src={`${API_HOST}${user.avatar}`}
+                alt="Admin"
+                className="admin-sidebar-avatar"
+                onError={(e) => {
+                  e.target.style.display = 'none'
+                  setSidebarShowIcon(true)
+                }}
+              />
+            )}
+            <span className={sidebarCollapsed ? 'hidden' : ''}>Admin Panel</span>
+          </div>
         <nav className="sidebar-nav">
           {navItems.map((item) => {
             const Icon = item.icon
@@ -98,6 +127,16 @@ const AdminLayout = ({ active, actions, children }) => {
               <span>Logout</span>
             </button>
             <div className="user-info">
+              {user.avatar && !user.avatar.startsWith('data:') && (
+                <img
+                  src={`${API_HOST}${user.avatar}`}
+                  alt="Profile"
+                  className="admin-header-avatar"
+                  onError={(e) => {
+                    e.target.style.display = 'none'
+                  }}
+                />
+              )}
               <span>Welcome, {user.fullName || 'Admin'}</span>
             </div>
           </div>

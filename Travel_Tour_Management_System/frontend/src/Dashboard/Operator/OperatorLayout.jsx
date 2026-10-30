@@ -1,6 +1,7 @@
 import { BarChart3, Users, MapPin, Calendar, Ticket, PieChart, Settings, LogOut, Building, TrendingUp, Star, User, Menu, X, Sun, Moon, Mail } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useState, useEffect } from 'react'
+import { API_HOST } from '../../api'
 import '../Dashboard.css'
 
 const navItems = [
@@ -18,22 +19,29 @@ const navItems = [
 ]
 
 const OperatorLayout = ({ active, actions, children }) => {  const navigate = useNavigate()
+  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user') || '{}'))
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
-  const user = JSON.parse(localStorage.getItem('user') || '{}')
-  const initials = (user.fullName || 'Operator')
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join('')
+  const [sidebarShowIcon, setSidebarShowIcon] = useState(
+    !user.avatar || user.avatar.startsWith('data:')
+  )
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme)
     document.documentElement.style.colorScheme = theme
     localStorage.setItem('theme', theme)
   }, [theme])
+
+  useEffect(() => {
+    const handleUserUpdate = () => {
+      const next = JSON.parse(localStorage.getItem('user') || '{}')
+      setUser(next)
+      setSidebarShowIcon(!next.avatar || next.avatar.startsWith('data:'))
+    }
+    window.addEventListener('user-updated', handleUserUpdate)
+    return () => window.removeEventListener('user-updated', handleUserUpdate)
+  }, [])
 
   const toggleTheme = () => {
     setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
@@ -55,13 +63,34 @@ const OperatorLayout = ({ active, actions, children }) => {  const navigate = us
     navigate('/login')
   }
 
+  const getInitials = (name) => {
+    return String(name || 'Operator')
+      .split(' ')
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0].toUpperCase())
+      .join('')
+  }
+
   return (
     <div className="dashboard-container operator-portal">
-      <aside className={'dashboard-sidebar ' + (sidebarOpen ? 'open ' : '') + (sidebarCollapsed ? 'collapsed' : '')}>
+        <aside className={'dashboard-sidebar ' + (sidebarOpen ? 'open ' : '') + (sidebarCollapsed ? 'collapsed' : '')}>
         <div className="sidebar-header">
-          <span className="op-brand-mark">
-            <MapPin className="h-6 w-6" />
-          </span>
+          {sidebarShowIcon ? (
+            <span className="op-brand-mark">
+              <MapPin className="h-6 w-6" />
+            </span>
+          ) : (
+            <img
+              src={`${API_HOST}${user.avatar}`}
+              alt="Operator"
+              className="operator-sidebar-avatar"
+              onError={(e) => {
+                e.target.style.display = 'none'
+                setSidebarShowIcon(true)
+              }}
+            />
+          )}
           <div className="op-brand-text">
             <h2>Tour Operator</h2>
             <p className="op-brand-sub">Operator portal</p>
@@ -106,7 +135,19 @@ const OperatorLayout = ({ active, actions, children }) => {  const navigate = us
               <span>Logout</span>
             </button>
             <div className="user-info">
-              <span className="cp-avatar">{initials}</span>
+              {user.avatar && !user.avatar.startsWith('data:') && (
+                <img
+                  src={`${API_HOST}${user.avatar}`}
+                  alt="Profile"
+                  className="operator-header-avatar"
+                  onError={(e) => {
+                    e.target.style.display = 'none'
+                  }}
+                />
+              )}
+              {!user.avatar || user.avatar.startsWith('data:') ? (
+                <span className="cp-avatar">{getInitials(user.fullName || 'Operator')}</span>
+              ) : null}
               <span>{user.fullName || 'Tour Operator'}</span>
             </div>
           </div>
